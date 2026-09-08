@@ -62,6 +62,12 @@ public class TagSuggestionService {
 
     @Transactional(readOnly = true)
     public List<String> suggest(String categoryId, ValuationMethod valuationMethod) {
+        return suggest(categoryId, valuationMethod, DEFAULT_LIMIT);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> suggest(String categoryId, ValuationMethod valuationMethod, int limit) {
+        int cap = Math.max(1, Math.min(limit, 100));
         String userId = currentUser.currentUser().getId();
         Map<String, Integer> scored = new LinkedHashMap<>();
 
@@ -85,7 +91,7 @@ public class TagSuggestionService {
         return scored.entrySet().stream()
                 .sorted((a, b) -> b.getValue() - a.getValue())
                 .map(Map.Entry::getKey)
-                .limit(DEFAULT_LIMIT)
+                .limit(cap)
                 .toList();
     }
 

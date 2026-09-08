@@ -32,8 +32,9 @@ public class HoldingController {
 
     @GetMapping("/tag-suggestions")
     List<String> suggestTags(@RequestParam(required = false) String categoryId,
-                             @RequestParam(required = false) ValuationMethod valuationMethod) {
-        return tagSuggestions.suggest(categoryId, valuationMethod);
+                             @RequestParam(required = false) ValuationMethod valuationMethod,
+                             @RequestParam(required = false, defaultValue = "8") int limit) {
+        return tagSuggestions.suggest(categoryId, valuationMethod, limit);
     }
 
     @GetMapping("/{id}")

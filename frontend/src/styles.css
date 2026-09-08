@@ -190,7 +190,23 @@ th.sortable:hover{color:var(--text)}
 .check-row label{display:flex;gap:7px;align-items:center}
 .form-error{color:var(--error-text);font-size:12px;background:var(--error-bg);padding:9px;border-radius:6px;margin:16px 0 0}
 .form-hint{color:var(--text-3);font-size:11px;line-height:1.5;margin:16px 0 0}
-.tag-ideas{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:7px}
+.form-callout{display:flex;gap:9px;align-items:flex-start;margin:16px 0 0;padding:11px 13px;border:1px solid var(--accent);border-left-width:3px;border-radius:8px;background:var(--accent-soft);color:var(--text-2);font-size:12px;line-height:1.5}
+.form-callout b{color:var(--text)}
+.form-callout-dot{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-top:1px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;font-weight:800;font-style:italic}
+
+.tag-input{display:grid;gap:8px}
+.tag-input-field{position:relative}
+.tag-input-box{display:flex;flex-wrap:wrap;gap:5px;padding:6px;background:var(--surface-input);border:1px solid var(--border-strong);border-radius:7px}
+.tag-input-box:focus-within{border-color:var(--accent)}
+.tag-input-box input{flex:1;min-width:120px;border:0;background:none;color:var(--text);padding:4px 5px;outline:none;font-size:13px}
+.tag-chip{display:inline-flex;align-items:center;gap:5px;background:var(--accent-soft);color:var(--accent-soft-text);border:1px solid var(--accent);border-radius:999px;padding:3px 6px 3px 10px;font-size:11px;font-weight:600}
+.tag-chip button{border:0;background:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;padding:0;opacity:.75}
+.tag-chip button:hover{opacity:1}
+.tag-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;margin:0;padding:4px;list-style:none;max-height:200px;overflow-y:auto;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;box-shadow:var(--shadow-modal)}
+.tag-menu li button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--text-2);padding:7px 9px;border-radius:5px;font-size:12px;cursor:pointer}
+.tag-menu li button:hover{background:var(--surface-2);color:var(--text)}
+.tag-menu-create{font-style:italic}
+.tag-ideas{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
 .tag-ideas>span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-3)}
 .tag-idea{border:1px dashed var(--border-strong);background:var(--surface-2);color:var(--text-2);border-radius:999px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer}
 .tag-idea:hover{border-style:solid;border-color:var(--accent);color:var(--accent-soft-text);background:var(--accent-soft)}

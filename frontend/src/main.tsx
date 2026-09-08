@@ -73,7 +73,7 @@ const nav: [Page, string, string][] = [
   ['transactions', '⇅', 'Transactions'], ['insights', '◔', 'Insights'], ['brokers', '⇄', 'External sources'], ['settings', '⚙', 'Settings'],
 ]
 const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '' })
-const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'MONTHLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: '', broker: '', ownerName: '', quantity: '', investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), description: '' })
+const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'MONTHLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', ownerName: '', quantity: '', investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), description: '' })
 
 let baseCurrency = 'INR'
 let numberLocale = 'en-IN' // en-IN groups as lakh/crore; en-US groups as million/billion
@@ -537,7 +537,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
-    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'MONTHLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: holding.tags.join(', '), broker: holding.broker || '', ownerName: holding.ownerName || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), description: holding.description || '' }
+    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'MONTHLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', ownerName: holding.ownerName || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), description: holding.description || '' }
     : blankHoldingForm(startCategoryId))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const isFixedRate = form.valuationMethod === 'FIXED_RATE'
@@ -547,15 +547,9 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
   const [tagIdeas, setTagIdeas] = useState<string[]>([])
   useEffect(() => {
     if (!form.categoryId) { setTagIdeas([]); return }
-    const query = new URLSearchParams({ categoryId: form.categoryId, valuationMethod: form.valuationMethod })
+    const query = new URLSearchParams({ categoryId: form.categoryId, valuationMethod: form.valuationMethod, limit: '50' })
     api<string[]>(`/api/holdings/tag-suggestions?${query}`).then(setTagIdeas).catch(() => setTagIdeas([]))
   }, [form.categoryId, form.valuationMethod])
-  const currentTags = form.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
-  const addTag = (tag: string) => setForm(current => {
-    const list = current.tags.split(',').map(t => t.trim()).filter(Boolean)
-    if (list.some(t => t.toLowerCase() === tag.toLowerCase())) return current
-    return { ...current, tags: [...list, tag].join(', ') }
-  })
 
   // A holding is 1-1 with a (name, broker) pair — block a new one that would collide.
   const duplicate = !isEdit && !!form.name.trim() && !!form.broker.trim() && holdings.some(h =>
@@ -574,7 +568,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
       fixedRateStartDate: isFixedRate ? form.fixedRateStartDate : null,
       liquidWithinSevenDays: form.liquidWithinSevenDays, blocked: form.blocked,
       description: form.description || null, notes: null,
-      tags: form.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
+      tags: form.tags,
     }
     try { await api(holding ? `/api/holdings/${holding.id}` : '/api/holdings', { method: holding ? 'PUT' : 'POST', body: JSON.stringify(payload) }); onSaved() }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not save holding') } finally { setSaving(false) }
@@ -594,7 +588,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
         <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>
         {form.valuationMethod === 'MARKET_PRICE' && <Field label="Ticker symbol"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. RELIANCE, INFY" /></Field>}
         {!isEdit && <Field label="Broker / platform" required><input required value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>}
-        {(!isEdit || form.valuationMethod === 'MARKET_PRICE') && <Field label="Currency"><select disabled={isEdit} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>}
+        <Field label="Currency"><select disabled={isEdit} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
         {!isEdit && <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
         {!isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'}><input type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
         {isFixedRate ? <>
@@ -608,14 +602,12 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
           <label><input type="checkbox" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} /> Blocked / NPA <InfoTip text="The holding is locked, pledged, in default, or a non-performing asset. It is valued separately from healthy assets and flagged in the data-quality checks." /></label>
         </div>
         <Field label="Tags" wide>
-          <input value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="retirement, long-term" />
-          {tagIdeas.filter(t => !currentTags.includes(t)).length > 0 && <div className="tag-ideas">
-            <span>Popular:</span>
-            {tagIdeas.filter(t => !currentTags.includes(t)).map(t => <button type="button" key={t} className="tag-idea" onClick={e => { e.preventDefault(); addTag(t) }}>+ {t}</button>)}
-          </div>}
+          <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => setForm(current => ({ ...current, tags: next }))} />
         </Field>
       </div>
-      {isEdit && <p className="form-hint">Broker is fixed once a holding exists, and invested value &amp; quantity follow the transaction ledger — change them from the Transactions page.</p>}
+      {isEdit && <p className="form-callout"><span className="form-callout-dot">i</span>
+        <span><b>Broker</b> is fixed for the life of a holding, and <b>invested value</b> &amp; <b>quantity</b> are calculated from its transactions — add or edit transactions to change them.</span>
+      </p>}
       {duplicate && <p className="form-error">A holding named "{form.name.trim()}" at "{form.broker.trim()}" already exists — one holding maps to one broker.</p>}
       {error && <p className="form-error">{error}</p>}
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.categoryId || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
@@ -1211,6 +1203,54 @@ function InfoTip({ text }: { text: string }) {
     onClick={e => e.stopPropagation()} aria-label={`Description: ${text}`}>i
     {tip && <span className={`info-tip${tip.above ? ' above' : ''}`} style={{ left: tip.left, top: tip.top }}>{text}</span>}
   </span>
+}
+
+// A LinkedIn-style tag editor: selected tags as removable chips, a text field
+// that filters `suggestions` into a dropdown as you type (with a "create"
+// row), and a row of not-yet-picked popular suggestions underneath.
+function TagInput({ tags, suggestions, onChange }: { tags: string[]; suggestions: string[]; onChange: (next: string[]) => void }) {
+  const [input, setInput] = useState('')
+  const [open, setOpen] = useState(false)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const norm = (t: string) => t.trim().toLowerCase()
+  const has = (t: string) => tags.some(x => norm(x) === norm(t))
+  const add = (raw: string) => { const t = norm(raw); if (t && !has(t)) onChange([...tags, t]); setInput(''); setOpen(false) }
+  const remove = (t: string) => onChange(tags.filter(x => x !== t))
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const typed = norm(input)
+  const matches = suggestions.filter(s => !has(s) && (!typed || s.includes(typed))).slice(0, 8)
+  const showCreate = !!typed && !suggestions.some(s => s === typed) && !has(typed)
+  const popular = suggestions.filter(s => !has(s)).slice(0, 8)
+
+  return <div className="tag-input" ref={boxRef}>
+    <div className="tag-input-field">
+      <div className="tag-input-box" onClick={() => setOpen(true)}>
+        {tags.map(t => <span className="tag-chip" key={t}>{t}<button type="button" aria-label={`Remove ${t}`} onClick={e => { e.stopPropagation(); remove(t) }}>×</button></span>)}
+        <input value={input} placeholder={tags.length ? 'Add another…' : 'Search or add a tag'}
+          onFocus={() => setOpen(true)}
+          onChange={e => { setInput(e.target.value); setOpen(true) }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && typed) { e.preventDefault(); add(input) }
+            else if (e.key === 'Backspace' && !input && tags.length) remove(tags[tags.length - 1])
+            else if (e.key === 'Escape') setOpen(false)
+          }} />
+      </div>
+      {open && (matches.length > 0 || showCreate) && <ul className="tag-menu">
+        {matches.map(s => <li key={s}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => add(s)}>{s}</button></li>)}
+        {showCreate && <li><button type="button" className="tag-menu-create" onMouseDown={e => e.preventDefault()} onClick={() => add(input)}>Add “{input.trim().toLowerCase()}”</button></li>}
+      </ul>}
+    </div>
+    {popular.length > 0 && <div className="tag-ideas">
+      <span>Popular</span>
+      {popular.map(t => <button type="button" key={t} className="tag-idea" onClick={() => add(t)}>+ {t}</button>)}
+    </div>}
+  </div>
 }
 
 // ---------------------------------------------------------------------------
