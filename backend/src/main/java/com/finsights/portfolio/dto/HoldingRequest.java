@@ -2,6 +2,8 @@ package com.finsights.portfolio.dto;
 
 import com.finsights.portfolio.domain.CompoundingFrequency;
 import com.finsights.portfolio.domain.ValuationMethod;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -23,6 +25,9 @@ public record HoldingRequest(
         BigDecimal fixedAnnualRate,
         CompoundingFrequency compoundingFrequency,
         LocalDate fixedRateStartDate,
+        LocalDate fixedRateEndDate,
+        BigDecimal emiAmount,
+        @Min(1) @Max(31) Integer emiDayOfMonth,
         Boolean liquidWithinSevenDays,
         Boolean blocked,
         @Size(max = 1024, message = "Description must be 1024 characters or fewer") String description,

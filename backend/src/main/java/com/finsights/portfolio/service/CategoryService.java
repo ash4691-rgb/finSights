@@ -8,6 +8,7 @@ import com.finsights.portfolio.dto.CategoryRequest;
 import com.finsights.portfolio.dto.CategoryResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
 import com.finsights.portfolio.repository.CategoryRepository;
+import com.finsights.portfolio.repository.EmiPaymentRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import java.math.BigDecimal;
@@ -30,16 +31,18 @@ public class CategoryService {
     private final HoldingService holdingService;
     private final CurrentUserService currentUser;
     private final PriceSnapshotService snapshots;
+    private final EmiPaymentRepository emiPayments;
 
     public CategoryService(CategoryRepository categories, HoldingRepository holdingRepository,
                            TransactionRepository transactions, HoldingService holdingService, CurrentUserService currentUser,
-                           PriceSnapshotService snapshots) {
+                           PriceSnapshotService snapshots, EmiPaymentRepository emiPayments) {
         this.categories = categories;
         this.holdingRepository = holdingRepository;
         this.transactions = transactions;
         this.holdingService = holdingService;
         this.currentUser = currentUser;
         this.snapshots = snapshots;
+        this.emiPayments = emiPayments;
     }
 
     public List<CategoryResponse> list(String currency) {
@@ -110,6 +113,7 @@ public class CategoryService {
                 .forEach(h -> {
                     transactions.deleteByHolding_Id(h.getId());
                     snapshots.deleteFor(SnapshotSubject.HOLDING, h.getId());
+                    emiPayments.deleteByHolding_Id(h.getId());
                 });
         holdingRepository.deleteByCategory_Id(id);
         categories.delete(category);

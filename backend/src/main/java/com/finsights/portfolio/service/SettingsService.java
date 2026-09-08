@@ -31,11 +31,13 @@ public class SettingsService {
     private final WatchlistRepository watchlist;
     private final PriceSnapshotService snapshots;
     private final TagSuggestionRepository tagSuggestions;
+    private final com.finsights.portfolio.repository.EmiPaymentRepository emiPayments;
 
     public SettingsService(UserAccountRepository users, HoldingRepository holdings, CategoryRepository categories,
                            TransactionRepository transactions, HoldingService holdingService, CurrentUserService currentUser,
                            CountryCurrencyService countries, WatchlistRepository watchlist, PriceSnapshotService snapshots,
-                           TagSuggestionRepository tagSuggestions) {
+                           TagSuggestionRepository tagSuggestions,
+                           com.finsights.portfolio.repository.EmiPaymentRepository emiPayments) {
         this.users = users;
         this.holdings = holdings;
         this.categories = categories;
@@ -46,6 +48,7 @@ public class SettingsService {
         this.snapshots = snapshots;
         this.countries = countries;
         this.tagSuggestions = tagSuggestions;
+        this.emiPayments = emiPayments;
     }
 
     public SettingsResponse current() {
@@ -110,6 +113,7 @@ public class SettingsService {
     @Transactional
     public void deleteAccount() {
         UserAccount user = currentUser.currentUser();
+        emiPayments.deleteByUser_Id(user.getId());
         transactions.deleteByUser_Id(user.getId());
         holdings.deleteByUser_Id(user.getId());
         categories.deleteByUser_Id(user.getId());

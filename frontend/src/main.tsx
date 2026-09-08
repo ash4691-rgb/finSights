@@ -6,7 +6,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
 type HoldingKind = 'ASSET' | 'LIABILITY'
 type ValuationMethod = 'MANUAL' | 'MARKET_PRICE' | 'BROKER_SYNC' | 'FIXED_RATE'
-type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'ANNUALLY'
+type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'ANNUALLY' | 'AT_MATURITY'
 type TransactionType = 'BUY' | 'SELL' | 'SPLIT' | 'INTEREST' | 'ADJUSTMENT'
 type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
 
@@ -23,8 +23,9 @@ type Category = {
 type Holding = {
   id: string; holdingId: string; categoryId: string; categoryName: string; name: string; kind: HoldingKind; valuationMethod: ValuationMethod
   tickerSymbol?: string; broker?: string; currency: string
-  investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number
-  quantity?: number; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string
+  investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; realisedProfitLoss: number
+  quantity?: number; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string; fixedRateEndDate?: string
+  emiAmount?: number; emiDayOfMonth?: number
   liquidWithinSevenDays: boolean; blocked: boolean; description?: string; notes?: string; tags: string[]
   createdAt?: string; updatedAt?: string; priceUpdatedAt?: string
 }
@@ -47,8 +48,8 @@ type Transaction = {
   currency: string; type: TransactionType; date: string; amount: number; quantity?: number; notes?: string; createdAt?: string
 }
 type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
-type Warning = { severity: 'WARN' | 'INFO'; message: string; holdingId?: string; holdingName?: string }
-type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; warnings: Warning[] }
+type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string }
+type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[] }
 type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
 type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
 type HotPick = {
@@ -63,7 +64,9 @@ type ValuationDetail = { method: ValuationMethod; investedValue: number; current
 type ImportResult = { created: number; updated: number; skipped: number; errors: { row: number; message: string }[] }
 type FxRates = { base: string; asOf: string; ratesToBase: Record<string, number>; note: string }
 
-const frequencies: Frequency[] = ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUALLY']
+const frequencies: Frequency[] = ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUALLY', 'AT_MATURITY']
+const frequencyLabel = (f: Frequency) => f === 'ANNUALLY' ? 'Yearly' : f === 'AT_MATURITY' ? 'At maturity'
+  : f.toLowerCase().replace(/_/g, '-').replace(/\b\w/g, c => c.toUpperCase())
 const periodLabels: Record<PeriodKey, string> = { DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly', QUARTERLY: 'Quarterly', YEARLY: 'Yearly' }
 const periodFields: [PeriodKey, string][] = [
   ['DAILY', 'Daily'], ['WEEKLY', 'Weekly'], ['MONTHLY', 'Monthly'], ['QUARTERLY', 'Quarterly'], ['YEARLY', 'Yearly'],
@@ -75,7 +78,7 @@ const nav: [Page, string, string][] = [
   ['transactions', '⇅', 'Transactions'], ['insights', '◔', 'Insights'], ['brokers', '⇄', 'External sources'], ['settings', '⚙', 'Settings'],
 ]
 const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '' })
-const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'MONTHLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', quantity: '', investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), description: '' })
+const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'QUARTERLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', quantity: '', investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), fixedRateEndDate: '', emiAmount: '', emiDayOfMonth: '', description: '' })
 
 let baseCurrency = 'INR'
 let numberLocale = 'en-IN' // en-IN groups as lakh/crore; en-US groups as million/billion
@@ -201,9 +204,9 @@ function App({ onSignOut }: { onSignOut: () => void }) {
       c.weightagePercent.toFixed(2), c.liquidAmount, c.liquidPercent.toFixed(2), c.npaAmount, c.npaPercent.toFixed(2), c.holdingCount]))
 
   const exportHoldingsCsv = () => downloadCsv('finsights-holdings.csv',
-    ['Holding ID', 'Name', 'Category', 'Broker', 'Currency', 'Valuation method', 'Ticker', 'Quantity', 'Invested', 'Current value', 'P/L', 'P/L %', 'Liquid', 'Blocked', 'Description', 'Tags'],
+    ['Holding ID', 'Name', 'Category', 'Broker', 'Currency', 'Valuation method', 'Ticker', 'Quantity', 'Invested', 'Current value', 'Unrealised P/L', 'Unrealised P/L %', 'Realised P/L', 'Liquid', 'Blocked', 'Description', 'Tags'],
     holdings.map(h => [h.holdingId, h.name, h.categoryName, h.broker ?? '', h.currency, label(h.valuationMethod), h.tickerSymbol ?? '',
-      h.quantity ?? '', h.investedValue, h.currentValue, h.profitLoss, h.profitLossPercentage.toFixed(2),
+      h.quantity ?? '', h.investedValue, h.currentValue, h.profitLoss, h.profitLossPercentage.toFixed(2), h.realisedProfitLoss ?? 0,
       h.liquidWithinSevenDays ? 'Yes' : 'No', h.blocked ? 'Yes' : 'No', h.description ?? '', h.tags.join('; ')]))
 
   const exportTransactionsCsv = async () => {
@@ -552,12 +555,13 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
-    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'MONTHLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), description: holding.description || '' }
+    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', description: holding.description || '' }
     : blankHoldingForm(startCategoryId))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const isFixedRate = form.valuationMethod === 'FIXED_RATE'
   const isMarket = form.valuationMethod === 'MARKET_PRICE'
   const isEdit = !!holding
+  const isLiability = categories.find(c => c.id === form.categoryId)?.kind === 'LIABILITY'
   const set = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }))
 
   // Market-linked holdings take their name and currency from the ticker, not the user.
@@ -597,6 +601,9 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
       fixedAnnualRate: isFixedRate ? numeric(form.fixedAnnualRate) / 100 : null,
       compoundingFrequency: isFixedRate ? form.compoundingFrequency : null,
       fixedRateStartDate: isFixedRate ? form.fixedRateStartDate : null,
+      fixedRateEndDate: isFixedRate && form.fixedRateEndDate ? form.fixedRateEndDate : null,
+      emiAmount: isLiability && form.emiAmount ? numeric(form.emiAmount) : null,
+      emiDayOfMonth: isLiability && form.emiDayOfMonth ? Math.round(numeric(form.emiDayOfMonth)) : null,
       liquidWithinSevenDays: form.liquidWithinSevenDays, blocked: form.blocked,
       description: form.description || null, notes: null,
       tags: form.tags,
@@ -620,19 +627,24 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
         <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
         {!isEdit && <Field label="Broker / platform" required><input required maxLength={96} value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>}
         {!isEdit && <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
-        {!isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'}><input type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
+        {!isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required><input required type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
         {isFixedRate && <>
           <Field label="Annual rate (%)"><input type="number" min="0" step="0.01" value={form.fixedAnnualRate} onChange={e => set('fixedAnnualRate', e.target.value)} /></Field>
-          <Field label="Compounding"><select value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}>{frequencies.map(item => <option key={item}>{item}</option>)}</select></Field>
+          <Field label="Interest payout frequency"><select value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}>{frequencies.map(item => <option key={item} value={item}>{frequencyLabel(item)}</option>)}</select></Field>
           <Field label="Start date"><input type="date" value={form.fixedRateStartDate} onChange={e => set('fixedRateStartDate', e.target.value)} /></Field>
+          <Field label="Maturity date (optional)"><input type="date" value={form.fixedRateEndDate} min={form.fixedRateStartDate} onChange={e => set('fixedRateEndDate', e.target.value)} /></Field>
+        </>}
+        {isLiability && <>
+          <Field label="EMI amount (optional)"><input type="number" min="0" step="0.01" value={form.emiAmount} onChange={e => set('emiAmount', e.target.value)} placeholder="Monthly instalment" /></Field>
+          <Field label="EMI due day"><input type="number" min="1" max="31" step="1" value={form.emiDayOfMonth} onChange={e => set('emiDayOfMonth', e.target.value)} placeholder="1–31" /></Field>
         </>}
         <div className="field-pair">
           <Field label="Currency"><select disabled={isEdit || isMarket} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
-          <Field label={isFixedRate ? 'Current value (computed)' : isMarket ? 'Current value (live price)' : 'Current value'}><input type="number" min="0" step="0.01" disabled={isFixedRate || isMarket} value={form.currentValue} onChange={e => set('currentValue', e.target.value)} placeholder={isMarket ? 'Priced after saving' : isFixedRate ? 'Computed after saving' : ''} /></Field>
+          <Field label={isFixedRate ? 'Current value (computed)' : isMarket ? 'Current value (live price)' : 'Current value'} required={!isFixedRate && !isMarket}><input required={!isFixedRate && !isMarket} type="number" min="0" step="0.01" disabled={isFixedRate || isMarket} value={form.currentValue} onChange={e => set('currentValue', e.target.value)} placeholder={isMarket ? 'Priced after saving' : isFixedRate ? 'Computed after saving' : ''} /></Field>
         </div>
         <div className="check-row">
           <label><input type="checkbox" checked={form.liquidWithinSevenDays} onChange={e => set('liquidWithinSevenDays', e.target.checked)} /> Liquid within 7 days <InfoTip text="Money you could realistically access within a week. Feeds the “liquid within 7 days” figure on the overview so you know how much of the portfolio is reachable in an emergency." /></label>
-          <label><input type="checkbox" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} /> Blocked / NPA <InfoTip text="The holding is locked, pledged, in default, or a non-performing asset. It is valued separately from healthy assets and flagged in the data-quality checks." /></label>
+          <label><input type="checkbox" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} /> Blocked / NPA <InfoTip text="The holding is locked, pledged, in default, or a non-performing asset. It is valued separately from healthy assets and flagged in the Action centre." /></label>
         </div>
         <Field label="Tags" wide>
           <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => setForm(current => ({ ...current, tags: next }))} />
@@ -643,7 +655,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
       </p>}
       {duplicate && <p className="form-error">A holding named "{form.name.trim()}" at "{form.broker.trim()}" already exists — one holding maps to one broker.</p>}
       {error && <p className="form-error">{error}</p>}
-      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.categoryId || !form.name.trim() || (isMarket && !form.tickerSymbol.trim()) || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
+      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.categoryId || !form.name.trim() || (isMarket && !form.tickerSymbol.trim()) || (!isEdit && !form.investedValue) || (form.valuationMethod === 'MANUAL' && !form.currentValue) || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
     </form>
   </section></div>
 }
@@ -668,7 +680,8 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
     <div className="drawer-metrics">
       <div><p>Current value</p><strong>{money(holding.currentValue, holding.currency)}</strong></div>
       <div><p>{holding.kind === 'LIABILITY' ? 'Original principal' : 'Invested'}</p><strong>{money(holding.investedValue, holding.currency)}</strong></div>
-      <div><p>P/L</p><strong className={holding.kind === 'LIABILITY' ? '' : holding.profitLoss >= 0 ? 'positive' : 'negative'}>{holding.kind === 'LIABILITY' ? '—' : `${holding.profitLoss >= 0 ? '+' : ''}${money(holding.profitLoss, holding.currency)} · ${percent(holding.profitLossPercentage)}`}</strong></div>
+      <div><p>Unrealised P/L</p><strong className={holding.kind === 'LIABILITY' ? '' : holding.profitLoss >= 0 ? 'positive' : 'negative'}>{holding.kind === 'LIABILITY' ? '—' : `${holding.profitLoss >= 0 ? '+' : ''}${money(holding.profitLoss, holding.currency)} · ${percent(holding.profitLossPercentage)}`}</strong></div>
+      <div><p>Realised P/L</p><strong className={holding.realisedProfitLoss > 0 ? 'positive' : holding.realisedProfitLoss < 0 ? 'negative' : ''}>{holding.realisedProfitLoss ? `${holding.realisedProfitLoss >= 0 ? '+' : ''}${money(holding.realisedProfitLoss, holding.currency)}` : '—'}</strong></div>
     </div>
     <div className="drawer-facts">
       <span>Broker<b>{holding.broker || '—'}</b></span>
@@ -678,6 +691,9 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
       </b></span>
       <span>Last updated<b>{since(holding.updatedAt)}</b></span>
       {holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
+      {holding.valuationMethod === 'FIXED_RATE' && <span>Payout frequency<b>{holding.compoundingFrequency ? frequencyLabel(holding.compoundingFrequency) : '—'}</b></span>}
+      {holding.valuationMethod === 'FIXED_RATE' && <span>Maturity<b>{holding.fixedRateEndDate ? since(holding.fixedRateEndDate) : 'Open-ended'}</b></span>}
+      {holding.emiAmount != null && <span>EMI<b>{money(holding.emiAmount, holding.currency)}{holding.emiDayOfMonth ? ` · day ${holding.emiDayOfMonth}` : ''}</b></span>}
       {holding.valuationMethod === 'MARKET_PRICE' && holding.tickerSymbol && <span>Live price
         <b className="fact-with-icon"><span className="live-dot" />{holding.tickerSymbol} · {holding.priceUpdatedAt ? ago(holding.priceUpdatedAt) : 'pending'}</b></span>}
     </div>
@@ -987,10 +1003,22 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
     </section>
 
     <section className="panel data-quality">
-      <div className="panel-heading"><h3>Data-quality checks</h3><span>{data.warnings.length} items</span></div>
-      {data.warnings.length ? <div className="warning-list">{data.warnings.map((w, i) => <button key={i} className={`warning ${w.severity.toLowerCase()}`} onClick={() => w.holdingId && onOpen(w.holdingId)}>
-        <b>{w.severity}</b><span>{w.holdingName ? `${w.holdingName} — ` : ''}{w.message}</span>
-      </button>)}</div> : <p className="hint">Everything looks consistent. Nice.</p>}
+      <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
+      {data.actions.length ? <div className="warning-list">{data.actions.map((a, i) => {
+        const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
+        return <div key={i} className={`warning ${a.severity.toLowerCase()}`}>
+          <b>{a.severity}</b>
+          <button className="warning-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
+            <strong>{a.title}</strong><span>{a.detail}</span>
+          </button>
+          {isEmi && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
+            e.stopPropagation()
+            const month = (a.period ?? '').slice(0, 7)
+            try { await api(`/api/emis/${a.holdingId}/pay?period=${month}`, { method: 'POST' }); await reload() }
+            catch (err) { setError(err instanceof Error ? err.message : 'Could not record the payment') }
+          }}>Mark paid</button>}
+        </div>
+      })}</div> : <p className="hint">Nothing needs your attention right now.</p>}
     </section>
 
     <section className="overview-section">
@@ -1431,7 +1459,7 @@ function Homepage({ onGetStarted, onSignIn }: { onGetStarted: () => void; onSign
       <div>
         <p className="eyebrow">WHAT YOUR PORTFOLIO IS ASKING FOR</p>
         <h2>The numbers, read for you.</h2>
-        <p className="public-lede">Set movement thresholds — daily to yearly — for holdings you own and symbols you're just watching, and Hot picks surfaces the ones that broke them. Data-quality checks catch missing values, unassigned brokers, and currency mismatches before they skew anything. Allocation drift, concentration risk, and rebalancing prompts are next.</p>
+        <p className="public-lede">Set movement thresholds — daily to yearly — for holdings you own and symbols you're just watching, and Hot picks surfaces the ones that broke them. The Action centre gathers what needs a decision — EMIs due, deposits that matured, missing values. Allocation drift, concentration risk, and rebalancing prompts are next.</p>
       </div>
     </section>
 

@@ -255,6 +255,11 @@ th.sortable:hover{color:var(--text)}
 .warning.warn b{background:var(--warn-bg);color:var(--warn-text)}
 .warning.info b{background:var(--chip-bg);color:var(--chip-text)}
 .warning:hover{border-color:var(--border-strong)}
+.warning-body{flex:1;min-width:0;display:grid;gap:2px;border:0;background:none;text-align:left;color:inherit;cursor:pointer;padding:0}
+.warning-body strong{color:var(--text);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.warning-body span{color:var(--text-3);font-size:11px;line-height:1.4}
+.warning-action{flex-shrink:0;align-self:center;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-soft-text);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer}
+.warning-action:hover{background:var(--accent);color:#fff}
 .threshold-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:12px 0 8px;padding:14px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px}
 .threshold-row .field{min-width:110px}
 .hot-pick-list{display:grid;gap:8px;margin-bottom:8px}
@@ -348,7 +353,8 @@ th.sortable:hover{color:var(--text)}
 .badge.txn-buy,.badge.txn-interest{background:var(--success-bg);border-color:var(--success-bg);color:var(--success-text)}
 .badge.txn-sell{background:var(--liability-bg);border-color:var(--liability-bg);color:var(--liability-text)}
 .drawer{width:min(620px,100%)}
-.drawer-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.drawer-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}
+.drawer-metrics strong{overflow-wrap:anywhere}
 .drawer-metrics p{font-size:11px;color:var(--text-3);margin-bottom:5px}
 .drawer-metrics strong{font-size:15px;letter-spacing:-.3px;color:var(--text)}
 .drawer-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 16px;padding:14px 0;border-top:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft);margin-bottom:14px}

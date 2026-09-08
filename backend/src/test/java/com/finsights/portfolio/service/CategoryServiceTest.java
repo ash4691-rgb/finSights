@@ -32,6 +32,7 @@ class CategoryServiceTest {
     @Mock HoldingService holdingService;
     @Mock CurrentUserService currentUserService;
     @Mock PriceSnapshotService priceSnapshotService;
+    @Mock com.finsights.portfolio.repository.EmiPaymentRepository emiPaymentRepository;
 
     private CategoryService service;
     private Category equity;
@@ -39,7 +40,7 @@ class CategoryServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new CategoryService(categoryRepository, holdingRepository, transactionRepository, holdingService, currentUserService, priceSnapshotService);
+        service = new CategoryService(categoryRepository, holdingRepository, transactionRepository, holdingService, currentUserService, priceSnapshotService, emiPaymentRepository);
         UserAccount user = new UserAccount("demo@finsights.local", "Demo");
         setId(user, "u-1");
         when(currentUserService.currentUser()).thenReturn(user);
@@ -66,7 +67,8 @@ class CategoryServiceTest {
     private HoldingResponse holdingOf(String id, String categoryId, HoldingKind kind, String invested, String current, boolean liquid, boolean npa) {
         return new HoldingResponse(id, "ref-" + id, categoryId, "n/a", "Holding " + id, kind, ValuationMethod.MANUAL,
                 null, "Broker", "INR", new BigDecimal(invested), new BigDecimal(current),
-                new BigDecimal(current).subtract(new BigDecimal(invested)), BigDecimal.ZERO, null, null, null, null,
+                new BigDecimal(current).subtract(new BigDecimal(invested)), BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, null, null, null, null,
                 liquid, npa, null, null, java.util.Set.of(), null, null, null);
     }
 

@@ -1,12 +1,10 @@
 package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.domain.HoldingKind;
-import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.DashboardResponse.Breakdown;
 import com.finsights.portfolio.dto.HoldingResponse;
 import com.finsights.portfolio.dto.InsightsResponse;
 import com.finsights.portfolio.dto.InsightsResponse.Mover;
-import com.finsights.portfolio.dto.InsightsResponse.Warning;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -19,11 +17,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class InsightsService {
     private final HoldingService holdings;
-    private final CurrentUserService currentUser;
+    private final ActionCentreService actionCentre;
 
-    public InsightsService(HoldingService holdings, CurrentUserService currentUser) {
+    public InsightsService(HoldingService holdings, ActionCentreService actionCentre) {
         this.holdings = holdings;
-        this.currentUser = currentUser;
+        this.actionCentre = actionCentre;
     }
 
     public InsightsResponse insights(String currency) {
@@ -34,7 +32,6 @@ public class InsightsService {
                 .collect(java.util.stream.Collectors.toMap(HoldingResponse::id, HoldingResponse::currency));
         List<HoldingResponse> all = converted ? holdings.list(currency) : holdings.list();
         List<HoldingResponse> assets = all.stream().filter(h -> h.kind() == HoldingKind.ASSET).toList();
-        String baseCurrency = currentUser.currentUser().getBaseCurrency();
 
         List<Mover> gainers = assets.stream()
                 .filter(h -> h.profitLoss().signum() > 0)
@@ -56,37 +53,12 @@ public class InsightsService {
                 breakdown(assets, h -> originalCurrencyById.getOrDefault(h.id(), h.currency())),
                 breakdown(assets, this::liquidityBucket),
                 gainers, losers,
-                warnings(all, baseCurrency, converted));
+                actionCentre.actions(all, converted));
     }
 
     private String liquidityBucket(HoldingResponse h) {
         if (Boolean.TRUE.equals(h.blocked())) return "Blocked";
         return Boolean.TRUE.equals(h.liquidWithinSevenDays()) ? "Liquid within 7 days" : "Not immediately liquid";
-    }
-
-    private List<Warning> warnings(List<HoldingResponse> holdings, String baseCurrency, boolean converted) {
-        List<Warning> warnings = new ArrayList<>();
-        for (HoldingResponse h : holdings) {
-            if (h.kind() == HoldingKind.ASSET && h.currentValue().signum() == 0) {
-                warnings.add(new Warning("WARN", "Has no current value recorded.", h.id(), h.name()));
-            }
-            if (h.broker() == null || h.broker().isBlank()) {
-                warnings.add(new Warning("INFO", "Not assigned to a broker.", h.id(), h.name()));
-            }
-            if (!converted && h.currency() != null && !h.currency().equalsIgnoreCase(baseCurrency)) {
-                warnings.add(new Warning("INFO",
-                        "Held in " + h.currency() + "; shown without conversion to " + baseCurrency
-                                + ". Pick a display currency above to convert it.",
-                        h.id(), h.name()));
-            }
-            if (h.kind() == HoldingKind.ASSET && h.investedValue().signum() == 0 && h.currentValue().signum() > 0
-                    && h.valuationMethod() != ValuationMethod.MANUAL) {
-                warnings.add(new Warning("INFO", "No invested amount recorded, so P&L may be misleading.",
-                        h.id(), h.name()));
-            }
-        }
-        warnings.sort(Comparator.comparing((Warning w) -> w.severity().equals("WARN") ? 0 : 1));
-        return warnings;
     }
 
     private List<Breakdown> breakdown(List<HoldingResponse> holdings, Function<HoldingResponse, String> label) {

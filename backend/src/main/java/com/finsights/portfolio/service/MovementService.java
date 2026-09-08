@@ -44,7 +44,8 @@ public class MovementService {
         BigDecimal now = holding.currentValue();
         BigDecimal then = isFixedRateReady(holding)
                 ? valuations.compoundedValue(holding.investedValue(), holding.fixedAnnualRate(),
-                        holding.compoundingFrequency(), holding.fixedRateStartDate(), LocalDate.now().minusDays(lookbackDays))
+                        holding.compoundingFrequency(), holding.fixedRateStartDate(), holding.fixedRateEndDate(),
+                        LocalDate.now().minusDays(lookbackDays))
                 : snapshots.closestAtOrBefore(SnapshotSubject.HOLDING, holding.id(), cutoff(lookbackDays));
         return percentChange(then, now);
     }

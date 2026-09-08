@@ -23,7 +23,13 @@ public class ValuationService {
             return zeroIfNull(holding.getCurrentValue());
         }
         return compoundedValue(holding.getInvestedValue(), holding.getFixedAnnualRate(),
-                holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), LocalDate.now());
+                holding.getCompoundingFrequency(), holding.getFixedRateStartDate(),
+                holding.getFixedRateEndDate(), LocalDate.now());
+    }
+
+    /** After a fixed-rate holding's maturity date it stops accruing, so value it as of that date. */
+    private static LocalDate cap(LocalDate asOf, LocalDate maturity) {
+        return maturity != null && asOf.isAfter(maturity) ? maturity : asOf;
     }
 
     /**
@@ -34,6 +40,12 @@ public class ValuationService {
      */
     public BigDecimal compoundedValue(BigDecimal principal, BigDecimal annualRate, CompoundingFrequency frequency,
                                        LocalDate start, LocalDate asOf) {
+        return compoundedValue(principal, annualRate, frequency, start, null, asOf);
+    }
+
+    public BigDecimal compoundedValue(BigDecimal principal, BigDecimal annualRate, CompoundingFrequency frequency,
+                                       LocalDate start, LocalDate maturity, LocalDate asOf) {
+        asOf = cap(asOf, maturity);
         int periodsPerYear = frequency.periodsPerYear();
         long completedPeriods = completedPeriods(start, periodsPerYear, asOf);
         double periodicRate = annualRate.doubleValue() / periodsPerYear;

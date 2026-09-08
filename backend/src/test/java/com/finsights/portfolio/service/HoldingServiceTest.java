@@ -31,13 +31,14 @@ class HoldingServiceTest {
     @Mock TransactionRepository transactions;
     @Mock PriceSnapshotService snapshots;
     @Mock MarketDataService marketData;
+    @Mock com.finsights.portfolio.repository.EmiPaymentRepository emiPayments;
 
     private HoldingService service;
     private Holding holding;
 
     @BeforeEach
     void setUp() {
-        service = new HoldingService(holdings, categories, currentUser, valuations, fx, transactions, snapshots, marketData);
+        service = new HoldingService(holdings, categories, currentUser, valuations, fx, transactions, snapshots, marketData, emiPayments);
         holding = new Holding();
         holding.setName("Reliance");
     }
@@ -52,7 +53,8 @@ class HoldingServiceTest {
     }
 
     @Test
-    void syncNetsBuysAgainstSells() {
+    void sellBooksRealisedPnlAgainstAverageCost() {
+        // 60 units for 150000 → avg 2500; sell 10 for 30000 → cost 25000, realised +5000
         when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
                 txn(TransactionType.BUY, "100000", "40"),
                 txn(TransactionType.BUY, "50000", "20"),
@@ -60,13 +62,14 @@ class HoldingServiceTest {
 
         service.syncFromTransactions(holding);
 
-        assertThat(holding.getInvestedValue()).isEqualByComparingTo("120000.00");
+        assertThat(holding.getInvestedValue()).isEqualByComparingTo("125000.00");
         assertThat(holding.getQuantity()).isEqualByComparingTo("50");
+        assertThat(holding.getRealisedProfitLoss()).isEqualByComparingTo("5000.00");
         verify(holdings).save(holding);
     }
 
     @Test
-    void interestDoesNotChangeCostBasisAndSplitScalesQuantity() {
+    void interestIsRealisedIncomeAndSplitScalesQuantity() {
         when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
                 txn(TransactionType.BUY, "100000", "40"),
                 txn(TransactionType.INTEREST, "5000", null),
@@ -76,10 +79,11 @@ class HoldingServiceTest {
 
         assertThat(holding.getInvestedValue()).isEqualByComparingTo("100000.00");
         assertThat(holding.getQuantity()).isEqualByComparingTo("80"); // 40 * 2
+        assertThat(holding.getRealisedProfitLoss()).isEqualByComparingTo("5000.00");
     }
 
     @Test
-    void investedNeverGoesNegativeAndZeroQuantityBecomesNull() {
+    void closingThePositionZeroesTheBasisAndBooksTheGain() {
         when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
                 txn(TransactionType.BUY, "10000", "10"),
                 txn(TransactionType.SELL, "40000", "10")));
@@ -88,6 +92,7 @@ class HoldingServiceTest {
 
         assertThat(holding.getInvestedValue()).isEqualByComparingTo("0.00");
         assertThat(holding.getQuantity()).isNull();
+        assertThat(holding.getRealisedProfitLoss()).isEqualByComparingTo("30000.00");
     }
 
     @Test

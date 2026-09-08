@@ -58,12 +58,15 @@ public class FxRateService {
         if (target.equals(normalize(holding.currency()))) return holding;
         BigDecimal invested = convert(holding.investedValue(), holding.currency(), target);
         BigDecimal current = convert(holding.currentValue(), holding.currency(), target);
+        BigDecimal realised = convert(holding.realisedProfitLoss(), holding.currency(), target);
+        BigDecimal emi = holding.emiAmount() == null ? null : convert(holding.emiAmount(), holding.currency(), target);
         return new HoldingResponse(
                 holding.id(), holding.holdingId(), holding.categoryId(), holding.categoryName(), holding.name(), holding.kind(), holding.valuationMethod(),
                 holding.tickerSymbol(), holding.broker(), target,
-                invested, current, current.subtract(invested), holding.profitLossPercentage(),
+                invested, current, current.subtract(invested), holding.profitLossPercentage(), realised,
                 holding.quantity(), holding.fixedAnnualRate(), holding.compoundingFrequency(),
-                holding.fixedRateStartDate(), holding.liquidWithinSevenDays(), holding.blocked(), holding.description(), holding.notes(),
+                holding.fixedRateStartDate(), holding.fixedRateEndDate(), emi, holding.emiDayOfMonth(),
+                holding.liquidWithinSevenDays(), holding.blocked(), holding.description(), holding.notes(),
                 holding.tags(), holding.createdAt(), holding.updatedAt(), holding.priceUpdatedAt());
     }
 

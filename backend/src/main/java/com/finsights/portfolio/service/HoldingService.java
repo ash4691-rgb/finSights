@@ -2,6 +2,7 @@ package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.domain.Category;
 import com.finsights.portfolio.domain.Holding;
+import com.finsights.portfolio.domain.HoldingKind;
 import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.Transaction;
 import com.finsights.portfolio.domain.TransactionType;
@@ -39,14 +40,17 @@ public class HoldingService {
     private final TransactionRepository transactions;
     private final PriceSnapshotService snapshots;
     private final MarketDataService marketData;
+    private final com.finsights.portfolio.repository.EmiPaymentRepository emiPayments;
 
     /** MARKET_PRICE holdings are re-priced from the live feed no more often than this. */
     private static final Duration PRICE_MAX_AGE = Duration.ofMinutes(15);
 
     public HoldingService(HoldingRepository holdings, CategoryRepository categories, CurrentUserService currentUser,
                           ValuationService valuations, FxRateService fx, TransactionRepository transactions,
-                          PriceSnapshotService snapshots, MarketDataService marketData) {
+                          PriceSnapshotService snapshots, MarketDataService marketData,
+                          com.finsights.portfolio.repository.EmiPaymentRepository emiPayments) {
         this.holdings = holdings;
+        this.emiPayments = emiPayments;
         this.categories = categories;
         this.currentUser = currentUser;
         this.valuations = valuations;
@@ -225,23 +229,42 @@ public class HoldingService {
                         "A holding named \"" + name + "\" at \"" + broker + "\" already exists"); });
     }
 
-    /** Recomputes invested value + quantity from this holding's transaction ledger. */
+    /**
+     * Recomputes invested value (remaining cost basis), quantity, and realised P/L from this
+     * holding's transaction ledger using average-cost accounting. A SELL books
+     * {@code proceeds − averageCost × unitsSold} as realised P/L and removes that cost from the
+     * basis; a SELL with no quantity closes the whole position. INTEREST is realised income.
+     */
     @Transactional
     public void syncFromTransactions(Holding holding) {
-        BigDecimal invested = BigDecimal.ZERO;
+        BigDecimal costBasis = BigDecimal.ZERO;
         BigDecimal quantity = BigDecimal.ZERO;
+        BigDecimal realised = BigDecimal.ZERO;
         for (Transaction t : transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(holding.getId())) {
             BigDecimal amount = zeroIfNull(t.getAmount());
             BigDecimal units = t.getQuantity() == null ? BigDecimal.ZERO : t.getQuantity();
             switch (t.getType()) {
-                case BUY, ADJUSTMENT -> { invested = invested.add(amount); quantity = quantity.add(units); }
-                case SELL -> { invested = invested.subtract(amount); quantity = quantity.subtract(units); }
+                case BUY, ADJUSTMENT -> { costBasis = costBasis.add(amount); quantity = quantity.add(units); }
+                case SELL -> {
+                    BigDecimal costOfSold;
+                    if (units.signum() > 0 && quantity.signum() > 0) {
+                        BigDecimal averageCost = costBasis.divide(quantity, 10, RoundingMode.HALF_UP);
+                        costOfSold = averageCost.multiply(units.min(quantity));
+                        quantity = quantity.subtract(units);
+                    } else { // no unit count on the sell — treat it as closing the position
+                        costOfSold = costBasis;
+                        quantity = BigDecimal.ZERO;
+                    }
+                    realised = realised.add(amount).subtract(costOfSold);
+                    costBasis = costBasis.subtract(costOfSold);
+                }
                 case SPLIT -> { if (units.signum() > 0) quantity = quantity.multiply(units); }
-                case INTEREST -> { /* income — affects returns, not cost basis or units held */ }
+                case INTEREST -> realised = realised.add(amount);
             }
         }
-        holding.setInvestedValue(invested.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+        holding.setInvestedValue(costBasis.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
         holding.setQuantity(quantity.signum() > 0 ? quantity : null);
+        holding.setRealisedProfitLoss(realised.setScale(2, RoundingMode.HALF_UP));
         holdings.save(holding);
     }
 
@@ -272,6 +295,7 @@ public class HoldingService {
         Holding holding = findOwned(id);
         transactions.deleteByHolding_Id(holding.getId());
         snapshots.deleteFor(SnapshotSubject.HOLDING, holding.getId());
+        emiPayments.deleteByHolding_Id(holding.getId());
         holdings.delete(holding);
     }
 
@@ -285,8 +309,10 @@ public class HoldingService {
         return new HoldingResponse(
                 holding.getId(), holding.getHoldingRef(), category.getId(), category.getName(), holding.getName(), category.getKind(),
                 holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
-                holding.getCurrency(), invested, current, pnl, pnlPct, holding.getQuantity(), holding.getFixedAnnualRate(),
-                holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getLiquidWithinSevenDays(),
+                holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
+                holding.getQuantity(), holding.getFixedAnnualRate(),
+                holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
+                holding.getEmiAmount(), holding.getEmiDayOfMonth(), holding.getLiquidWithinSevenDays(),
                 holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
                 holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt());
     }
@@ -302,7 +328,14 @@ public class HoldingService {
         if (source.valuationMethod() == ValuationMethod.FIXED_RATE
                 && (source.fixedAnnualRate() == null || source.compoundingFrequency() == null || source.fixedRateStartDate() == null)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Fixed-rate holdings require rate, compounding frequency, and start date");
+                    "Fixed-rate holdings require rate, interest payout frequency, and start date");
+        }
+        if (source.valuationMethod() == ValuationMethod.FIXED_RATE && source.fixedRateEndDate() != null
+                && source.fixedRateStartDate() != null && !source.fixedRateEndDate().isAfter(source.fixedRateStartDate())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The maturity date must be after the start date");
+        }
+        if (source.valuationMethod() == ValuationMethod.MANUAL && source.currentValue() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A manually-valued holding needs a current value");
         }
         target.setCategory(category);
         target.setName(source.name().trim());
@@ -316,6 +349,9 @@ public class HoldingService {
         target.setFixedAnnualRate(source.fixedAnnualRate());
         target.setCompoundingFrequency(source.compoundingFrequency());
         target.setFixedRateStartDate(source.fixedRateStartDate());
+        target.setFixedRateEndDate(source.valuationMethod() == ValuationMethod.FIXED_RATE ? source.fixedRateEndDate() : null);
+        target.setEmiAmount(category.getKind() == HoldingKind.LIABILITY ? source.emiAmount() : null);
+        target.setEmiDayOfMonth(category.getKind() == HoldingKind.LIABILITY ? source.emiDayOfMonth() : null);
         target.setLiquidWithinSevenDays(Boolean.TRUE.equals(source.liquidWithinSevenDays()));
         target.setBlocked(Boolean.TRUE.equals(source.blocked()));
         target.setDescription(clean(source.description()));

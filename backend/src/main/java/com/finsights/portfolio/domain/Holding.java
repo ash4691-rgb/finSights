@@ -36,16 +36,28 @@ public class Holding {
     private String tickerSymbol;
     @Column(precision = 24, scale = 8)
     private BigDecimal quantity;
+    /** Remaining cost basis after average-cost SELLs; the ledger owns this (see HoldingService). */
     @Column(precision = 20, scale = 2)
     private BigDecimal investedValue = BigDecimal.ZERO;
+    /** Profit/loss already locked in by SELLs and INTEREST income, from the ledger. */
+    @Column(precision = 20, scale = 2)
+    private BigDecimal realisedProfitLoss = BigDecimal.ZERO;
     /** Manually-entered value for MANUAL/MARKET_PRICE/BROKER_SYNC; ignored for FIXED_RATE (computed). */
     @Column(precision = 20, scale = 2)
     private BigDecimal currentValue = BigDecimal.ZERO;
     @Column(precision = 10, scale = 6)
     private BigDecimal fixedAnnualRate;
+    /** For FIXED_RATE: how often interest is paid out / compounded. */
     @Enumerated(EnumType.STRING)
     private CompoundingFrequency compoundingFrequency;
     private LocalDate fixedRateStartDate;
+    /** Optional maturity date for FIXED_RATE; the value stops accruing after it. Null = open-ended. */
+    private LocalDate fixedRateEndDate;
+    /** EMI amount for a LIABILITY the user is servicing; null = no schedule tracked. */
+    @Column(precision = 20, scale = 2)
+    private BigDecimal emiAmount;
+    /** Day of the month the EMI falls due (1–31). */
+    private Integer emiDayOfMonth;
     private Boolean liquidWithinSevenDays = false;
     private Boolean blocked = false;
     /** Manual drag-to-reorder position within the Holdings table; new holdings append to the end. */
@@ -92,6 +104,8 @@ public class Holding {
     public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
     public BigDecimal getInvestedValue() { return investedValue; }
     public void setInvestedValue(BigDecimal investedValue) { this.investedValue = investedValue; }
+    public BigDecimal getRealisedProfitLoss() { return realisedProfitLoss; }
+    public void setRealisedProfitLoss(BigDecimal realisedProfitLoss) { this.realisedProfitLoss = realisedProfitLoss; }
     public BigDecimal getCurrentValue() { return currentValue; }
     public void setCurrentValue(BigDecimal currentValue) { this.currentValue = currentValue; }
     public BigDecimal getFixedAnnualRate() { return fixedAnnualRate; }
@@ -100,6 +114,12 @@ public class Holding {
     public void setCompoundingFrequency(CompoundingFrequency compoundingFrequency) { this.compoundingFrequency = compoundingFrequency; }
     public LocalDate getFixedRateStartDate() { return fixedRateStartDate; }
     public void setFixedRateStartDate(LocalDate fixedRateStartDate) { this.fixedRateStartDate = fixedRateStartDate; }
+    public LocalDate getFixedRateEndDate() { return fixedRateEndDate; }
+    public void setFixedRateEndDate(LocalDate fixedRateEndDate) { this.fixedRateEndDate = fixedRateEndDate; }
+    public BigDecimal getEmiAmount() { return emiAmount; }
+    public void setEmiAmount(BigDecimal emiAmount) { this.emiAmount = emiAmount; }
+    public Integer getEmiDayOfMonth() { return emiDayOfMonth; }
+    public void setEmiDayOfMonth(Integer emiDayOfMonth) { this.emiDayOfMonth = emiDayOfMonth; }
     public Boolean getLiquidWithinSevenDays() { return liquidWithinSevenDays; }
     public void setLiquidWithinSevenDays(Boolean liquidWithinSevenDays) { this.liquidWithinSevenDays = liquidWithinSevenDays; }
     public Boolean getBlocked() { return blocked; }
