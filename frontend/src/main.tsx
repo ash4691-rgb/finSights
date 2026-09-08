@@ -261,7 +261,7 @@ function App({ onSignOut }: { onSignOut: () => void }) {
       </header>
       {user?.demoMode && <div className="demo-banner"><strong>Demo mode</strong><span>Local data is saved in the backend. Configure Google OAuth before deployment.</span></div>}
       {page === 'dashboard' && dashboard && <DashboardView dashboard={dashboard} holdings={holdings} onManage={() => setPage('categories')} />}
-      {page === 'categories' && <CategoriesView categories={categories} onOpen={setCategoryDetail} onAdd={() => setCreatingCategory(true)} reload={load} />}
+      {page === 'categories' && <CategoriesView categories={categories} onOpen={setCategoryDetail} onEdit={setEditingCategory} onAdd={() => setCreatingCategory(true)} reload={load} />}
       {page === 'holdings' && <HoldingsView holdings={holdings} categories={categories} reload={load} onEdit={setEditingHolding} onAdd={() => setCreatingHolding(true)} onOpen={setHoldingDetail} />}
       {page === 'transactions' && <TransactionsView holdings={holdings} displayCurrency={displayCurrency} dataVersion={dataVersion} reload={load} />}
       {page === 'insights' && settings && <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} />}
@@ -312,7 +312,7 @@ const categoryColumns: [string, CategorySortKey][] = [
 
 type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
 
-function CategoriesView({ categories, onOpen, onAdd, reload }: { categories: Category[]; onOpen: (c: Category) => void; onAdd: () => void; reload: () => Promise<void> }) {
+function CategoriesView({ categories, onOpen, onEdit, onAdd, reload }: { categories: Category[]; onOpen: (c: Category) => void; onEdit: (c: Category) => void; onAdd: () => void; reload: () => Promise<void> }) {
   const [filter, setFilter] = useState('')
   const [sortKey, setSortKey] = useState<CategorySortKey | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -380,7 +380,7 @@ function CategoriesView({ categories, onOpen, onAdd, reload }: { categories: Cat
         <td>{c.holdingCount ? percent(c.weightagePercent) : '—'}</td>
         <td>{money(c.liquidAmount)}<small className="owner">{percent(c.liquidPercent)}</small></td>
         <td>{money(c.npaAmount)}<small className="owner">{percent(c.npaPercent)}</small></td>
-        <td className="actions"><button className="primary-link" onClick={e => { e.stopPropagation(); onOpen(c) }}>View</button></td>
+        <td className="actions"><button className="primary-link" onClick={e => { e.stopPropagation(); onEdit(c) }}>Edit</button></td>
       </tr>) : <tr><td colSpan={10} className="empty"><strong>No categories yet</strong><span>Categories are simple buckets — "Growth Equity", "Emergency Fund" — that holdings get filed under.</span><button className="primary" onClick={onAdd}>Add category</button></td></tr>}</tbody>
     </table></section>
   </>
