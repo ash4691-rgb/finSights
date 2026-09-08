@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: finsights-portfolio-api
+  datasource:
+    url: ${DATABASE_URL:jdbc:h2:file:./data/finsights;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE}
+    username: ${DATABASE_USERNAME:sa}
+    password: ${DATABASE_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+server:
+  port: ${PORT:8080}
+
+app:
+  auth-mode: ${APP_AUTH_MODE:demo}
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  cors-origin: ${CORS_ORIGIN:http://localhost:5173}
+
+---
+# Google OAuth is only wired when the "google" profile is active, so the demo
+# profile never trips Spring's "client-id must not be empty" validation.
+# Run with: APP_AUTH_MODE=google SPRING_PROFILES_ACTIVE=google GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...
+spring:
+  config:
+    activate:
+      on-profile: google
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: openid,profile,email
+
+app:
+  auth-mode: google

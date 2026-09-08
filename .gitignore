@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+*.iml
+backend/target/
+backend/.mvn/apache-maven-*/
+backend/data/
+frontend/node_modules/
+frontend/dist/
+.env
+*.log
