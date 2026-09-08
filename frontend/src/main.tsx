@@ -542,12 +542,6 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const isFixedRate = form.valuationMethod === 'FIXED_RATE'
   const isEdit = !!holding
-  const [calcOpen, setCalcOpen] = useState(false)
-  const [calc, setCalc] = useState<ValuationDetail | null>(null)
-  useEffect(() => {
-    if (!holding) return
-    api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setCalc).catch(() => setCalc(null))
-  }, [holding?.id])
   const set = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }))
   // A holding is 1-1 with a (name, broker) pair — block a new one that would collide.
   const duplicate = !isEdit && !!form.name.trim() && !!form.broker.trim() && holdings.some(h =>
@@ -582,19 +576,12 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
           </select>
         </Field>
         <Field label="Name" required><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Reliance Industries, HDFC FD" /></Field>
-        <Field label="Description (optional)" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></Field>
-        <label className="field"><span>Valuation method{isEdit && <button type="button" className={`calc-toggle${calcOpen ? ' open' : ''}`} aria-expanded={calcOpen} aria-label="How this value is calculated" title="How this value is calculated" onClick={() => setCalcOpen(o => !o)}><i>i</i></button>}</span>
-          <select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="BROKER_SYNC">Broker sync</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></label>
-        {isEdit && calcOpen && <div className="calc-panel">
-          <div className="panel-heading"><h3>How this value is calculated</h3></div>
-          {calc ? <ol className="audit-list">{calc.steps.map((step, i) => <li key={i}>{step}</li>)}</ol> : <p className="hint">Loading calculation…</p>}
-          {calc?.projectedMaturityValue != null && <p className="hint">By {since(calc.projectedMaturityDate)}, if the rate holds: <b>{money(calc.projectedMaturityValue, holding!.currency)}</b>.</p>}
-        </div>}
+        <label className="field wide"><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="Description — one line, shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></label>
+        <Field label="Valuation method"><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="BROKER_SYNC">Broker sync</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>
         {(form.valuationMethod === 'MARKET_PRICE' || form.valuationMethod === 'BROKER_SYNC') && <Field label="Ticker symbol"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. RELIANCE, INFY" /></Field>}
         <Field label="Broker / platform" required><input required disabled={isEdit} value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>
-        <Field label="Owner"><input value={form.ownerName} onChange={e => set('ownerName', e.target.value)} placeholder="You or a family member" /></Field>
         <Field label="Currency"><select value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
-        <Field label={isEdit ? 'Quantity (from transactions)' : 'Quantity (optional)'}><input type="number" step="any" disabled={isEdit} value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>
+        <Field label={isEdit ? 'Quantity (from transactions)' : 'Quantity'}><input type="number" step="any" disabled={isEdit} value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>
         <Field label={isFixedRate ? 'Principal' : isEdit ? 'Invested value (from transactions)' : 'Invested value'}><input type="number" min="0" step="0.01" disabled={isEdit} value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>
         {isFixedRate ? <>
           <Field label="Annual rate (%)"><input type="number" min="0" step="0.01" value={form.fixedAnnualRate} onChange={e => set('fixedAnnualRate', e.target.value)} /></Field>
