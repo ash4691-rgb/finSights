@@ -1,11 +1,11 @@
 package com.finsights.portfolio.dto;
 
 import com.finsights.portfolio.domain.CompoundingFrequency;
+import com.finsights.portfolio.domain.RepaymentFrequency;
 import com.finsights.portfolio.domain.ValuationMethod;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -14,7 +14,7 @@ import java.util.Set;
 public record HoldingRequest(
         @NotBlank String categoryId,
         @NotBlank @Size(min = 1, max = 128, message = "Name must be 1–128 characters") String name,
-        @NotNull ValuationMethod valuationMethod,
+        ValuationMethod valuationMethod,
         @Size(max = 24, message = "Ticker symbol must be 24 characters or fewer") String tickerSymbol,
         @NotBlank(message = "Every holding must be mapped to a broker")
         @Size(min = 1, max = 96, message = "Broker must be 1–96 characters") String broker,
@@ -26,8 +26,11 @@ public record HoldingRequest(
         CompoundingFrequency compoundingFrequency,
         LocalDate fixedRateStartDate,
         LocalDate fixedRateEndDate,
+        RepaymentFrequency repaymentFrequency,
         BigDecimal emiAmount,
         @Min(1) @Max(31) Integer emiDayOfMonth,
+        @Min(1) @Max(1200) Integer loanTermMonths,
+        LocalDate repaymentDueDate,
         Boolean liquidWithinSevenDays,
         Boolean blocked,
         @Size(max = 1024, message = "Description must be 1024 characters or fewer") String description,

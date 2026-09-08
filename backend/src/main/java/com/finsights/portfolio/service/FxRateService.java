@@ -65,7 +65,8 @@ public class FxRateService {
                 holding.tickerSymbol(), holding.broker(), target,
                 invested, current, current.subtract(invested), holding.profitLossPercentage(), realised,
                 holding.quantity(), holding.fixedAnnualRate(), holding.compoundingFrequency(),
-                holding.fixedRateStartDate(), holding.fixedRateEndDate(), emi, holding.emiDayOfMonth(),
+                holding.fixedRateStartDate(), holding.fixedRateEndDate(),
+                holding.repaymentFrequency(), emi, holding.emiDayOfMonth(), holding.loanTermMonths(), holding.repaymentDueDate(),
                 holding.liquidWithinSevenDays(), holding.blocked(), holding.description(), holding.notes(),
                 holding.tags(), holding.createdAt(), holding.updatedAt(), holding.priceUpdatedAt());
     }

@@ -3,6 +3,7 @@ package com.finsights.portfolio.service;
 import com.finsights.portfolio.domain.Category;
 import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.HoldingKind;
+import com.finsights.portfolio.domain.RepaymentFrequency;
 import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.Transaction;
 import com.finsights.portfolio.domain.TransactionType;
@@ -222,6 +223,31 @@ public class HoldingService {
         return toResponse(saved);
     }
 
+    private void validateLiability(HoldingRequest source) {
+        if (source.investedValue() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter the total borrowed amount");
+        }
+        if (source.currentValue() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter the outstanding amount");
+        }
+        if (source.repaymentFrequency() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pick how the loan is repaid");
+        }
+        if (source.repaymentFrequency() == RepaymentFrequency.ONE_TIME) {
+            if (source.repaymentDueDate() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A one-time repayment needs a due date");
+            }
+        } else {
+            if (source.emiDayOfMonth() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Set the day of the month the instalment falls due");
+            }
+            if (source.emiAmount() == null && source.loanTermMonths() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Enter the instalment amount, or the number of instalments remaining");
+            }
+        }
+    }
+
     private void requireUniqueNameAndBroker(String userId, String name, String broker, String selfId) {
         holdings.findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(userId, name, broker)
                 .filter(existing -> !existing.getId().equals(selfId))
@@ -313,7 +339,8 @@ public class HoldingService {
                 holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
                 holding.getQuantity(), holding.getFixedAnnualRate(),
                 holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
-                holding.getEmiAmount(), holding.getEmiDayOfMonth(), holding.getLiquidWithinSevenDays(),
+                holding.getRepaymentFrequency(), holding.getEmiAmount(), holding.getEmiDayOfMonth(),
+                holding.getLoanTermMonths(), holding.getRepaymentDueDate(), holding.getLiquidWithinSevenDays(),
                 holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
                 holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt());
     }
@@ -326,33 +353,45 @@ public class HoldingService {
     private void copy(HoldingRequest source, Holding target) {
         Category category = categories.findByIdAndUser_Id(source.categoryId(), currentUser.currentUser().getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Category not found"));
-        if (source.valuationMethod() == ValuationMethod.FIXED_RATE
+        boolean liability = category.getKind() == HoldingKind.LIABILITY;
+        // A liability is always manually valued: total borrowed = investedValue, outstanding = currentValue.
+        ValuationMethod method = liability || source.valuationMethod() == null
+                ? ValuationMethod.MANUAL : source.valuationMethod();
+
+        if (!liability && method == ValuationMethod.FIXED_RATE
                 && (source.fixedAnnualRate() == null || source.compoundingFrequency() == null || source.fixedRateStartDate() == null)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Fixed-rate holdings require rate, interest payout frequency, and start date");
+                    "Fixed-rate holdings need a rate, an interest payout frequency, and a start date");
         }
-        if (source.valuationMethod() == ValuationMethod.FIXED_RATE && source.fixedRateEndDate() != null
+        if (!liability && method == ValuationMethod.FIXED_RATE && source.fixedRateEndDate() != null
                 && source.fixedRateStartDate() != null && !source.fixedRateEndDate().isAfter(source.fixedRateStartDate())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The maturity date must be after the start date");
         }
-        if (source.valuationMethod() == ValuationMethod.MANUAL && source.currentValue() == null) {
+        if (!liability && method == ValuationMethod.MANUAL && source.currentValue() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A manually-valued holding needs a current value");
         }
+        if (liability) validateLiability(source);
+
         target.setCategory(category);
         target.setName(source.name().trim());
-        target.setValuationMethod(source.valuationMethod());
-        target.setTickerSymbol(clean(source.tickerSymbol()));
+        target.setValuationMethod(method);
+        target.setTickerSymbol(liability ? null : clean(source.tickerSymbol()));
         target.setBroker(clean(source.broker()));
         target.setCurrency(source.currency() == null || source.currency().isBlank() ? "INR" : source.currency().trim().toUpperCase());
-        target.setQuantity(source.quantity());
+        target.setQuantity(liability ? null : source.quantity());
         target.setInvestedValue(zeroIfNull(source.investedValue()));
         target.setCurrentValue(zeroIfNull(source.currentValue()));
-        target.setFixedAnnualRate(source.fixedAnnualRate());
-        target.setCompoundingFrequency(source.compoundingFrequency());
-        target.setFixedRateStartDate(source.fixedRateStartDate());
-        target.setFixedRateEndDate(source.valuationMethod() == ValuationMethod.FIXED_RATE ? source.fixedRateEndDate() : null);
-        target.setEmiAmount(category.getKind() == HoldingKind.LIABILITY ? source.emiAmount() : null);
-        target.setEmiDayOfMonth(category.getKind() == HoldingKind.LIABILITY ? source.emiDayOfMonth() : null);
+        target.setFixedAnnualRate(liability ? null : source.fixedAnnualRate());
+        target.setCompoundingFrequency(liability ? null : source.compoundingFrequency());
+        target.setFixedRateStartDate(liability ? null : source.fixedRateStartDate());
+        target.setFixedRateEndDate(!liability && method == ValuationMethod.FIXED_RATE ? source.fixedRateEndDate() : null);
+
+        boolean oneTime = liability && source.repaymentFrequency() == RepaymentFrequency.ONE_TIME;
+        target.setRepaymentFrequency(liability ? source.repaymentFrequency() : null);
+        target.setEmiAmount(liability && !oneTime ? source.emiAmount() : null);
+        target.setEmiDayOfMonth(liability && !oneTime ? source.emiDayOfMonth() : null);
+        target.setLoanTermMonths(liability && !oneTime ? source.loanTermMonths() : null);
+        target.setRepaymentDueDate(oneTime ? source.repaymentDueDate() : null);
         target.setLiquidWithinSevenDays(Boolean.TRUE.equals(source.liquidWithinSevenDays()));
         target.setBlocked(Boolean.TRUE.equals(source.blocked()));
         target.setDescription(clean(source.description()));

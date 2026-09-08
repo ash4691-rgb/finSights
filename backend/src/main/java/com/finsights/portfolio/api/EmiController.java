@@ -2,7 +2,7 @@ package com.finsights.portfolio.api;
 
 import com.finsights.portfolio.dto.ActionItemResponse;
 import com.finsights.portfolio.service.EmiService;
-import java.time.YearMonth;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -32,7 +32,7 @@ public class EmiController {
     @PostMapping("/{holdingId}/pay")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void markPaid(@PathVariable String holdingId,
-                  @RequestParam @DateTimeFormat(pattern = "yyyy-MM") YearMonth period) {
-        emis.markPaid(holdingId, period);
+                  @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueDate) {
+        emis.markPaid(holdingId, dueDate);
     }
 }

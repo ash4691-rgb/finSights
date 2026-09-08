@@ -53,11 +53,19 @@ public class Holding {
     private LocalDate fixedRateStartDate;
     /** Optional maturity date for FIXED_RATE; the value stops accruing after it. Null = open-ended. */
     private LocalDate fixedRateEndDate;
-    /** EMI amount for a LIABILITY the user is servicing; null = no schedule tracked. */
+    // --- LIABILITY repayment schedule ---
+    /** How the loan is repaid; ONE_TIME is a bullet payment, the rest recurring. */
+    @Enumerated(EnumType.STRING)
+    private RepaymentFrequency repaymentFrequency;
+    /** Instalment amount for a recurring liability; may be left null if {@link #loanTermMonths} is set. */
     @Column(precision = 20, scale = 2)
     private BigDecimal emiAmount;
-    /** Day of the month the EMI falls due (1–31). */
+    /** Day of the month the instalment falls due (1–31), for recurring liabilities. */
     private Integer emiDayOfMonth;
+    /** Remaining number of instalments, an alternative to {@link #emiAmount}. */
+    private Integer loanTermMonths;
+    /** Due date for a ONE_TIME liability. */
+    private LocalDate repaymentDueDate;
     private Boolean liquidWithinSevenDays = false;
     private Boolean blocked = false;
     /** Manual drag-to-reorder position within the Holdings table; new holdings append to the end. */
@@ -116,10 +124,16 @@ public class Holding {
     public void setFixedRateStartDate(LocalDate fixedRateStartDate) { this.fixedRateStartDate = fixedRateStartDate; }
     public LocalDate getFixedRateEndDate() { return fixedRateEndDate; }
     public void setFixedRateEndDate(LocalDate fixedRateEndDate) { this.fixedRateEndDate = fixedRateEndDate; }
+    public RepaymentFrequency getRepaymentFrequency() { return repaymentFrequency; }
+    public void setRepaymentFrequency(RepaymentFrequency repaymentFrequency) { this.repaymentFrequency = repaymentFrequency; }
     public BigDecimal getEmiAmount() { return emiAmount; }
     public void setEmiAmount(BigDecimal emiAmount) { this.emiAmount = emiAmount; }
     public Integer getEmiDayOfMonth() { return emiDayOfMonth; }
     public void setEmiDayOfMonth(Integer emiDayOfMonth) { this.emiDayOfMonth = emiDayOfMonth; }
+    public Integer getLoanTermMonths() { return loanTermMonths; }
+    public void setLoanTermMonths(Integer loanTermMonths) { this.loanTermMonths = loanTermMonths; }
+    public LocalDate getRepaymentDueDate() { return repaymentDueDate; }
+    public void setRepaymentDueDate(LocalDate repaymentDueDate) { this.repaymentDueDate = repaymentDueDate; }
     public Boolean getLiquidWithinSevenDays() { return liquidWithinSevenDays; }
     public void setLiquidWithinSevenDays(Boolean liquidWithinSevenDays) { this.liquidWithinSevenDays = liquidWithinSevenDays; }
     public Boolean getBlocked() { return blocked; }

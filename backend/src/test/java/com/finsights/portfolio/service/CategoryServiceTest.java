@@ -68,7 +68,7 @@ class CategoryServiceTest {
         return new HoldingResponse(id, "ref-" + id, categoryId, "n/a", "Holding " + id, kind, ValuationMethod.MANUAL,
                 null, "Broker", "INR", new BigDecimal(invested), new BigDecimal(current),
                 new BigDecimal(current).subtract(new BigDecimal(invested)), BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
                 liquid, npa, null, null, java.util.Set.of(), null, null, null);
     }
 

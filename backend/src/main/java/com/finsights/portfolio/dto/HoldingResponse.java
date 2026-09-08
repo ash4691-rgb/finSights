@@ -13,7 +13,8 @@ public record HoldingResponse(
         BigDecimal realisedProfitLoss,
         BigDecimal quantity, BigDecimal fixedAnnualRate, CompoundingFrequency compoundingFrequency,
         LocalDate fixedRateStartDate, LocalDate fixedRateEndDate,
-        BigDecimal emiAmount, Integer emiDayOfMonth,
+        RepaymentFrequency repaymentFrequency, BigDecimal emiAmount, Integer emiDayOfMonth,
+        Integer loanTermMonths, LocalDate repaymentDueDate,
         Boolean liquidWithinSevenDays, Boolean blocked, String description, String notes, Set<String> tags,
         Instant createdAt, Instant updatedAt, Instant priceUpdatedAt
 ) { }
