@@ -147,7 +147,7 @@ td>strong{color:var(--text)}
 .info-tip{position:fixed;transform:translateX(-50%);width:max-content;max-width:260px;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;padding:8px 10px;font-size:11px;font-weight:400;font-style:normal;color:var(--text-2);line-height:1.45;box-shadow:var(--shadow-modal);z-index:50;pointer-events:none;white-space:normal;text-align:left}
 .info-tip.above{transform:translate(-50%,-100%)}
 .name-button strong,.name-button small,.owner,td .positive small,td .negative small{display:block}
-.name-button strong,.name-cell>strong{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name-button strong,.name-cell>strong,.trunc-name{display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .name-button small,.owner,td .positive small,td .negative small{margin-top:3px;color:var(--text-3);font-size:11px;font-weight:400}
 .badge{display:inline-block;border:1px solid var(--border-strong);color:var(--chip-text);background:var(--chip-bg);border-radius:4px;padding:3px 5px;font-size:9px;font-weight:800}
 .badge.liability{background:var(--liability-bg);border-color:var(--liability-bg);color:var(--liability-text)}
@@ -185,7 +185,8 @@ th.sortable:hover{color:var(--text)}
 .field span{font-weight:700}
 .field span b{color:var(--negative)}
 .field.wide{grid-column:1/-1}
-.field input,.field select,.field textarea{width:100%;background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;outline:none;font-size:13px}
+.field input,.field select,.field textarea{width:100%;max-width:100%;background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;outline:none;font-size:13px}
+.field select{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
 .field input:disabled{opacity:.5}
 .field textarea{min-height:64px;resize:vertical}
@@ -235,7 +236,7 @@ th.sortable:hover{color:var(--text)}
 .loading-screen p{color:var(--text-3)}
 .loading-screen button{margin:auto}
 .loading-screen h2{margin-bottom:0}
-.filter-select{background:var(--surface);border:1px solid var(--border);border-radius:9px;color:var(--text-2);padding:0 10px;font-size:13px}
+.filter-select{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--surface);border:1px solid var(--border);border-radius:9px;color:var(--text-2);padding:0 10px;font-size:13px}
 .file-label{display:inline-flex;align-items:center}
 .import-summary{position:relative;border:1px solid var(--border-strong);background:var(--accent-soft);border-radius:10px;padding:12px 34px 12px 14px;margin-bottom:12px;display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)}
 .import-summary.has-errors{border-color:var(--import-err-border);background:var(--import-err-bg)}
@@ -295,9 +296,12 @@ th.sortable:hover{color:var(--text)}
 .preset-strip button{border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700}
 .preset-strip button:hover{border-color:var(--accent);color:var(--text)}
 .mapped-holdings{display:grid;gap:8px;margin-bottom:14px}
-.mapped-holding{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:10px 12px;text-align:left;color:var(--text)}
+.mapped-holding{display:flex;min-width:0;justify-content:space-between;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:10px 12px;text-align:left;color:var(--text)}
 .mapped-holding:hover{border-color:var(--border-strong)}
-.mapped-holding strong{font-size:13px}
+.mapped-holding-name{flex:1;min-width:0;overflow:hidden}
+.mapped-holding strong{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mapped-holding small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mapped-holding-value{flex-shrink:0}
 .mapped-holding small{display:block;color:var(--text-3);font-size:11px;margin-top:2px}
 .mapped-holding-value{text-align:right}
 .mapped-holding-value span{display:block;font-weight:700;font-size:13px}

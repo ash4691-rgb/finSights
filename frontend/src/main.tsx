@@ -413,10 +413,10 @@ function CategoryDrawer({ category, holdings, onClose, onEdit, onAddHolding, onO
 
     <div className="panel-heading"><h3>Mapped holdings</h3><span>{holdings.length} position{holdings.length === 1 ? '' : 's'}</span></div>
     {holdings.length ? <div className="mapped-holdings">{holdings.map(h => <button key={h.id} className="mapped-holding" onClick={() => onOpenHolding(h)}>
-      <div><strong>{h.name}</strong><small>{h.broker || 'Unassigned broker'}{h.quantity != null ? ` · qty ${h.quantity}` : ''}</small></div>
+      <div className="mapped-holding-name"><strong title={h.name}>{h.name}</strong><small>{h.broker || 'Unassigned broker'}{h.quantity != null ? ` · qty ${h.quantity}` : ''}</small></div>
       <div className="mapped-holding-value"><span>{money(h.currentValue, h.currency)}</span><small className={h.profitLoss >= 0 ? 'positive' : 'negative'}>{h.kind === 'LIABILITY' ? '—' : `${h.profitLoss >= 0 ? '+' : ''}${percent(h.profitLossPercentage)}`}</small></div>
     </button>)}</div> : <p className="hint">No holdings mapped yet — add one to record an actual position in this category.</p>}
-    <button className="outline compact" onClick={() => onAddHolding(category)}>+ Add holding in {category.name}</button>
+    <button className="outline compact" onClick={() => onAddHolding(category)}>+ Add a holding here</button>
 
     <div className="modal-actions"><button className="danger-link-btn" onClick={() => void removeCategory()}>Delete category</button><button className="outline" onClick={onClose}>Close</button><button className="primary" onClick={() => onEdit(category)}>Edit category</button></div>
   </section></div>
@@ -784,7 +784,7 @@ function TransactionsView({ holdings, displayCurrency, dataVersion, reload }: { 
       <tbody>{loading ? <tr><td colSpan={8} className="empty"><strong>Loading…</strong></td></tr> : sorted.length ? sorted.map(t => <tr key={t.id}>
         <td>{since(t.date)}</td>
         <td><span className={`badge txn-${t.type.toLowerCase()}`}>{label(t.type)}</span></td>
-        <td><strong>{t.holdingName}</strong><small className="owner">{t.categoryName}</small></td>
+        <td><strong className="trunc-name" title={t.holdingName}>{t.holdingName}</strong><small className="owner">{t.categoryName}</small></td>
         <td>{t.broker || '—'}</td>
         <td><strong>{money(t.amount, t.currency)}</strong></td>
         <td>{t.quantity ?? '—'}</td>
