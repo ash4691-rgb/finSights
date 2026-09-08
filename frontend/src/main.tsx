@@ -29,6 +29,7 @@ type Holding = {
   createdAt?: string; updatedAt?: string; priceUpdatedAt?: string
 }
 type SymbolSuggestion = { symbol: string; name: string; exchange: string; type: string }
+type MarketQuote = { symbol: string; name: string; price: number; currency: string; asOf: string }
 type Breakdown = { label: string; value: number; investedValue: number; profitLoss: number }
 type Dashboard = { netWorth: number; totalAssets: number; totalLiabilities: number; investedAssets: number; portfolioProfitLoss: number; byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[] }
 type User = { email: string; displayName: string; demoMode: boolean }
@@ -550,8 +551,24 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
     : blankHoldingForm(startCategoryId))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const isFixedRate = form.valuationMethod === 'FIXED_RATE'
+  const isMarket = form.valuationMethod === 'MARKET_PRICE'
   const isEdit = !!holding
   const set = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }))
+
+  // Market-linked holdings take their name and currency from the ticker, not the user.
+  useEffect(() => {
+    if (!isMarket) return
+    const symbol = form.tickerSymbol.trim()
+    if (!symbol) return
+    const timer = setTimeout(() => {
+      api<MarketQuote>(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`)
+        .then(q => setForm(current => current.tickerSymbol.trim().toUpperCase() === symbol.toUpperCase()
+          ? { ...current, name: q.name || current.name, currency: q.currency || current.currency }
+          : current))
+        .catch(() => { /* leave name/currency as-is if the feed is unreachable */ })
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [form.tickerSymbol, isMarket])
 
   const [tagIdeas, setTagIdeas] = useState<string[]>([])
   useEffect(() => {
@@ -592,12 +609,11 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
             {categories.map(c => <option key={c.id} value={c.id}>{c.name} ({label(c.kind)})</option>)}
           </select>
         </Field>
-        <Field label="Name" required><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Reliance Industries, HDFC FD" /></Field>
-        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></Field>
         <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>
-        {form.valuationMethod === 'MARKET_PRICE' && <Field label="Ticker symbol" wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
+        {isMarket && <Field label="Ticker symbol" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
+        <Field label="Name" required><input required value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
+        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></Field>
         {!isEdit && <Field label="Broker / platform" required><input required value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>}
-        {!isEdit && <Field label="Currency"><select value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>}
         {!isEdit && <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
         {!isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'}><input type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
         {isFixedRate && <>
@@ -605,10 +621,10 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
           <Field label="Compounding"><select value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}>{frequencies.map(item => <option key={item}>{item}</option>)}</select></Field>
           <Field label="Start date"><input type="date" value={form.fixedRateStartDate} onChange={e => set('fixedRateStartDate', e.target.value)} /></Field>
         </>}
-        {isEdit ? <div className="field-pair">
-          <Field label="Currency"><select disabled value={form.currency}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
-          <Field label={isFixedRate ? 'Current value (computed)' : form.valuationMethod === 'MARKET_PRICE' ? 'Current value (from market price)' : 'Current value'}><input type="number" min="0" step="0.01" disabled={isFixedRate || form.valuationMethod === 'MARKET_PRICE'} value={form.currentValue} onChange={e => set('currentValue', e.target.value)} /></Field>
-        </div> : !isFixedRate && <Field label="Current value"><input type="number" min="0" step="0.01" value={form.currentValue} onChange={e => set('currentValue', e.target.value)} /></Field>}
+        <div className="field-pair">
+          <Field label="Currency"><select disabled={isEdit || isMarket} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
+          <Field label={isFixedRate ? 'Current value (computed)' : isMarket ? 'Current value (live price)' : 'Current value'}><input type="number" min="0" step="0.01" disabled={isFixedRate || isMarket} value={form.currentValue} onChange={e => set('currentValue', e.target.value)} placeholder={isMarket ? 'Priced after saving' : isFixedRate ? 'Computed after saving' : ''} /></Field>
+        </div>
         <div className="check-row">
           <label><input type="checkbox" checked={form.liquidWithinSevenDays} onChange={e => set('liquidWithinSevenDays', e.target.checked)} /> Liquid within 7 days <InfoTip text="Money you could realistically access within a week. Feeds the “liquid within 7 days” figure on the overview so you know how much of the portfolio is reachable in an emergency." /></label>
           <label><input type="checkbox" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} /> Blocked / NPA <InfoTip text="The holding is locked, pledged, in default, or a non-performing asset. It is valued separately from healthy assets and flagged in the data-quality checks." /></label>
@@ -622,7 +638,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
       </p>}
       {duplicate && <p className="form-error">A holding named "{form.name.trim()}" at "{form.broker.trim()}" already exists — one holding maps to one broker.</p>}
       {error && <p className="form-error">{error}</p>}
-      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.categoryId || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
+      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.categoryId || !form.name.trim() || (isMarket && !form.tickerSymbol.trim()) || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
     </form>
   </section></div>
 }
