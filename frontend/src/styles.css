@@ -190,7 +190,8 @@ th.sortable:hover{color:var(--text)}
 .check-row label{display:flex;gap:7px;align-items:center}
 .form-error{color:var(--error-text);font-size:12px;background:var(--error-bg);padding:9px;border-radius:6px;margin:16px 0 0}
 .form-hint{color:var(--text-3);font-size:11px;line-height:1.5;margin:16px 0 0}
-.calc-toggle{display:inline-flex;align-items:center;gap:5px;margin-left:8px;padding:0;border:none;background:none;color:var(--accent);font-weight:700;font-size:11px;cursor:pointer}
+.calc-toggle{display:inline-flex;align-items:center;justify-self:start;gap:5px;margin-left:8px;padding:0;border:none;background:none;color:var(--accent);font-weight:700;font-size:11px;cursor:pointer;text-align:left}
+.drawer-facts .calc-toggle{margin-left:0;margin-top:2px}
 .calc-toggle i{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border:1px solid currentColor;border-radius:50%;font-size:8px;font-weight:800;font-style:italic;line-height:1}
 .calc-panel{grid-column:1/-1;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:12px 14px;margin-top:-4px}
 .calc-panel .audit-list{margin:0}

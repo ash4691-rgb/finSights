@@ -616,6 +616,7 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
   const [detail, setDetail] = useState<ValuationDetail | null>(null)
   const [txns, setTxns] = useState<Transaction[] | null>(null)
   const [visibleTxns, setVisibleTxns] = useState(10)
+  const [calcOpen, setCalcOpen] = useState(false)
   useEffect(() => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }, [holding.id])
   useEffect(() => { setVisibleTxns(10); api<Transaction[]>(`/api/transactions?holdingId=${holding.id}&currency=${displayCurrency}`).then(setTxns).catch(() => setTxns([])) }, [holding.id, displayCurrency])
   const onTxnScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -636,14 +637,17 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
     <div className="drawer-facts">
       <span>Broker / owner<b>{holding.broker || '—'}{holding.ownerName ? ` · ${holding.ownerName}` : ''}</b></span>
       <span>Currency<b>{holding.currency}</b></span>
-      <span>Valuation method<b>{label(holding.valuationMethod)}</b></span>
+      <span>Valuation method<b>{label(holding.valuationMethod)}</b>
+        <button type="button" className="calc-toggle" aria-expanded={calcOpen} onClick={() => setCalcOpen(o => !o)}><i>i</i> How this value is calculated {calcOpen ? '▴' : '▾'}</button>
+      </span>
       <span>Last updated<b>{since(holding.updatedAt)}</b></span>
       {holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
     </div>
+    {calcOpen && <div className="calc-panel">
+      {detail ? <ol className="audit-list">{detail.steps.map((step, i) => <li key={i}>{step}</li>)}</ol> : <p className="hint">Loading calculation…</p>}
+      {detail?.projectedMaturityValue != null && <p className="hint">By {since(detail.projectedMaturityDate)}, if the rate holds: <b>{money(detail.projectedMaturityValue, holding.currency)}</b>.</p>}
+    </div>}
     {holding.notes && <p className="drawer-notes">{holding.notes}</p>}
-    <div className="panel-heading"><h3>How this value is calculated</h3></div>
-    {detail ? <ol className="audit-list">{detail.steps.map((step, i) => <li key={i}>{step}</li>)}</ol> : <p className="hint">Loading calculation…</p>}
-    {detail?.projectedMaturityValue != null && <p className="hint">By {since(detail.projectedMaturityDate)}, if the rate holds: <b>{money(detail.projectedMaturityValue, holding.currency)}</b>.</p>}
 
     <div className="panel-heading"><h3>Transactions</h3><span>{txns && txns.length ? `${txns.length}` : ''}</span></div>
     {txns === null ? <p className="hint">Loading transactions…</p>
