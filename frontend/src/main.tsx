@@ -583,9 +583,10 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
         </Field>
         <Field label="Name" required><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Reliance Industries, HDFC FD" /></Field>
         <Field label="Description (optional)" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></Field>
-        <label className="field"><span>Valuation method{isEdit && <button type="button" className="calc-toggle" aria-expanded={calcOpen} onClick={() => setCalcOpen(o => !o)}><i>i</i> How this value is calculated {calcOpen ? '▴' : '▾'}</button>}</span>
+        <label className="field"><span>Valuation method{isEdit && <button type="button" className={`calc-toggle${calcOpen ? ' open' : ''}`} aria-expanded={calcOpen} aria-label="How this value is calculated" title="How this value is calculated" onClick={() => setCalcOpen(o => !o)}><i>i</i></button>}</span>
           <select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="BROKER_SYNC">Broker sync</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></label>
         {isEdit && calcOpen && <div className="calc-panel">
+          <div className="panel-heading"><h3>How this value is calculated</h3></div>
           {calc ? <ol className="audit-list">{calc.steps.map((step, i) => <li key={i}>{step}</li>)}</ol> : <p className="hint">Loading calculation…</p>}
           {calc?.projectedMaturityValue != null && <p className="hint">By {since(calc.projectedMaturityDate)}, if the rate holds: <b>{money(calc.projectedMaturityValue, holding!.currency)}</b>.</p>}
         </div>}
@@ -638,12 +639,13 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
       <span>Broker / owner<b>{holding.broker || '—'}{holding.ownerName ? ` · ${holding.ownerName}` : ''}</b></span>
       <span>Currency<b>{holding.currency}</b></span>
       <span>Valuation method<b>{label(holding.valuationMethod)}</b>
-        <button type="button" className="calc-toggle" aria-expanded={calcOpen} onClick={() => setCalcOpen(o => !o)}><i>i</i> How this value is calculated {calcOpen ? '▴' : '▾'}</button>
+        <button type="button" className={`calc-toggle${calcOpen ? ' open' : ''}`} aria-expanded={calcOpen} aria-label="How this value is calculated" title="How this value is calculated" onClick={() => setCalcOpen(o => !o)}><i>i</i></button>
       </span>
       <span>Last updated<b>{since(holding.updatedAt)}</b></span>
       {holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
     </div>
     {calcOpen && <div className="calc-panel">
+      <div className="panel-heading"><h3>How this value is calculated</h3></div>
       {detail ? <ol className="audit-list">{detail.steps.map((step, i) => <li key={i}>{step}</li>)}</ol> : <p className="hint">Loading calculation…</p>}
       {detail?.projectedMaturityValue != null && <p className="hint">By {since(detail.projectedMaturityDate)}, if the rate holds: <b>{money(detail.projectedMaturityValue, holding.currency)}</b>.</p>}
     </div>}
