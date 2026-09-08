@@ -284,7 +284,7 @@ public class HoldingService {
                 : pnl.divide(invested, 6, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
         return new HoldingResponse(
                 holding.getId(), holding.getHoldingRef(), category.getId(), category.getName(), holding.getName(), category.getKind(),
-                holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(), holding.getOwnerName(),
+                holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
                 holding.getCurrency(), invested, current, pnl, pnlPct, holding.getQuantity(), holding.getFixedAnnualRate(),
                 holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getLiquidWithinSevenDays(),
                 holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
@@ -309,7 +309,6 @@ public class HoldingService {
         target.setValuationMethod(source.valuationMethod());
         target.setTickerSymbol(clean(source.tickerSymbol()));
         target.setBroker(clean(source.broker()));
-        target.setOwnerName(clean(source.ownerName()));
         target.setCurrency(source.currency() == null || source.currency().isBlank() ? "INR" : source.currency().trim().toUpperCase());
         target.setQuantity(source.quantity());
         target.setInvestedValue(zeroIfNull(source.investedValue()));

@@ -71,7 +71,7 @@ public class InsightsService {
                 warnings.add(new Warning("WARN", "Has no current value recorded.", h.id(), h.name()));
             }
             if (h.broker() == null || h.broker().isBlank()) {
-                warnings.add(new Warning("INFO", "Not assigned to a broker or owner.", h.id(), h.name()));
+                warnings.add(new Warning("INFO", "Not assigned to a broker.", h.id(), h.name()));
             }
             if (!converted && h.currency() != null && !h.currency().equalsIgnoreCase(baseCurrency)) {
                 warnings.add(new Warning("INFO",

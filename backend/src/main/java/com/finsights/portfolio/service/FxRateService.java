@@ -60,7 +60,7 @@ public class FxRateService {
         BigDecimal current = convert(holding.currentValue(), holding.currency(), target);
         return new HoldingResponse(
                 holding.id(), holding.holdingId(), holding.categoryId(), holding.categoryName(), holding.name(), holding.kind(), holding.valuationMethod(),
-                holding.tickerSymbol(), holding.broker(), holding.ownerName(), target,
+                holding.tickerSymbol(), holding.broker(), target,
                 invested, current, current.subtract(invested), holding.profitLossPercentage(),
                 holding.quantity(), holding.fixedAnnualRate(), holding.compoundingFrequency(),
                 holding.fixedRateStartDate(), holding.liquidWithinSevenDays(), holding.blocked(), holding.description(), holding.notes(),

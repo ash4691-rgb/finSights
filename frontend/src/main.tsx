@@ -19,10 +19,10 @@ type Category = {
   holdingCount: number; createdAt?: string; updatedAt?: string
 }
 // The actual named position — a stock, fund, crypto, FD, loan — filed under one category and
-// held at one broker/owner.
+// held at one broker.
 type Holding = {
   id: string; holdingId: string; categoryId: string; categoryName: string; name: string; kind: HoldingKind; valuationMethod: ValuationMethod
-  tickerSymbol?: string; broker?: string; ownerName?: string; currency: string
+  tickerSymbol?: string; broker?: string; currency: string
   investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number
   quantity?: number; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string
   liquidWithinSevenDays: boolean; blocked: boolean; description?: string; notes?: string; tags: string[]
@@ -75,7 +75,7 @@ const nav: [Page, string, string][] = [
   ['transactions', '⇅', 'Transactions'], ['insights', '◔', 'Insights'], ['brokers', '⇄', 'External sources'], ['settings', '⚙', 'Settings'],
 ]
 const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '' })
-const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'MONTHLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', ownerName: '', quantity: '', investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), description: '' })
+const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'MONTHLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', quantity: '', investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), description: '' })
 
 let baseCurrency = 'INR'
 let numberLocale = 'en-IN' // en-IN groups as lakh/crore; en-US groups as million/billion
@@ -201,8 +201,8 @@ function App({ onSignOut }: { onSignOut: () => void }) {
       c.weightagePercent.toFixed(2), c.liquidAmount, c.liquidPercent.toFixed(2), c.npaAmount, c.npaPercent.toFixed(2), c.holdingCount]))
 
   const exportHoldingsCsv = () => downloadCsv('finsights-holdings.csv',
-    ['Holding ID', 'Name', 'Category', 'Broker', 'Owner', 'Currency', 'Valuation method', 'Ticker', 'Quantity', 'Invested', 'Current value', 'P/L', 'P/L %', 'Liquid', 'Blocked', 'Description', 'Tags'],
-    holdings.map(h => [h.holdingId, h.name, h.categoryName, h.broker ?? '', h.ownerName ?? '', h.currency, label(h.valuationMethod), h.tickerSymbol ?? '',
+    ['Holding ID', 'Name', 'Category', 'Broker', 'Currency', 'Valuation method', 'Ticker', 'Quantity', 'Invested', 'Current value', 'P/L', 'P/L %', 'Liquid', 'Blocked', 'Description', 'Tags'],
+    holdings.map(h => [h.holdingId, h.name, h.categoryName, h.broker ?? '', h.currency, label(h.valuationMethod), h.tickerSymbol ?? '',
       h.quantity ?? '', h.investedValue, h.currentValue, h.profitLoss, h.profitLossPercentage.toFixed(2),
       h.liquidWithinSevenDays ? 'Yes' : 'No', h.blocked ? 'Yes' : 'No', h.description ?? '', h.tags.join('; ')]))
 
@@ -287,7 +287,7 @@ function DashboardView({ dashboard, holdings, onManage }: { dashboard: Dashboard
     <section className="metric-grid">{cards.map(([title, value, note]) => <article className="metric-card" key={title}><p>{title}</p><strong className={title === 'Portfolio P/L' && Number(value) < 0 ? 'negative' : ''}>{money(value as number)}</strong><small>{note}</small></article>)}</section>
     <section className="insight-grid">
       <BreakdownCard title="Allocation by category" items={dashboard.byCategory} total={dashboard.totalAssets} />
-      <BreakdownCard title="Value by broker / owner" items={dashboard.byBroker} total={dashboard.totalAssets} />
+      <BreakdownCard title="Value by broker" items={dashboard.byBroker} total={dashboard.totalAssets} />
       <article className="panel recent"><div className="panel-heading"><h3>Portfolio pulse</h3><span>Live calculation</span></div><div className="pulse-row"><span>Liquid within 7 days</span><strong>{money(holdings.filter(h => h.liquidWithinSevenDays).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Blocked / NPA</span><strong>{money(holdings.filter(h => h.blocked).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Fixed-rate instruments</span><strong>{holdings.filter(h => h.valuationMethod === 'FIXED_RATE').length}</strong></div><p className="hint">Daily portfolio snapshots and broker reconciliation are the next integration layer.</p></article>
       <BreakdownCard title="Value by tag" items={dashboard.byTag} total={dashboard.totalAssets} />
     </section>
@@ -461,7 +461,7 @@ function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOpen }: {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const filtered = useMemo(() => holdings.filter(h =>
-    `${h.name} ${h.broker ?? ''} ${h.ownerName ?? ''} ${h.categoryName} ${h.currency} ${h.tags.join(' ')}`.toLowerCase().includes(filter.toLowerCase())
+    `${h.name} ${h.broker ?? ''} ${h.categoryName} ${h.currency} ${h.tags.join(' ')}`.toLowerCase().includes(filter.toLowerCase())
     && (!categoryId || h.categoryId === categoryId)), [holdings, filter, categoryId])
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -496,7 +496,7 @@ function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOpen }: {
 
   return <>
     <section className="holdings-toolbar">
-      <div className="search"><span>⌕</span><input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search holdings, brokers, owners, tags" /></div>
+      <div className="search"><span>⌕</span><input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search holdings, brokers, tags" /></div>
       <select className="filter-select" value={categoryId} onChange={e => setCategoryId(e.target.value)}><option value="">All categories</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
       {sortKey && <button className="outline compact" onClick={() => setSortKey(null)}>Clear sort</button>}
       <button className="primary push-end" onClick={onAdd} disabled={!categories.length} title={categories.length ? '' : 'Add a category first'}>+ Add holding</button>
@@ -552,7 +552,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
-    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'MONTHLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', ownerName: holding.ownerName || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), description: holding.description || '' }
+    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'MONTHLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), description: holding.description || '' }
     : blankHoldingForm(startCategoryId))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const isFixedRate = form.valuationMethod === 'FIXED_RATE'
@@ -591,7 +591,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
     event.preventDefault(); setSaving(true); setError('')
     const payload = {
       categoryId: form.categoryId, name: form.name, valuationMethod: form.valuationMethod,
-      tickerSymbol: form.tickerSymbol || null, broker: form.broker.trim(), ownerName: form.ownerName || null,
+      tickerSymbol: form.tickerSymbol || null, broker: form.broker.trim(),
       currency: form.currency, quantity: form.quantity ? numeric(form.quantity) : null,
       investedValue: numeric(form.investedValue), currentValue: isFixedRate ? null : numeric(form.currentValue),
       fixedAnnualRate: isFixedRate ? numeric(form.fixedAnnualRate) / 100 : null,
@@ -671,7 +671,7 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
       <div><p>P/L</p><strong className={holding.kind === 'LIABILITY' ? '' : holding.profitLoss >= 0 ? 'positive' : 'negative'}>{holding.kind === 'LIABILITY' ? '—' : `${holding.profitLoss >= 0 ? '+' : ''}${money(holding.profitLoss, holding.currency)} · ${percent(holding.profitLossPercentage)}`}</strong></div>
     </div>
     <div className="drawer-facts">
-      <span>Broker / owner<b>{holding.broker || '—'}{holding.ownerName ? ` · ${holding.ownerName}` : ''}</b></span>
+      <span>Broker<b>{holding.broker || '—'}</b></span>
       <span>Currency<b>{holding.currency}</b></span>
       <span>Valuation method<b className="fact-with-icon">{label(holding.valuationMethod)}
         <button type="button" className={`calc-toggle${calcOpen ? ' open' : ''}`} aria-expanded={calcOpen} aria-label="How this value is calculated" title="How this value is calculated" onClick={() => setCalcOpen(o => !o)}><i>i</i></button>
@@ -999,7 +999,7 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
       </button>
       {overviewOpen && <div className="insight-grid">
         <BreakdownCard title="By category" items={data.byCategory} total={total} />
-        <BreakdownCard title="By broker / owner" items={data.byBroker} total={total} />
+        <BreakdownCard title="By broker" items={data.byBroker} total={total} />
         <BreakdownCard title="By tag" items={data.byTag} total={total} />
         <BreakdownCard title="By currency" items={data.byCurrency} total={total} />
         <BreakdownCard title="By liquidity" items={data.byLiquidity} total={total} />
@@ -1088,7 +1088,7 @@ function BrokersView({ displayCurrency, dataVersion }: { displayCurrency: string
       <div className="broker-meta"><span>Invested {money(b.investedValue)}</span><span className={b.profitLoss >= 0 ? 'positive' : 'negative'}>{b.profitLoss >= 0 ? '+' : ''}{money(b.profitLoss)}</span></div>
       <div className="tag-row">{b.categories.map(c => <em key={c}>{c}</em>)}</div>
       <p className="hint">Last change {since(b.lastUpdated)}{b.currencies.length > 1 ? ` · ${b.currencies.join(', ')}` : ''}</p>
-    </article>)}{!data.brokers.length && <p className="hint">Assign holdings to a broker or owner to see them grouped here.</p>}</section>
+    </article>)}{!data.brokers.length && <p className="hint">Assign holdings to a broker to see them grouped here.</p>}</section>
     <section className="panel">
       <div className="panel-heading"><h3>Connect a source</h3><span>Automated sync — Phase 3</span></div>
       <p className="hint">Automated sync isn't live yet — bulk-load transactions from a broker's CSV or XML statement on the Transactions page.</p>

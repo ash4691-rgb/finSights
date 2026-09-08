@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * A named position — a stock, fund, crypto, FD, loan — filed under one {@link Category} and
- * held at one broker/owner. Asset/Liability type is inherited from its category.
+ * held at one broker. Asset/Liability type is inherited from its category.
  */
 @Entity
 @Table(name = "holdings")
@@ -29,8 +29,6 @@ public class Holding {
     private String holdingRef;
     @Column(nullable = false, length = 96)
     private String broker;
-    @Column(length = 96)
-    private String ownerName;
     private String currency = "INR";
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private ValuationMethod valuationMethod;
@@ -84,8 +82,6 @@ public class Holding {
     public void setHoldingRef(String holdingRef) { this.holdingRef = holdingRef; }
     public String getBroker() { return broker; }
     public void setBroker(String broker) { this.broker = broker; }
-    public String getOwnerName() { return ownerName; }
-    public void setOwnerName(String ownerName) { this.ownerName = ownerName; }
     public String getCurrency() { return currency; }
     public void setCurrency(String currency) { this.currency = currency; }
     public ValuationMethod getValuationMethod() { return valuationMethod; }
