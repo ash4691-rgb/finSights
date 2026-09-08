@@ -64,7 +64,7 @@ public class FxRateService {
                 invested, current, current.subtract(invested), holding.profitLossPercentage(),
                 holding.quantity(), holding.fixedAnnualRate(), holding.compoundingFrequency(),
                 holding.fixedRateStartDate(), holding.liquidWithinSevenDays(), holding.blocked(), holding.description(), holding.notes(),
-                holding.tags(), holding.createdAt(), holding.updatedAt());
+                holding.tags(), holding.createdAt(), holding.updatedAt(), holding.priceUpdatedAt());
     }
 
     private BigDecimal rateToInr(String currency) {

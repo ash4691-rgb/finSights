@@ -87,7 +87,7 @@ class MovementServiceTest {
         HoldingResponse holding = new HoldingResponse(
                 "h-1", "hr-1", "c-1", "Fixed Income", "Incomplete FD", HoldingKind.ASSET, ValuationMethod.FIXED_RATE,
                 null, "Bank", null, "INR", new BigDecimal("1000"), new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now());
+                null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null);
         when(snapshots.closestAtOrBefore(any(SnapshotSubject.class), anyString(), any(Instant.class)))
                 .thenReturn(new BigDecimal("900"));
 
@@ -109,7 +109,7 @@ class MovementServiceTest {
         return new HoldingResponse(
                 "h-1", "hr-1", "c-1", "Growth Equity", "Reliance", HoldingKind.ASSET, ValuationMethod.MANUAL,
                 null, "Kite", null, "INR", new BigDecimal("100"), new BigDecimal(currentValue), BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now());
+                null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null);
     }
 
     private HoldingResponse fixedRateHolding(String principal, String rate, CompoundingFrequency frequency, LocalDate start) {
@@ -121,6 +121,6 @@ class MovementServiceTest {
         return new HoldingResponse(
                 "h-2", "hr-2", "c-2", "Fixed Income", "HDFC FD", HoldingKind.ASSET, ValuationMethod.FIXED_RATE,
                 null, "HDFC", null, "INR", principalValue, currentValue, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, rateValue, frequency, start, false, false, null, null, Set.of(), Instant.now(), Instant.now());
+                null, rateValue, frequency, start, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null);
     }
 }

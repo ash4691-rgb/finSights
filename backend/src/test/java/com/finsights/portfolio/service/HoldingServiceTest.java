@@ -30,13 +30,14 @@ class HoldingServiceTest {
     @Mock FxRateService fx;
     @Mock TransactionRepository transactions;
     @Mock PriceSnapshotService snapshots;
+    @Mock MarketDataService marketData;
 
     private HoldingService service;
     private Holding holding;
 
     @BeforeEach
     void setUp() {
-        service = new HoldingService(holdings, categories, currentUser, valuations, fx, transactions, snapshots);
+        service = new HoldingService(holdings, categories, currentUser, valuations, fx, transactions, snapshots, marketData);
         holding = new Holding();
         holding.setName("Reliance");
     }

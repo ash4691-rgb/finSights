@@ -57,13 +57,22 @@ public class ValuationService {
                 steps.add("Last updated " + holding.getUpdatedAt());
             }
             case MARKET_PRICE -> {
-                steps.add("Marked to the latest stored market value: " + current.toPlainString());
-                if (holding.getQuantity() != null) steps.add("Quantity on record: " + holding.getQuantity().toPlainString());
-                if (holding.getTickerSymbol() != null && !holding.getTickerSymbol().isBlank()) {
-                    steps.add("Ticker on file: " + holding.getTickerSymbol()
-                            + " — no live price feed is connected yet, so this is not refreshed automatically.");
+                boolean hasTicker = holding.getTickerSymbol() != null && !holding.getTickerSymbol().isBlank();
+                if (hasTicker && holding.getPriceUpdatedAt() != null) {
+                    steps.add("Ticker " + holding.getTickerSymbol() + " — last priced from the live feed at "
+                            + holding.getPriceUpdatedAt());
+                    if (holding.getQuantity() != null) {
+                        steps.add("Quantity " + holding.getQuantity().toPlainString()
+                                + " × latest price → " + current.toPlainString() + " " + holding.getCurrency());
+                    }
+                    steps.add("Refreshes each time you open the Holdings page (at most every 15 minutes).");
+                } else if (hasTicker) {
+                    steps.add("Ticker " + holding.getTickerSymbol()
+                            + " on file — open the Holdings page to pull the first live price.");
+                    steps.add("Current value held at its last manual figure: " + current.toPlainString());
                 } else {
-                    steps.add("No ticker symbol on file, and no live price feed is connected yet — update the value manually until then.");
+                    steps.add("Marked to the last entered market value: " + current.toPlainString());
+                    steps.add("Add a ticker symbol to have this priced from the live feed automatically.");
                 }
             }
             case BROKER_SYNC -> {

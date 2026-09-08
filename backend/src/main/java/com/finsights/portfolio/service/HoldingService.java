@@ -8,11 +8,14 @@ import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.HoldingRequest;
 import com.finsights.portfolio.dto.HoldingResponse;
+import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.repository.CategoryRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
@@ -20,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,10 +38,14 @@ public class HoldingService {
     private final FxRateService fx;
     private final TransactionRepository transactions;
     private final PriceSnapshotService snapshots;
+    private final MarketDataService marketData;
+
+    /** MARKET_PRICE holdings are re-priced from the live feed no more often than this. */
+    private static final Duration PRICE_MAX_AGE = Duration.ofMinutes(15);
 
     public HoldingService(HoldingRepository holdings, CategoryRepository categories, CurrentUserService currentUser,
                           ValuationService valuations, FxRateService fx, TransactionRepository transactions,
-                          PriceSnapshotService snapshots) {
+                          PriceSnapshotService snapshots, MarketDataService marketData) {
         this.holdings = holdings;
         this.categories = categories;
         this.currentUser = currentUser;
@@ -45,6 +53,7 @@ public class HoldingService {
         this.fx = fx;
         this.transactions = transactions;
         this.snapshots = snapshots;
+        this.marketData = marketData;
     }
 
     @Transactional
@@ -53,7 +62,50 @@ public class HoldingService {
         List<Holding> owned = holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId);
         backfillHoldingRefs(owned);
         backfillOpeningTransactions(owned, userId);
+        refreshMarketPrices(owned);
         return owned.stream().map(this::toResponse).toList();
+    }
+
+    /**
+     * Re-prices MARKET_PRICE holdings that have a ticker, a quantity, and a price older
+     * than {@link #PRICE_MAX_AGE}. Runs on every Holdings-page load; the feed itself is
+     * cached and every failure is swallowed so a dead feed never blocks the page.
+     */
+    private void refreshMarketPrices(List<Holding> owned) {
+        Instant cutoff = Instant.now().minus(PRICE_MAX_AGE);
+        List<Holding> stale = owned.stream()
+                .filter(h -> h.getValuationMethod() == ValuationMethod.MARKET_PRICE)
+                .filter(h -> h.getTickerSymbol() != null && !h.getTickerSymbol().isBlank())
+                .filter(h -> h.getQuantity() != null && h.getQuantity().signum() > 0)
+                .filter(h -> h.getPriceUpdatedAt() == null || h.getPriceUpdatedAt().isBefore(cutoff))
+                .toList();
+        if (stale.isEmpty()) return;
+
+        Map<String, MarketQuoteResponse> quotes = marketData.quotes(stale.stream()
+                .map(h -> h.getTickerSymbol().trim().toUpperCase())
+                .collect(Collectors.toSet()));
+        Instant now = Instant.now();
+        for (Holding holding : stale) {
+            MarketQuoteResponse quote = quotes.get(holding.getTickerSymbol().trim().toUpperCase());
+            if (quote == null || quote.price() == null || quote.price().signum() <= 0) continue;
+            BigDecimal unitPrice = convertToHoldingCurrency(quote.price(), quote.currency(), holding.getCurrency());
+            BigDecimal newValue = unitPrice.multiply(holding.getQuantity()).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal oldValue = zeroIfNull(holding.getCurrentValue());
+            holding.setCurrentValue(newValue);
+            holding.setPriceUpdatedAt(now);
+            holdings.save(holding);
+            if (oldValue.compareTo(newValue) != 0) {
+                snapshots.record(SnapshotSubject.HOLDING, holding.getId(), holding.getUser(), newValue);
+            }
+        }
+    }
+
+    private BigDecimal convertToHoldingCurrency(BigDecimal amount, String from, String to) {
+        try {
+            return fx.convert(amount, from, to);
+        } catch (RuntimeException e) {
+            return amount; // unsupported currency pair — treat the quote as already in the holding's currency
+        }
     }
 
     /** Gives any pre-existing holding created before the reference feature a stable ref, once. */
@@ -236,7 +288,7 @@ public class HoldingService {
                 holding.getCurrency(), invested, current, pnl, pnlPct, holding.getQuantity(), holding.getFixedAnnualRate(),
                 holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getLiquidWithinSevenDays(),
                 holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
-                holding.getCreatedAt(), holding.getUpdatedAt());
+                holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt());
     }
 
     private Holding findOwned(String id) {

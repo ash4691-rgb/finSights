@@ -62,6 +62,8 @@ public class Holding {
     private Set<String> tags = new LinkedHashSet<>();
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
+    /** When the MARKET_PRICE current value was last refreshed from the live feed; null until first fetch. */
+    private Instant priceUpdatedAt;
     @Version private long version;
 
     public Holding() { }
@@ -114,4 +116,6 @@ public class Holding {
     public void setTags(Set<String> tags) { this.tags = tags; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public Instant getPriceUpdatedAt() { return priceUpdatedAt; }
+    public void setPriceUpdatedAt(Instant priceUpdatedAt) { this.priceUpdatedAt = priceUpdatedAt; }
 }

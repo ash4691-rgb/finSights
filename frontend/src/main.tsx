@@ -26,8 +26,9 @@ type Holding = {
   investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number
   quantity?: number; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string
   liquidWithinSevenDays: boolean; blocked: boolean; description?: string; notes?: string; tags: string[]
-  createdAt?: string; updatedAt?: string
+  createdAt?: string; updatedAt?: string; priceUpdatedAt?: string
 }
+type SymbolSuggestion = { symbol: string; name: string; exchange: string; type: string }
 type Breakdown = { label: string; value: number; investedValue: number; profitLoss: number }
 type Dashboard = { netWorth: number; totalAssets: number; totalLiabilities: number; investedAssets: number; portfolioProfitLoss: number; byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[] }
 type User = { email: string; displayName: string; demoMode: boolean }
@@ -107,6 +108,14 @@ const percent = (value: number) => `${(value ?? 0).toFixed(1)}%`
 const label = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
 const numeric = (value: string) => value === '' ? 0 : Number(value)
 const since = (value?: string) => value ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+const ago = (value?: string) => {
+  if (!value) return '—'
+  const secs = Math.round((Date.now() - new Date(value).getTime()) / 1000)
+  if (secs < 60) return 'just now'
+  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`
+  if (secs < 86400) return `${Math.floor(secs / 3600)} h ago`
+  return since(value)
+}
 const shortId = (id: string) => `#${id.slice(-8)}`
 
 function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
@@ -586,7 +595,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
         <Field label="Name" required><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Reliance Industries, HDFC FD" /></Field>
         <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></Field>
         <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>
-        {form.valuationMethod === 'MARKET_PRICE' && <Field label="Ticker symbol"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. RELIANCE, INFY" /></Field>}
+        {form.valuationMethod === 'MARKET_PRICE' && <Field label="Ticker symbol" wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
         {!isEdit && <Field label="Broker / platform" required><input required value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>}
         {!isEdit && <Field label="Currency"><select value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>}
         {!isEdit && <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
@@ -648,6 +657,8 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
       </b></span>
       <span>Last updated<b>{since(holding.updatedAt)}</b></span>
       {holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
+      {holding.valuationMethod === 'MARKET_PRICE' && holding.tickerSymbol && <span>Live price
+        <b className="fact-with-icon"><span className="live-dot" />{holding.tickerSymbol} · {holding.priceUpdatedAt ? ago(holding.priceUpdatedAt) : 'pending'}</b></span>}
     </div>
     {calcOpen && <div className="calc-panel">
       <div className="panel-heading"><h3>How this value is calculated</h3></div>
@@ -1253,6 +1264,51 @@ function TagInput({ tags, suggestions, onChange }: { tags: string[]; suggestions
       <span>Popular</span>
       {popular.map(t => <button type="button" key={t} className="tag-idea" onClick={() => add(t)}>+ {t}</button>)}
     </div>}
+  </div>
+}
+
+// Ticker type-ahead backed by /api/market/search (Yahoo Finance). Free text is
+// still accepted; picking a row commits the exchange symbol (e.g. RELIANCE.NS).
+function SymbolSearchInput({ value, onChange }: { value: string; onChange: (symbol: string) => void }) {
+  const [query, setQuery] = useState(value)
+  const [results, setResults] = useState<SymbolSuggestion[]>([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const justPicked = useRef(false)
+
+  useEffect(() => {
+    if (justPicked.current) { justPicked.current = false; return }
+    const q = query.trim()
+    if (q.length < 2) { setResults([]); setLoading(false); return }
+    setLoading(true)
+    const timer = setTimeout(() => {
+      api<SymbolSuggestion[]>(`/api/market/search?q=${encodeURIComponent(q)}`)
+        .then(setResults).catch(() => setResults([])).finally(() => setLoading(false))
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const pick = (s: SymbolSuggestion) => { justPicked.current = true; setQuery(s.symbol); onChange(s.symbol); setResults([]); setOpen(false) }
+
+  return <div className="tag-input" ref={boxRef}>
+    <div className="tag-input-field">
+      <input value={query} placeholder="Search RELIANCE, INFY, BTC-USD…"
+        onFocus={() => setOpen(true)}
+        onChange={e => { const v = e.target.value.toUpperCase(); setQuery(v); onChange(v); setOpen(true) }} />
+      {open && (loading || results.length > 0) && <ul className="tag-menu">
+        {loading && results.length === 0 && <li className="tag-menu-note">Searching…</li>}
+        {results.map(s => <li key={s.symbol}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => pick(s)}>
+          <b>{s.symbol}</b> <span>{s.name}{s.exchange ? ` · ${s.exchange}` : ''}</span>
+        </button></li>)}
+      </ul>}
+    </div>
   </div>
 }
 

@@ -12,5 +12,5 @@ public record HoldingResponse(
         BigDecimal investedValue, BigDecimal currentValue, BigDecimal profitLoss, BigDecimal profitLossPercentage,
         BigDecimal quantity, BigDecimal fixedAnnualRate, CompoundingFrequency compoundingFrequency,
         LocalDate fixedRateStartDate, Boolean liquidWithinSevenDays, Boolean blocked, String description, String notes, Set<String> tags,
-        Instant createdAt, Instant updatedAt
+        Instant createdAt, Instant updatedAt, Instant priceUpdatedAt
 ) { }
