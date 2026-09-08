@@ -295,7 +295,7 @@ function DashboardView({ dashboard, holdings, onManage }: { dashboard: Dashboard
 }
 
 function BreakdownCard({ title, items, total }: { title: string; items: Breakdown[]; total: number }) {
-  return <article className="panel"><div className="panel-heading"><h3>{title}</h3><span>{items.length} group{items.length === 1 ? '' : 's'}</span></div><div className="breakdown-list">{items.slice(0, 6).map(item => <div className="breakdown" key={item.label}><div className="breakdown-copy"><div><span>{label(item.label)}</span><strong>{money(item.value)}</strong></div><div className="bar"><i style={{ width: `${Math.min(100, total ? (item.value / total) * 100 : 0)}%` }} /></div></div><b className={item.profitLoss >= 0 ? 'positive' : 'negative'}>{item.profitLoss >= 0 ? '+' : ''}{money(item.profitLoss)}</b></div>)}{!items.length && <p className="hint">Nothing to group yet.</p>}</div></article>
+  return <article className="panel"><div className="panel-heading"><h3>{title}</h3><span>{items.length} group{items.length === 1 ? '' : 's'}</span></div><div className="breakdown-list">{items.slice(0, 6).map(item => <div className="breakdown" key={item.label}><div className="breakdown-copy"><div><span title={label(item.label)}>{label(item.label)}</span><strong>{money(item.value)}</strong></div><div className="bar"><i style={{ width: `${Math.min(100, total ? (item.value / total) * 100 : 0)}%` }} /></div></div><b className={item.profitLoss >= 0 ? 'positive' : 'negative'}>{item.profitLoss >= 0 ? '+' : ''}{money(item.profitLoss)}</b></div>)}{!items.length && <p className="hint">Nothing to group yet.</p>}</div></article>
 }
 
 // ---------------------------------------------------------------------------
@@ -525,8 +525,8 @@ function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOpen }: {
           <button className="name-button" onClick={() => onOpen(holding)} title={holding.name}><strong>{holding.name}</strong><small className="holding-ref">{holding.holdingId}</small></button>
           {holding.description && <InfoTip text={holding.description} />}
         </div></td>
-        <td>{holding.broker || '—'}</td>
-        <td><span className={`badge ${holding.kind === 'LIABILITY' ? 'liability' : ''}`}>{holding.categoryName}</span><small className="owner">{label(holding.valuationMethod)}</small></td>
+        <td><span className="trunc-cell" title={holding.broker || ''}>{holding.broker || '—'}</span></td>
+        <td><span className={`badge trunc-cell ${holding.kind === 'LIABILITY' ? 'liability' : ''}`} title={holding.categoryName}>{holding.categoryName}</span><small className="owner">{label(holding.valuationMethod)}</small></td>
         <td>{money(holding.investedValue, holding.currency)}</td>
         <td><strong>{money(holding.currentValue, holding.currency)}</strong></td>
         <td>{holding.kind === 'LIABILITY' ? <span className="owner">—</span> : <span className={holding.profitLoss >= 0 ? 'positive' : 'negative'}>{holding.profitLoss >= 0 ? '+' : ''}{money(holding.profitLoss, holding.currency)}<small>{percent(holding.profitLossPercentage)}</small></span>}</td>
@@ -784,8 +784,8 @@ function TransactionsView({ holdings, displayCurrency, dataVersion, reload }: { 
       <tbody>{loading ? <tr><td colSpan={8} className="empty"><strong>Loading…</strong></td></tr> : sorted.length ? sorted.map(t => <tr key={t.id}>
         <td>{since(t.date)}</td>
         <td><span className={`badge txn-${t.type.toLowerCase()}`}>{label(t.type)}</span></td>
-        <td><strong className="trunc-name" title={t.holdingName}>{t.holdingName}</strong><small className="owner">{t.categoryName}</small></td>
-        <td>{t.broker || '—'}</td>
+        <td><strong className="trunc-name" title={t.holdingName}>{t.holdingName}</strong></td>
+        <td><span className="trunc-cell" title={t.broker || ''}>{t.broker || '—'}</span></td>
         <td><strong>{money(t.amount, t.currency)}</strong></td>
         <td>{t.quantity ?? '—'}</td>
         <td className="txn-notes">{t.notes || '—'}</td>

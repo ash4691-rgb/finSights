@@ -117,11 +117,12 @@ h3{color:var(--text)}
 .panel-heading h3{font-size:14px;margin:0}
 .panel-heading span{font-size:11px;color:var(--text-3)}
 .breakdown-list{display:grid;gap:15px}
-.breakdown{display:flex;justify-content:space-between;gap:16px;align-items:center}
-.breakdown-copy{flex:1}
-.breakdown-copy>div:first-child{display:flex;justify-content:space-between;font-size:12px;color:var(--text-2);margin-bottom:6px}
-.breakdown-copy strong{font-size:12px;color:var(--text)}
-.breakdown b{font-size:11px;white-space:nowrap}
+.breakdown{display:flex;min-width:0;justify-content:space-between;gap:16px;align-items:center}
+.breakdown-copy{flex:1;min-width:0}
+.breakdown-copy>div:first-child{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--text-2);margin-bottom:6px}
+.breakdown-copy>div:first-child span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.breakdown-copy strong{font-size:12px;color:var(--text);flex-shrink:0}
+.breakdown b{font-size:11px;white-space:nowrap;flex-shrink:0}
 .bar{height:5px;background:var(--surface-2);border-radius:8px;overflow:hidden;border:1px solid var(--border-soft)}
 .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:inherit}
 .recent{display:flex;flex-direction:column}
@@ -148,6 +149,7 @@ td>strong{color:var(--text)}
 .info-tip.above{transform:translate(-50%,-100%)}
 .name-button strong,.name-button small,.owner,td .positive small,td .negative small{display:block}
 .name-button strong,.name-cell>strong,.trunc-name{display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trunc-cell{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .name-button small,.owner,td .positive small,td .negative small{margin-top:3px;color:var(--text-3);font-size:11px;font-weight:400}
 .badge{display:inline-block;border:1px solid var(--border-strong);color:var(--chip-text);background:var(--chip-bg);border-radius:4px;padding:3px 5px;font-size:9px;font-weight:800}
 .badge.liability{background:var(--liability-bg);border-color:var(--liability-bg);color:var(--liability-text)}
