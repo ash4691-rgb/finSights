@@ -143,6 +143,7 @@ public class TransactionService {
         target.setDate(source.date());
         target.setAmount(source.amount() == null ? BigDecimal.ZERO : source.amount());
         target.setQuantity(source.quantity());
+        target.setInterestPaid(source.type() == TransactionType.INTEREST && Boolean.TRUE.equals(source.interestPaid()));
         target.setNotes(source.notes() == null || source.notes().isBlank() ? null : source.notes().trim());
     }
 
@@ -172,6 +173,6 @@ public class TransactionService {
         }
         return new TransactionResponse(t.getId(), h.getId(), h.getName(), category.getId(), category.getName(),
                 h.getBroker(), outCurrency, t.getType(), t.getDate(), amount,
-                t.getQuantity(), principal, t.getNotes(), t.getCreatedAt());
+                t.getQuantity(), principal, t.isInterestPaid(), t.getNotes(), t.getCreatedAt());
     }
 }

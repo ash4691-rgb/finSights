@@ -46,7 +46,7 @@ type Settings = {
 type Country = { code: string; name: string; currency: string }
 type Transaction = {
   id: string; holdingId: string; holdingName: string; categoryId: string; categoryName: string; broker?: string
-  currency: string; type: TransactionType; date: string; amount: number; quantity?: number; principalPortion?: number; notes?: string; createdAt?: string
+  currency: string; type: TransactionType; date: string; amount: number; quantity?: number; principalPortion?: number; interestPaid?: boolean; notes?: string; createdAt?: string
 }
 type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
 type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string }
@@ -635,10 +635,14 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
         </Field>
         {!isLiability && <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>}
         {isMarket && <Field label="Ticker symbol" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
-        <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
+        {isEdit
+          ? <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
+          : <div className="field-pair">
+              <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries'} /></Field>
+              <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><input required maxLength={96} value={form.broker} onChange={e => set('broker', e.target.value)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>
+            </div>}
         <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
-        {!isEdit && <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><input required maxLength={96} value={form.broker} onChange={e => set('broker', e.target.value)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>}
-        {!isLiability && !isEdit && <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
+        {!isLiability && !isEdit && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
         {!isLiability && !isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required><input required type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
         {isFixedRate && <>
           <Field label="Annual rate (%)" required><input required type="number" min="0" step="0.01" value={form.fixedAnnualRate} onChange={e => set('fixedAnnualRate', e.target.value)} /></Field>
@@ -688,6 +692,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
       {error && <p className="form-error">{error}</p>}
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.categoryId || !form.name.trim()
         || (isMarket && !form.tickerSymbol.trim())
+        || (isMarket && !isEdit && !form.quantity)
         || (!isEdit && !isLiability && !form.investedValue)
         || (!isLiability && form.valuationMethod === 'MANUAL' && !form.currentValue)
         || (isLiability && (!form.investedValue || !form.currentValue || (isOneTime ? !form.repaymentDueDate : (!form.emiDayOfMonth || (!form.emiAmount && !form.loanTermMonths)))))
@@ -872,12 +877,12 @@ function TransactionModal({ transaction, holdings, onClose, onSaved }: { transac
   const isLiab = (id: string) => holdingOf(id)?.kind === 'LIABILITY'
   const startHoldingId = transaction?.holdingId ?? holdings[0]?.id ?? ''
   const [form, setForm] = useState(() => transaction
-    ? { holdingId: transaction.holdingId, type: transaction.type, date: transaction.date.slice(0, 10), amount: String(transaction.amount), quantity: transaction.quantity != null ? String(transaction.quantity) : '', notes: transaction.notes || '' }
-    : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', notes: '' })
+    ? { holdingId: transaction.holdingId, type: transaction.type, date: transaction.date.slice(0, 10), amount: String(transaction.amount), quantity: transaction.quantity != null ? String(transaction.quantity) : '', interestPaid: !!transaction.interestPaid, notes: transaction.notes || '' }
+    : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', interestPaid: false, notes: '' })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const liability = isLiab(form.holdingId)
   const allowedTypes = liability ? liabilityTxnTypes : assetTxnTypes
-  const set = (key: string, value: string) => setForm(current => {
+  const set = (key: string, value: string | boolean) => setForm(current => {
     const next = { ...current, [key]: value }
     if (key === 'holdingId') {
       const nowLiab = holdings.find(h => h.id === value)?.kind === 'LIABILITY'
@@ -888,7 +893,7 @@ function TransactionModal({ transaction, holdings, onClose, onSaved }: { transac
   })
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('')
-    const payload = { holdingId: form.holdingId, type: form.type, date: form.date, amount: numeric(form.amount), quantity: form.quantity ? numeric(form.quantity) : null, notes: form.notes || null }
+    const payload = { holdingId: form.holdingId, type: form.type, date: form.date, amount: numeric(form.amount), quantity: form.quantity ? numeric(form.quantity) : null, interestPaid: form.type === 'INTEREST' ? form.interestPaid : null, notes: form.notes || null }
     try {
       await api(transaction ? `/api/transactions/${transaction.id}` : '/api/transactions', { method: transaction ? 'PUT' : 'POST', body: JSON.stringify(payload) })
       onSaved()
@@ -897,18 +902,47 @@ function TransactionModal({ transaction, holdings, onClose, onSaved }: { transac
   const showQuantity = ['BUY', 'SELL', 'SPLIT', 'ADJUSTMENT'].includes(form.type)
   return <div className="modal-backdrop"><section className="modal"><div className="modal-header"><div><p className="eyebrow">{transaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}</p><h2>{transaction ? label(transaction.type) : 'Log a transaction'}</h2></div><button className="close" onClick={onClose}>×</button></div>
     <form onSubmit={submit}><div className="form-grid">
-      <Field label="Holding" required wide><select required value={form.holdingId} onChange={e => set('holdingId', e.target.value)}>{holdings.map(h => <option key={h.id} value={h.id}>{h.name} @ {h.broker || 'unassigned'}</option>)}</select></Field>
+      <Field label="Holding" required wide><HoldingPicker holdings={holdings} value={form.holdingId} onChange={id => set('holdingId', id)} /></Field>
       <Field label="Type" required><select required value={form.type} onChange={e => set('type', e.target.value)}>{allowedTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
       <Field label={form.type === 'SELL' ? 'Proceeds' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'}><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>
       {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'}><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
-      <p className="txn-hint">{txnTypeHint[form.type]}</p>
+      {form.type === 'INTEREST' && <div className="check-row"><label><input type="checkbox" checked={form.interestPaid} onChange={e => set('interestPaid', e.target.checked)} /> Received in cash <InfoTip text="On: the income is booked as realised P/L. Off: it accrues onto the holding's current value." /></label></div>}
+      <p className="txn-hint">{form.type === 'INTEREST' ? (form.interestPaid ? 'Cash received — adds to realised P/L.' : 'Accrues onto current value. No change to quantity or invested.') : txnTypeHint[form.type]}</p>
       <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
     </div>
     {error && <p className="form-error">{error}</p>}
-    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
+    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.holdingId}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
     </form>
   </section></div>
+}
+
+// Client-side type-ahead over the loaded holdings — the plain dropdown gets unusable past a few dozen.
+function HoldingPicker({ holdings, value, onChange }: { holdings: Holding[]; value: string; onChange: (id: string) => void }) {
+  const selected = holdings.find(h => h.id === value)
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const boxRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+  const q = query.trim().toLowerCase()
+  const matches = holdings.filter(h => !q || `${h.name} ${h.broker ?? ''} ${h.categoryName}`.toLowerCase().includes(q)).slice(0, 25)
+  return <div className="tag-input" ref={boxRef}>
+    <div className="tag-input-field">
+      <input value={open ? query : (selected ? `${selected.name} · ${selected.broker || 'unassigned'}` : '')}
+        placeholder="Search holdings by name or broker…"
+        onFocus={() => { setQuery(''); setOpen(true) }}
+        onChange={e => { setQuery(e.target.value); setOpen(true) }} />
+      {open && matches.length > 0 && <ul className="tag-menu">
+        {matches.map(h => <li key={h.id}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { onChange(h.id); setOpen(false); setQuery('') }}>
+          <b>{h.name}</b> <span>{h.broker || 'unassigned'} · {h.categoryName}</span>
+        </button></li>)}
+      </ul>}
+    </div>
+  </div>
 }
 
 function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
@@ -1136,6 +1170,23 @@ function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntry | nul
   }))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
+  // Pull the name (and a first price) from the ticker, like a market-linked holding does.
+  useEffect(() => {
+    const symbol = form.tickerSymbol.trim()
+    if (!symbol) return
+    const timer = setTimeout(() => {
+      api<MarketQuote>(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`)
+        .then(q => setForm(current => {
+          if (current.tickerSymbol.trim().toUpperCase() !== symbol.toUpperCase()) return current
+          const next = { ...current }
+          if (q.name && (!current.name.trim() || current.name === current.tickerSymbol)) next.name = q.name
+          if (q.price && !current.price) next.price = String(q.price)
+          return next
+        }))
+        .catch(() => { /* leave fields as-is */ })
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [form.tickerSymbol])
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('')
     try {
@@ -1160,8 +1211,8 @@ function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntry | nul
   </div>
     <form onSubmit={submit}>
       <div className="form-grid">
-        <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Nifty 50, Bitcoin" /></Field>
-        <Field label="Ticker"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. NIFTY, BTC" /></Field>
+        <Field label="Ticker" wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>
+        <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Filled from the ticker, or type your own" /></Field>
         <Field label={item ? 'Update price' : 'Current price'} required={!item}>
           <input type="number" min="0" step="any" required={!item} value={form.price} onChange={e => set('price', e.target.value)} />
         </Field>

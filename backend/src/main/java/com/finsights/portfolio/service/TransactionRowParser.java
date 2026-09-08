@@ -24,13 +24,16 @@ final class TransactionRowParser {
     }
 
     static TransactionRequest toRequest(Function<String, String> field) {
+        String notes = blankToNull(field.apply("notes"));
         return new TransactionRequest(
                 require(field.apply("holdingid"), "holdingId"),
                 parseEnum(TransactionType.class, field.apply("type"), "type"),
                 requireDate(field.apply("date")),
                 decimal(field.apply("amount"), "amount"),
                 optionalDecimal(field.apply("quantity"), "quantity"),
-                blankToNull(field.apply("notes")));
+                // bulk import can't tick a checkbox — a note that says "paid"/"received" marks cash interest
+                notes != null && notes.toLowerCase().matches(".*\\b(paid|received|in cash)\\b.*"),
+                notes);
     }
 
     static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }

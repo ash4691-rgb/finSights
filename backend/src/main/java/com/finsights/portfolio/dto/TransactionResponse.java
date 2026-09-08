@@ -8,5 +8,5 @@ import java.time.LocalDate;
 public record TransactionResponse(
         String id, String holdingId, String holdingName, String categoryId, String categoryName,
         String broker, String currency, TransactionType type, LocalDate date, BigDecimal amount,
-        BigDecimal quantity, BigDecimal principalPortion, String notes, Instant createdAt
+        BigDecimal quantity, BigDecimal principalPortion, Boolean interestPaid, String notes, Instant createdAt
 ) { }

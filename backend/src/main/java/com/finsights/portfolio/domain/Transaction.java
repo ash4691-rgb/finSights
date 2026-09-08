@@ -25,6 +25,8 @@ public class Transaction {
     private BigDecimal quantity;
     @Column(length = 1024)
     private String notes;
+    /** For INTEREST: true = received in cash (books realised P/L); null/false = accrues onto current value. */
+    private Boolean interestPaid;
     /** For REPAY: the part of {@link #amount} that cut principal (rest was interest). Set when the row is saved. */
     @Column(precision = 20, scale = 2)
     private BigDecimal principalPortion;
@@ -47,6 +49,8 @@ public class Transaction {
     public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
+    public boolean isInterestPaid() { return Boolean.TRUE.equals(interestPaid); }
+    public void setInterestPaid(Boolean interestPaid) { this.interestPaid = interestPaid; }
     public BigDecimal getPrincipalPortion() { return principalPortion; }
     public void setPrincipalPortion(BigDecimal principalPortion) { this.principalPortion = principalPortion; }
     public Instant getCreatedAt() { return createdAt; }

@@ -93,7 +93,7 @@ class TransactionServiceTest {
         when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var response = service.create(new TransactionRequest("h-1", TransactionType.BUY,
-                LocalDate.of(2026, 1, 15), new BigDecimal("50000"), new BigDecimal("10"), "Initial buy"));
+                LocalDate.of(2026, 1, 15), new BigDecimal("50000"), new BigDecimal("10"), null, "Initial buy"));
 
         assertThat(response.holdingName()).isEqualTo("Reliance");
         assertThat(response.categoryName()).isEqualTo("Growth Equity");

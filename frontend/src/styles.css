@@ -352,7 +352,7 @@ th.sortable:hover{color:var(--text)}
 .date-filter{padding:0 10px;color:var(--text-2)}
 .txn-notes{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge.txn-buy,.badge.txn-interest{background:var(--success-bg);border-color:var(--success-bg);color:var(--success-text)}
-.badge.txn-sell{background:var(--liability-bg);border-color:var(--liability-bg);color:var(--liability-text)}
+.badge.txn-sell,.badge.txn-repay{background:var(--liability-bg);border-color:var(--liability-bg);color:var(--liability-text)}
 .drawer{width:min(620px,100%)}
 .drawer-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}
 .drawer-metrics strong{overflow-wrap:anywhere}

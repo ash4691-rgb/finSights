@@ -164,6 +164,10 @@ public class HoldingService {
     @Transactional
     public HoldingResponse create(HoldingRequest request) {
         String userId = currentUser.currentUser().getId();
+        if (request.valuationMethod() == ValuationMethod.MARKET_PRICE
+                && (request.quantity() == null || request.quantity().signum() <= 0)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A market-linked holding needs a quantity");
+        }
         requireUniqueNameAndBroker(userId, request.name().trim(), request.broker().trim(), null);
         Holding holding = new Holding();
         holding.setUser(currentUser.currentUser());
@@ -337,7 +341,7 @@ public class HoldingService {
                         }
                     }
                 }
-                case INTEREST -> accrued = accrued.add(amount);
+                case INTEREST -> { if (t.isInterestPaid()) realised = realised.add(amount); else accrued = accrued.add(amount); }
                 case REPAY -> { /* liabilities only — handled elsewhere */ }
             }
         }
