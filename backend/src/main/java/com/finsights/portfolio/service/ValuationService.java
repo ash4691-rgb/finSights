@@ -20,7 +20,8 @@ public class ValuationService {
 
     public BigDecimal currentValue(Holding holding) {
         if (!isFixedRate(holding)) {
-            return zeroIfNull(holding.getCurrentValue());
+            // INTEREST transactions accrue on top of the stated value (dividends reinvested, coupons, …).
+            return zeroIfNull(holding.getCurrentValue()).add(zeroIfNull(holding.getAccruedIncome()));
         }
         return compoundedValue(holding.getInvestedValue(), holding.getFixedAnnualRate(),
                 holding.getCompoundingFrequency(), holding.getFixedRateStartDate(),

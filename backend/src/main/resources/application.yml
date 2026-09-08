@@ -9,6 +9,10 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
+    properties:
+      # Store enums as plain VARCHAR, not a native ENUM type, so adding an enum
+      # constant later doesn't need a schema migration on an existing DB.
+      hibernate.type.preferred_enum_jdbc_type: VARCHAR
   h2:
     console:
       enabled: true

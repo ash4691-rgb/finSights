@@ -25,6 +25,9 @@ public class Transaction {
     private BigDecimal quantity;
     @Column(length = 1024)
     private String notes;
+    /** For REPAY: the part of {@link #amount} that cut principal (rest was interest). Set when the row is saved. */
+    @Column(precision = 20, scale = 2)
+    private BigDecimal principalPortion;
     private Instant createdAt = Instant.now();
 
     public Transaction() { }
@@ -44,5 +47,7 @@ public class Transaction {
     public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
+    public BigDecimal getPrincipalPortion() { return principalPortion; }
+    public void setPrincipalPortion(BigDecimal principalPortion) { this.principalPortion = principalPortion; }
     public Instant getCreatedAt() { return createdAt; }
 }

@@ -255,43 +255,99 @@ public class HoldingService {
                         "A holding named \"" + name + "\" at \"" + broker + "\" already exists"); });
     }
 
+    private static final java.math.MathContext MC = java.math.MathContext.DECIMAL64;
+
+    /** One purchase lot for FIFO matching. */
+    private static final class Lot {
+        BigDecimal units;
+        BigDecimal costPerUnit;
+        Lot(BigDecimal units, BigDecimal costPerUnit) { this.units = units; this.costPerUnit = costPerUnit; }
+        BigDecimal cost() { return units.multiply(costPerUnit, MC); }
+    }
+
     /**
-     * Recomputes invested value (remaining cost basis), quantity, and realised P/L from this
-     * holding's transaction ledger using average-cost accounting. A SELL books
-     * {@code proceeds − averageCost × unitsSold} as realised P/L and removes that cost from the
-     * basis; a SELL with no quantity closes the whole position. INTEREST is realised income.
+     * Recomputes a holding's derived figures from its transaction ledger.
+     *
+     * <p>Assets — FIFO lots:
+     * BUY adds a lot; SELL consumes lots front-to-back and books {@code proceeds − matched cost}
+     * as realised P/L; SPLIT scales every lot's units (and shrinks its unit cost); ADJUSTMENT with
+     * units adds a lot, without units nudges the invested figure; INTEREST accrues as income that
+     * sits on top of current value (never touches cost basis, quantity or realised P/L).
+     *
+     * <p>Liabilities: invested = total borrowed (Σ BUY); the outstanding balance and REPAY splits
+     * are handled in {@link TransactionService}, not here.
      */
     @Transactional
     public void syncFromTransactions(Holding holding) {
-        BigDecimal costBasis = BigDecimal.ZERO;
-        BigDecimal quantity = BigDecimal.ZERO;
+        boolean liability = holding.getCategory() != null && holding.getCategory().getKind() == HoldingKind.LIABILITY;
+        List<Transaction> ledger = transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(holding.getId());
+
+        if (liability) {
+            BigDecimal total = BigDecimal.ZERO;
+            for (Transaction t : ledger) {
+                if (t.getType() == TransactionType.BUY) total = total.add(zeroIfNull(t.getAmount()));
+            }
+            holding.setInvestedValue(total.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+            holding.setQuantity(null);
+            holding.setAccruedIncome(BigDecimal.ZERO);
+            holdings.save(holding);
+            return;
+        }
+
+        java.util.ArrayDeque<Lot> lots = new java.util.ArrayDeque<>();
         BigDecimal realised = BigDecimal.ZERO;
-        for (Transaction t : transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(holding.getId())) {
+        BigDecimal accrued = BigDecimal.ZERO;
+        BigDecimal basisNudge = BigDecimal.ZERO;   // unit-less ADJUSTMENT amounts
+        for (Transaction t : ledger) {
             BigDecimal amount = zeroIfNull(t.getAmount());
             BigDecimal units = t.getQuantity() == null ? BigDecimal.ZERO : t.getQuantity();
             switch (t.getType()) {
-                case BUY, ADJUSTMENT -> { costBasis = costBasis.add(amount); quantity = quantity.add(units); }
-                case SELL -> {
-                    if (costBasis.signum() <= 0 && quantity.signum() <= 0) continue; // nothing on the books to sell
-                    BigDecimal costOfSold;
-                    if (units.signum() > 0 && quantity.signum() > 0) {
-                        BigDecimal averageCost = costBasis.divide(quantity, 10, RoundingMode.HALF_UP);
-                        costOfSold = averageCost.multiply(units.min(quantity));
-                        quantity = quantity.subtract(units);
-                    } else { // no unit count on the sell — treat it as closing the position
-                        costOfSold = costBasis;
-                        quantity = BigDecimal.ZERO;
-                    }
-                    realised = realised.add(amount).subtract(costOfSold);
-                    costBasis = costBasis.subtract(costOfSold);
+                case BUY -> {
+                    if (units.signum() > 0) lots.addLast(new Lot(units, amount.divide(units, 10, RoundingMode.HALF_UP)));
+                    else basisNudge = basisNudge.add(amount);
                 }
-                case SPLIT -> { if (units.signum() > 0) quantity = quantity.multiply(units); }
-                case INTEREST -> realised = realised.add(amount);
+                case ADJUSTMENT -> {
+                    if (units.signum() > 0) {
+                        lots.addLast(new Lot(units, units.signum() == 0 ? BigDecimal.ZERO : amount.divide(units, 10, RoundingMode.HALF_UP)));
+                    } else {
+                        basisNudge = basisNudge.add(amount);
+                    }
+                }
+                case SELL -> {
+                    BigDecimal held = lots.stream().map(l -> l.units).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    if (held.signum() <= 0) continue;                 // nothing on the books to sell
+                    BigDecimal toSell = units.signum() > 0 ? units.min(held) : held; // no count → close it all
+                    BigDecimal matchedCost = BigDecimal.ZERO;
+                    BigDecimal remaining = toSell;
+                    while (remaining.signum() > 0 && !lots.isEmpty()) {
+                        Lot lot = lots.peekFirst();
+                        BigDecimal take = remaining.min(lot.units);
+                        matchedCost = matchedCost.add(take.multiply(lot.costPerUnit, MC));
+                        lot.units = lot.units.subtract(take);
+                        remaining = remaining.subtract(take);
+                        if (lot.units.signum() <= 0) lots.pollFirst();
+                    }
+                    realised = realised.add(amount).subtract(matchedCost);
+                }
+                case SPLIT -> {
+                    if (units.signum() > 0) {
+                        for (Lot lot : lots) {
+                            lot.units = lot.units.multiply(units, MC);
+                            lot.costPerUnit = lot.costPerUnit.divide(units, 10, RoundingMode.HALF_UP);
+                        }
+                    }
+                }
+                case INTEREST -> accrued = accrued.add(amount);
+                case REPAY -> { /* liabilities only — handled elsewhere */ }
             }
         }
+
+        BigDecimal costBasis = lots.stream().map(Lot::cost).reduce(BigDecimal.ZERO, BigDecimal::add).add(basisNudge);
+        BigDecimal quantity = lots.stream().map(l -> l.units).reduce(BigDecimal.ZERO, BigDecimal::add);
         holding.setInvestedValue(costBasis.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
         holding.setQuantity(quantity.signum() > 0 ? quantity : null);
         holding.setRealisedProfitLoss(realised.setScale(2, RoundingMode.HALF_UP));
+        holding.setAccruedIncome(accrued.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
         holdings.save(holding);
     }
 
@@ -337,6 +393,7 @@ public class HoldingService {
                 holding.getId(), holding.getHoldingRef(), category.getId(), category.getName(), holding.getName(), category.getKind(),
                 holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
                 holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
+                zeroIfNull(holding.getAccruedIncome()),
                 holding.getQuantity(), holding.getFixedAnnualRate(),
                 holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
                 holding.getRepaymentFrequency(), holding.getEmiAmount(), holding.getEmiDayOfMonth(),
@@ -381,7 +438,7 @@ public class HoldingService {
         target.setQuantity(liability ? null : source.quantity());
         target.setInvestedValue(zeroIfNull(source.investedValue()));
         target.setCurrentValue(zeroIfNull(source.currentValue()));
-        target.setFixedAnnualRate(liability ? null : source.fixedAnnualRate());
+        target.setFixedAnnualRate(source.fixedAnnualRate()); // asset: compounding rate; liability: loan APR
         target.setCompoundingFrequency(liability ? null : source.compoundingFrequency());
         target.setFixedRateStartDate(liability ? null : source.fixedRateStartDate());
         target.setFixedRateEndDate(!liability && method == ValuationMethod.FIXED_RATE ? source.fixedRateEndDate() : null);

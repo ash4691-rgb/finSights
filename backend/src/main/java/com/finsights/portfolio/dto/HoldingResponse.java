@@ -10,7 +10,7 @@ public record HoldingResponse(
         String id, String holdingId, String categoryId, String categoryName, String name, HoldingKind kind, ValuationMethod valuationMethod,
         String tickerSymbol, String broker, String currency,
         BigDecimal investedValue, BigDecimal currentValue, BigDecimal profitLoss, BigDecimal profitLossPercentage,
-        BigDecimal realisedProfitLoss,
+        BigDecimal realisedProfitLoss, BigDecimal accruedIncome,
         BigDecimal quantity, BigDecimal fixedAnnualRate, CompoundingFrequency compoundingFrequency,
         LocalDate fixedRateStartDate, LocalDate fixedRateEndDate,
         RepaymentFrequency repaymentFrequency, BigDecimal emiAmount, Integer emiDayOfMonth,

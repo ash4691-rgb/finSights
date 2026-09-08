@@ -8,7 +8,7 @@ type HoldingKind = 'ASSET' | 'LIABILITY'
 type ValuationMethod = 'MANUAL' | 'MARKET_PRICE' | 'BROKER_SYNC' | 'FIXED_RATE'
 type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'ANNUALLY' | 'AT_MATURITY'
 type RepaymentFrequency = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'ONE_TIME'
-type TransactionType = 'BUY' | 'SELL' | 'SPLIT' | 'INTEREST' | 'ADJUSTMENT'
+type TransactionType = 'BUY' | 'SELL' | 'SPLIT' | 'INTEREST' | 'ADJUSTMENT' | 'REPAY'
 type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
 
 // A user-defined bucket (Name + Asset/Liability type). Invested/current/P&L, weightage, and
@@ -24,7 +24,7 @@ type Category = {
 type Holding = {
   id: string; holdingId: string; categoryId: string; categoryName: string; name: string; kind: HoldingKind; valuationMethod: ValuationMethod
   tickerSymbol?: string; broker?: string; currency: string
-  investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; realisedProfitLoss: number
+  investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; realisedProfitLoss: number; accruedIncome: number
   quantity?: number; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string; fixedRateEndDate?: string
   repaymentFrequency?: RepaymentFrequency; emiAmount?: number; emiDayOfMonth?: number; loanTermMonths?: number; repaymentDueDate?: string
   liquidWithinSevenDays: boolean; blocked: boolean; description?: string; notes?: string; tags: string[]
@@ -46,7 +46,7 @@ type Settings = {
 type Country = { code: string; name: string; currency: string }
 type Transaction = {
   id: string; holdingId: string; holdingName: string; categoryId: string; categoryName: string; broker?: string
-  currency: string; type: TransactionType; date: string; amount: number; quantity?: number; notes?: string; createdAt?: string
+  currency: string; type: TransactionType; date: string; amount: number; quantity?: number; principalPortion?: number; notes?: string; createdAt?: string
 }
 type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
 type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string }
@@ -74,7 +74,9 @@ const periodLabels: Record<PeriodKey, string> = { DAILY: 'Daily', WEEKLY: 'Weekl
 const periodFields: [PeriodKey, string][] = [
   ['DAILY', 'Daily'], ['WEEKLY', 'Weekly'], ['MONTHLY', 'Monthly'], ['QUARTERLY', 'Quarterly'], ['YEARLY', 'Yearly'],
 ]
-const transactionTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INTEREST', 'ADJUSTMENT']
+const transactionTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INTEREST', 'ADJUSTMENT', 'REPAY']
+const assetTxnTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INTEREST', 'ADJUSTMENT']
+const liabilityTxnTypes: TransactionType[] = ['REPAY', 'ADJUSTMENT', 'BUY']
 const currencies = ['INR', 'USD', 'EUR', 'GBP', 'SGD', 'AED']
 const nav: [Page, string, string][] = [
   ['dashboard', '◫', 'Overview'], ['categories', '◈', 'Categories'], ['holdings', '▤', 'Holdings'],
@@ -604,7 +606,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
       tickerSymbol: isLiability ? null : (form.tickerSymbol || null), broker: form.broker.trim(),
       currency: form.currency, quantity: isLiability ? null : (form.quantity ? numeric(form.quantity) : null),
       investedValue: numeric(form.investedValue), currentValue: isFixedRate ? null : numeric(form.currentValue),
-      fixedAnnualRate: isFixedRate ? numeric(form.fixedAnnualRate) / 100 : null,
+      fixedAnnualRate: (isFixedRate || isLiability) && form.fixedAnnualRate ? numeric(form.fixedAnnualRate) / 100 : null,
       compoundingFrequency: isFixedRate ? form.compoundingFrequency : null,
       fixedRateStartDate: isFixedRate ? form.fixedRateStartDate : null,
       fixedRateEndDate: isFixedRate && form.fixedRateEndDate ? form.fixedRateEndDate : null,
@@ -649,7 +651,10 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
             <Field label="Total amount" required><input required type="number" min="0" step="0.01" disabled={isEdit} value={form.investedValue} onChange={e => set('investedValue', e.target.value)} placeholder="Original loan amount" /></Field>
             <Field label="Outstanding amount" required><input required type="number" min="0" step="0.01" value={form.currentValue} onChange={e => set('currentValue', e.target.value)} placeholder="Still owed" /></Field>
           </div>
-          <Field label="Repayment frequency" required><select value={form.repaymentFrequency} onChange={e => set('repaymentFrequency', e.target.value)}>{repaymentFrequencies.map(f => <option key={f} value={f}>{repaymentLabel(f)}</option>)}</select></Field>
+          <div className="field-pair">
+            <Field label="Repayment frequency" required><select value={form.repaymentFrequency} onChange={e => set('repaymentFrequency', e.target.value)}>{repaymentFrequencies.map(f => <option key={f} value={f}>{repaymentLabel(f)}</option>)}</select></Field>
+            <Field label="Interest rate (% p.a.)"><input type="number" min="0" step="0.01" value={form.fixedAnnualRate} onChange={e => set('fixedAnnualRate', e.target.value)} placeholder="Splits Repay into interest + principal" /></Field>
+          </div>
           {isOneTime
             ? <Field label="Due date" required><input required type="date" value={form.repaymentDueDate} onChange={e => set('repaymentDueDate', e.target.value)} /></Field>
             : <>
@@ -730,6 +735,8 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
       {holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
       {!isLiab && holding.valuationMethod === 'FIXED_RATE' && <span>Payout frequency<b>{holding.compoundingFrequency ? frequencyLabel(holding.compoundingFrequency) : '—'}</b></span>}
       {!isLiab && holding.valuationMethod === 'FIXED_RATE' && <span>Maturity<b>{holding.fixedRateEndDate ? since(holding.fixedRateEndDate) : 'Open-ended'}</b></span>}
+      {!isLiab && holding.accruedIncome > 0 && <span>Accrued income<b className="positive">+{money(holding.accruedIncome, holding.currency)}</b></span>}
+      {isLiab && holding.fixedAnnualRate != null && holding.fixedAnnualRate > 0 && <span>Interest rate<b>{percent(holding.fixedAnnualRate * 100)} p.a.</b></span>}
       {isLiab && holding.repaymentFrequency && <span>Repayment<b>{repaymentLabel(holding.repaymentFrequency)}</b></span>}
       {isLiab && holding.repaymentFrequency === 'ONE_TIME' && <span>Due date<b>{holding.repaymentDueDate ? since(holding.repaymentDueDate) : '—'}</b></span>}
       {isLiab && holding.repaymentFrequency !== 'ONE_TIME' && holding.repaymentFrequency && <span>Instalment<b>{holding.emiAmount != null ? money(holding.emiAmount, holding.currency) : holding.loanTermMonths ? `${holding.loanTermMonths} left` : '—'}{holding.emiDayOfMonth ? ` · day ${holding.emiDayOfMonth}` : ''}</b></span>}
@@ -748,7 +755,7 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
       : <div className="drawer-txns" onScroll={onTxnScroll}>{txns.slice(0, visibleTxns).map(t => <div className="drawer-txn" key={t.id}>
           <span className={`badge txn-${t.type.toLowerCase()}`}>{label(t.type)}</span>
           <span className="drawer-txn-date">{since(t.date)}</span>
-          <span className="drawer-txn-amount">{money(t.amount, t.currency)}{t.quantity != null ? ` · qty ${t.quantity}` : ''}</span>
+          <span className="drawer-txn-amount">{money(t.amount, t.currency)}{t.type === 'REPAY' && t.principalPortion != null ? ` · ${money(t.principalPortion, t.currency)} principal` : t.quantity != null ? ` · qty ${t.quantity}` : ''}</span>
           {t.notes && <span className="drawer-txn-notes">{t.notes}</span>}
         </div>)}{visibleTxns < txns.length && <p className="hint drawer-txns-more">Scroll for {txns.length - visibleTxns} more</p>}</div>}
 
@@ -851,12 +858,34 @@ function TransactionsView({ holdings, displayCurrency, dataVersion, reload }: { 
   </>
 }
 
+const txnTypeHint: Partial<Record<TransactionType, string>> = {
+  BUY: 'Adds a lot — increases invested amount and quantity.',
+  SELL: 'Matches lots oldest-first (FIFO) to book realised P/L; cuts invested and quantity.',
+  SPLIT: 'Multiplies quantity by the number entered (e.g. 2 for a 2-for-1). Leave amount blank.',
+  INTEREST: 'Coupon or dividend — adds to current value only. No change to quantity or invested.',
+  ADJUSTMENT: 'Nudges invested amount and/or quantity by the values entered.',
+  REPAY: 'A loan repayment — interest for the period is settled first, the rest cuts the outstanding balance.',
+}
+
 function TransactionModal({ transaction, holdings, onClose, onSaved }: { transaction: Transaction | null; holdings: Holding[]; onClose: () => void; onSaved: () => void }) {
+  const holdingOf = (id: string) => holdings.find(h => h.id === id)
+  const isLiab = (id: string) => holdingOf(id)?.kind === 'LIABILITY'
+  const startHoldingId = transaction?.holdingId ?? holdings[0]?.id ?? ''
   const [form, setForm] = useState(() => transaction
     ? { holdingId: transaction.holdingId, type: transaction.type, date: transaction.date.slice(0, 10), amount: String(transaction.amount), quantity: transaction.quantity != null ? String(transaction.quantity) : '', notes: transaction.notes || '' }
-    : { holdingId: holdings[0]?.id ?? '', type: 'BUY' as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', notes: '' })
+    : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', notes: '' })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
-  const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
+  const liability = isLiab(form.holdingId)
+  const allowedTypes = liability ? liabilityTxnTypes : assetTxnTypes
+  const set = (key: string, value: string) => setForm(current => {
+    const next = { ...current, [key]: value }
+    if (key === 'holdingId') {
+      const nowLiab = holdings.find(h => h.id === value)?.kind === 'LIABILITY'
+      if (nowLiab && next.type !== 'REPAY' && next.type !== 'ADJUSTMENT') next.type = 'REPAY'
+      if (!nowLiab && !assetTxnTypes.includes(next.type)) next.type = 'BUY'
+    }
+    return next
+  })
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('')
     const payload = { holdingId: form.holdingId, type: form.type, date: form.date, amount: numeric(form.amount), quantity: form.quantity ? numeric(form.quantity) : null, notes: form.notes || null }
@@ -865,13 +894,15 @@ function TransactionModal({ transaction, holdings, onClose, onSaved }: { transac
       onSaved()
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save transaction') } finally { setSaving(false) }
   }
+  const showQuantity = ['BUY', 'SELL', 'SPLIT', 'ADJUSTMENT'].includes(form.type)
   return <div className="modal-backdrop"><section className="modal"><div className="modal-header"><div><p className="eyebrow">{transaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}</p><h2>{transaction ? label(transaction.type) : 'Log a transaction'}</h2></div><button className="close" onClick={onClose}>×</button></div>
     <form onSubmit={submit}><div className="form-grid">
       <Field label="Holding" required wide><select required value={form.holdingId} onChange={e => set('holdingId', e.target.value)}>{holdings.map(h => <option key={h.id} value={h.id}>{h.name} @ {h.broker || 'unassigned'}</option>)}</select></Field>
-      <Field label="Type" required><select required value={form.type} onChange={e => set('type', e.target.value)}>{transactionTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
+      <Field label="Type" required><select required value={form.type} onChange={e => set('type', e.target.value)}>{allowedTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
-      <Field label="Amount"><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>
-      <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>
+      <Field label={form.type === 'SELL' ? 'Proceeds' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'}><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>
+      {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'}><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
+      <p className="txn-hint">{txnTypeHint[form.type]}</p>
       <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
     </div>
     {error && <p className="form-error">{error}</p>}

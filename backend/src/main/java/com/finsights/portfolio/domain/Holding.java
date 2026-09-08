@@ -39,9 +39,12 @@ public class Holding {
     /** Remaining cost basis after average-cost SELLs; the ledger owns this (see HoldingService). */
     @Column(precision = 20, scale = 2)
     private BigDecimal investedValue = BigDecimal.ZERO;
-    /** Profit/loss already locked in by SELLs and INTEREST income, from the ledger. */
+    /** Profit/loss already locked in by SELLs (FIFO), from the ledger. Negative for interest paid on loans. */
     @Column(precision = 20, scale = 2)
     private BigDecimal realisedProfitLoss = BigDecimal.ZERO;
+    /** Sum of INTEREST transaction amounts — added on top of the stored current value. */
+    @Column(precision = 20, scale = 2)
+    private BigDecimal accruedIncome = BigDecimal.ZERO;
     /** Manually-entered value for MANUAL/MARKET_PRICE/BROKER_SYNC; ignored for FIXED_RATE (computed). */
     @Column(precision = 20, scale = 2)
     private BigDecimal currentValue = BigDecimal.ZERO;
@@ -114,6 +117,8 @@ public class Holding {
     public void setInvestedValue(BigDecimal investedValue) { this.investedValue = investedValue; }
     public BigDecimal getRealisedProfitLoss() { return realisedProfitLoss; }
     public void setRealisedProfitLoss(BigDecimal realisedProfitLoss) { this.realisedProfitLoss = realisedProfitLoss; }
+    public BigDecimal getAccruedIncome() { return accruedIncome; }
+    public void setAccruedIncome(BigDecimal accruedIncome) { this.accruedIncome = accruedIncome; }
     public BigDecimal getCurrentValue() { return currentValue; }
     public void setCurrentValue(BigDecimal currentValue) { this.currentValue = currentValue; }
     public BigDecimal getFixedAnnualRate() { return fixedAnnualRate; }
