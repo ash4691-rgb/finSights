@@ -147,11 +147,13 @@ td>strong{color:var(--text)}
 .info-tip{position:fixed;transform:translateX(-50%);width:max-content;max-width:260px;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;padding:8px 10px;font-size:11px;font-weight:400;font-style:normal;color:var(--text-2);line-height:1.45;box-shadow:var(--shadow-modal);z-index:50;pointer-events:none;white-space:normal;text-align:left}
 .info-tip.above{transform:translate(-50%,-100%)}
 .name-button strong,.name-button small,.owner,td .positive small,td .negative small{display:block}
+.name-button strong,.name-cell>strong{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .name-button small,.owner,td .positive small,td .negative small{margin-top:3px;color:var(--text-3);font-size:11px;font-weight:400}
 .badge{display:inline-block;border:1px solid var(--border-strong);color:var(--chip-text);background:var(--chip-bg);border-radius:4px;padding:3px 5px;font-size:9px;font-weight:800}
 .badge.liability{background:var(--liability-bg);border-color:var(--liability-bg);color:var(--liability-text)}
 .tag-row{display:flex;gap:3px;margin-top:5px;flex-wrap:wrap}
-.tag-row em{font-size:9px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border-soft);padding:2px 4px;border-radius:3px;font-style:normal}
+.tag-row em{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border-soft);padding:2px 4px;border-radius:3px;font-style:normal}
+.tag-row em.tag-more{background:var(--chip-bg);color:var(--text-3);font-weight:700}
 .actions{white-space:nowrap}
 .actions button{background:transparent;border:0;color:var(--text-3);padding:4px;font-size:11px}
 .actions .danger-link{color:var(--negative)}
@@ -174,8 +176,9 @@ th.sortable:hover{color:var(--text)}
 .drag-handle{cursor:grab;color:var(--text-3);font-size:14px;line-height:1;display:inline-block;padding:4px}
 .drag-handle:hover{color:var(--text)}
 .drag-handle:active{cursor:grabbing}
-.modal-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px}
-.modal-header h2{margin-bottom:0}
+.modal-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:22px}
+.modal-header h2{margin-bottom:0;overflow-wrap:anywhere}
+.modal-header>div{min-width:0}
 .close{border:0;background:var(--surface-2);color:var(--text);border-radius:50%;width:31px;height:31px;font-size:22px}
 .form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}
 .field{display:grid;gap:7px;font-size:12px;color:var(--text-2)}
@@ -200,9 +203,11 @@ th.sortable:hover{color:var(--text)}
 .tag-input-box{display:flex;flex-wrap:wrap;gap:5px;padding:6px;background:var(--surface-input);border:1px solid var(--border-strong);border-radius:7px}
 .tag-input-box:focus-within{border-color:var(--accent)}
 .tag-input-box input{flex:1;min-width:120px;border:0;background:none;color:var(--text);padding:4px 5px;outline:none;font-size:13px}
-.tag-chip{display:inline-flex;align-items:center;gap:5px;background:var(--accent-soft);color:var(--accent-soft-text);border:1px solid var(--accent);border-radius:999px;padding:3px 6px 3px 10px;font-size:11px;font-weight:600}
-.tag-chip button{border:0;background:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;padding:0;opacity:.75}
+.tag-chip{display:inline-flex;align-items:center;gap:5px;max-width:220px;background:var(--accent-soft);color:var(--accent-soft-text);border:1px solid var(--accent);border-radius:999px;padding:3px 6px 3px 10px;font-size:11px;font-weight:600}
+.tag-chip-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag-chip button{flex-shrink:0;border:0;background:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;padding:0;opacity:.75}
 .tag-chip button:hover{opacity:1}
+.tag-limit{margin:4px 0 0;font-size:11px;color:var(--warn-text)}
 .tag-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;margin:0;padding:4px;list-style:none;max-height:200px;overflow-y:auto;background:var(--surface);border:1px solid var(--border-strong);border-radius:8px;box-shadow:var(--shadow-modal)}
 .tag-menu li button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--text-2);padding:7px 9px;border-radius:5px;font-size:12px;cursor:pointer}
 .tag-menu li button:hover{background:var(--surface-2);color:var(--text)}

@@ -11,12 +11,12 @@ import java.util.Set;
 
 public record HoldingRequest(
         @NotBlank String categoryId,
-        @NotBlank @Size(max = 128, message = "Name must be 128 characters or fewer") String name,
+        @NotBlank @Size(min = 1, max = 128, message = "Name must be 1–128 characters") String name,
         @NotNull ValuationMethod valuationMethod,
-        String tickerSymbol,
+        @Size(max = 24, message = "Ticker symbol must be 24 characters or fewer") String tickerSymbol,
         @NotBlank(message = "Every holding must be mapped to a broker")
-        @Size(max = 96, message = "Broker must be 96 characters or fewer") String broker,
-        String ownerName,
+        @Size(min = 1, max = 96, message = "Broker must be 1–96 characters") String broker,
+        @Size(max = 96, message = "Owner must be 96 characters or fewer") String ownerName,
         String currency,
         BigDecimal quantity,
         BigDecimal investedValue,
@@ -28,5 +28,6 @@ public record HoldingRequest(
         Boolean blocked,
         @Size(max = 1024, message = "Description must be 1024 characters or fewer") String description,
         String notes,
-        Set<@Size(max = 48, message = "Each tag must be 48 characters or fewer") String> tags
+        @Size(max = 30, message = "A holding can have at most 30 tags")
+        Set<@Size(min = 1, max = 48, message = "Each tag must be 1–48 characters") String> tags
 ) { }

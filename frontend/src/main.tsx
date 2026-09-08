@@ -370,7 +370,7 @@ function CategoriesView({ categories, onOpen, onAdd, reload }: { categories: Cat
           {!sortKey && <span className="drag-handle" draggable onDragStart={() => setDragId(c.id)} onDragEnd={() => { setDragId(null); setDragOverId(null) }} title="Drag to reorder">⠿</span>}
         </td>
         <td>
-          <div className="name-cell"><strong>{c.name}</strong>{c.description && <InfoTip text={c.description} />}</div>
+          <div className="name-cell"><strong title={c.name}>{c.name}</strong>{c.description && <InfoTip text={c.description} />}</div>
           <small className="owner">{c.holdingCount} holding{c.holdingCount === 1 ? '' : 's'}</small>
         </td>
         <td><span className={`badge ${c.kind === 'LIABILITY' ? 'liability' : ''}`}>{label(c.kind)}</span></td>
@@ -522,7 +522,7 @@ function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOpen }: {
           {!sortKey && <span className="drag-handle" draggable onDragStart={() => setDragId(holding.id)} onDragEnd={() => { setDragId(null); setDragOverId(null) }} title="Drag to reorder">⠿</span>}
         </td>
         <td><div className="name-cell">
-          <button className="name-button" onClick={() => onOpen(holding)}><strong>{holding.name}</strong><small className="holding-ref">{holding.holdingId}</small></button>
+          <button className="name-button" onClick={() => onOpen(holding)} title={holding.name}><strong>{holding.name}</strong><small className="holding-ref">{holding.holdingId}</small></button>
           {holding.description && <InfoTip text={holding.description} />}
         </div></td>
         <td>{holding.broker || '—'}</td>
@@ -534,7 +534,12 @@ function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOpen }: {
           ? <span>{holding.quantity}<small className="owner">avg {rate(holding.investedValue / holding.quantity, holding.currency)}</small></span>
           : <span className="owner">—</span>}</td>
         <td>{holding.liquidWithinSevenDays || holding.blocked || holding.tags.length
-          ? <div className="tag-row">{holding.liquidWithinSevenDays && <em className="tag-liquid">Liquid</em>}{holding.blocked && <em className="tag-npa">NPA</em>}{holding.tags.map(tag => <em key={tag}>{tag}</em>)}</div>
+          ? <div className="tag-row">
+              {holding.liquidWithinSevenDays && <em className="tag-liquid">Liquid</em>}
+              {holding.blocked && <em className="tag-npa">NPA</em>}
+              {holding.tags.slice(0, 5).map(tag => <em key={tag} title={tag}>{tag}</em>)}
+              {holding.tags.length > 5 && <em className="tag-more" title={holding.tags.slice(5).join(', ')}>+{holding.tags.length - 5}</em>}
+            </div>
           : <span className="owner">—</span>}</td>
         <td className="actions actions-vertical"><button className="primary-link" onClick={() => onEdit(holding)}>Edit</button><button className="danger-link" onClick={() => void remove(holding)}>Delete</button></td>
       </tr>) : <tr><td colSpan={10} className="empty"><strong>No holdings match</strong><span>Every holding maps to a category and a broker. {categories.length ? 'Add one below.' : 'Add a category first.'}</span><button className="primary" onClick={onAdd} disabled={!categories.length}>Add holding</button></td></tr>}</tbody>
@@ -1242,9 +1247,11 @@ function TagInput({ tags, suggestions, onChange }: { tags: string[]; suggestions
   const [input, setInput] = useState('')
   const [open, setOpen] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
+  const MAX_TAGS = 30
+  const full = tags.length >= MAX_TAGS
   const norm = (t: string) => t.trim().toLowerCase().slice(0, 48)
   const has = (t: string) => tags.some(x => norm(x) === norm(t))
-  const add = (raw: string) => { const t = norm(raw); if (t && !has(t)) onChange([...tags, t]); setInput(''); setOpen(false) }
+  const add = (raw: string) => { const t = norm(raw); if (t && !has(t) && !full) onChange([...tags, t]); setInput(''); setOpen(false) }
   const remove = (t: string) => onChange(tags.filter(x => x !== t))
 
   useEffect(() => {
@@ -1261,25 +1268,27 @@ function TagInput({ tags, suggestions, onChange }: { tags: string[]; suggestions
   return <div className="tag-input" ref={boxRef}>
     <div className="tag-input-field">
       <div className="tag-input-box" onClick={() => setOpen(true)}>
-        {tags.map(t => <span className="tag-chip" key={t}>{t}<button type="button" aria-label={`Remove ${t}`} onClick={e => { e.stopPropagation(); remove(t) }}>×</button></span>)}
-        <input value={input} maxLength={48} placeholder={tags.length ? 'Add another…' : 'Search or add a tag'}
+        {tags.map(t => <span className="tag-chip" key={t} title={t}><span className="tag-chip-label">{t}</span><button type="button" aria-label={`Remove ${t}`} onClick={e => { e.stopPropagation(); remove(t) }}>×</button></span>)}
+        {!full && <input value={input} maxLength={48} placeholder={tags.length ? 'Add another…' : 'Search or add a tag'}
           onFocus={() => setOpen(true)}
           onChange={e => { setInput(e.target.value); setOpen(true) }}
           onKeyDown={e => {
             if (e.key === 'Enter' && typed) { e.preventDefault(); add(input) }
             else if (e.key === 'Backspace' && !input && tags.length) remove(tags[tags.length - 1])
             else if (e.key === 'Escape') setOpen(false)
-          }} />
+          }} />}
       </div>
-      {open && (matches.length > 0 || showCreate) && <ul className="tag-menu">
+      {open && !full && (matches.length > 0 || showCreate) && <ul className="tag-menu">
         {matches.map(s => <li key={s}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => add(s)}>{s}</button></li>)}
         {showCreate && <li><button type="button" className="tag-menu-create" onMouseDown={e => e.preventDefault()} onClick={() => add(input)}>Add “{input.trim().toLowerCase()}”</button></li>}
       </ul>}
     </div>
-    {popular.length > 0 && <div className="tag-ideas">
-      <span>Popular</span>
-      {popular.map(t => <button type="button" key={t} className="tag-idea" onClick={() => add(t)}>+ {t}</button>)}
-    </div>}
+    {full
+      ? <p className="tag-limit">30-tag limit reached — remove one to add another.</p>
+      : popular.length > 0 && <div className="tag-ideas">
+          <span>Popular</span>
+          {popular.map(t => <button type="button" key={t} className="tag-idea" onClick={() => add(t)}>+ {t}</button>)}
+        </div>}
   </div>
 }
 

@@ -29,10 +29,12 @@ public class Holding {
     private String holdingRef;
     @Column(nullable = false, length = 96)
     private String broker;
+    @Column(length = 96)
     private String ownerName;
     private String currency = "INR";
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private ValuationMethod valuationMethod;
+    @Column(length = 24)
     private String tickerSymbol;
     @Column(precision = 24, scale = 8)
     private BigDecimal quantity;

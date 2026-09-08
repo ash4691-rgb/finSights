@@ -16,6 +16,7 @@ public class WatchlistItem {
     private UserAccount user;
     @Column(nullable = false, length = 128)
     private String name;
+    @Column(length = 24)
     private String tickerSymbol;
     @Column(length = 1024)
     private String notes;
