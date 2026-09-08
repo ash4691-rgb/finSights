@@ -27,7 +27,7 @@ public class Holding {
     /** Auto-generated, human-readable, space-free reference (e.g. "reliance-industries-4f2a"). Never editable. */
     @Column(unique = true)
     private String holdingRef;
-    @Column(nullable = false)
+    @Column(nullable = false, length = 96)
     private String broker;
     private String ownerName;
     private String currency = "INR";

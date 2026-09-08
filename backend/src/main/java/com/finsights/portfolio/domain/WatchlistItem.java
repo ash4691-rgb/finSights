@@ -14,10 +14,10 @@ public class WatchlistItem {
     private String id;
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     private UserAccount user;
-    @Column(nullable = false)
+    @Column(nullable = false, length = 128)
     private String name;
     private String tickerSymbol;
-    @Column(length = 500)
+    @Column(length = 1024)
     private String notes;
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();

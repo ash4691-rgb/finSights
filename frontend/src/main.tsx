@@ -613,7 +613,7 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
         {isMarket && <Field label="Ticker symbol" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
         <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
         <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
-        {!isEdit && <Field label="Broker / platform" required><input required value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>}
+        {!isEdit && <Field label="Broker / platform" required><input required maxLength={96} value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>}
         {!isEdit && <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
         {!isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'}><input type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
         {isFixedRate && <>
@@ -812,7 +812,7 @@ function TransactionModal({ transaction, holdings, onClose, onSaved }: { transac
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
       <Field label="Amount"><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>
       <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>
-      <Field label="Notes" wide><textarea value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
+      <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
     </div>
     {error && <p className="form-error">{error}</p>}
     <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
@@ -1057,12 +1057,12 @@ function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntry | nul
   </div>
     <form onSubmit={submit}>
       <div className="form-grid">
-        <Field label="Name" required wide><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Nifty 50, Bitcoin" /></Field>
+        <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Nifty 50, Bitcoin" /></Field>
         <Field label="Ticker"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. NIFTY, BTC" /></Field>
         <Field label={item ? 'Update price' : 'Current price'} required={!item}>
           <input type="number" min="0" step="any" required={!item} value={form.price} onChange={e => set('price', e.target.value)} />
         </Field>
-        <Field label="Notes" wide><textarea value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
+        <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
       </div>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : item ? 'Save changes' : 'Add to watchlist'}</button></div>

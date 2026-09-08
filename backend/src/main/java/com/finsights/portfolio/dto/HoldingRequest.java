@@ -14,7 +14,8 @@ public record HoldingRequest(
         @NotBlank @Size(max = 128, message = "Name must be 128 characters or fewer") String name,
         @NotNull ValuationMethod valuationMethod,
         String tickerSymbol,
-        @NotBlank(message = "Every holding must be mapped to a broker") String broker,
+        @NotBlank(message = "Every holding must be mapped to a broker")
+        @Size(max = 96, message = "Broker must be 96 characters or fewer") String broker,
         String ownerName,
         String currency,
         BigDecimal quantity,

@@ -23,7 +23,7 @@ public class Transaction {
     private BigDecimal amount = BigDecimal.ZERO;
     @Column(precision = 24, scale = 8)
     private BigDecimal quantity;
-    @Column(length = 1000)
+    @Column(length = 1024)
     private String notes;
     private Instant createdAt = Instant.now();
 
