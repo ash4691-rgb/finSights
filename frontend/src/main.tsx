@@ -427,8 +427,8 @@ function CategoryModal({ category, onClose, onSaved }: { category: Category | nu
     <form onSubmit={submit}>
       <div className="form-grid">
         <Field label="Name" required wide><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Growth Equity, Emergency Fund" /></Field>
-        <Field label="Type" wide><select value={form.kind} onChange={e => set('kind', e.target.value)}><option value="ASSET">Asset</option><option value="LIABILITY">Liability</option></select></Field>
-        <Field label="Description (optional)" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={280} /></Field>
+        <Field label="Type" required wide><select value={form.kind} onChange={e => set('kind', e.target.value)}><option value="ASSET">Asset</option><option value="LIABILITY">Liability</option></select></Field>
+        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={280} /></Field>
       </div>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : category ? 'Save changes' : 'Add category'}</button></div>
@@ -543,6 +543,20 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
   const isFixedRate = form.valuationMethod === 'FIXED_RATE'
   const isEdit = !!holding
   const set = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }))
+
+  const [tagIdeas, setTagIdeas] = useState<string[]>([])
+  useEffect(() => {
+    if (!form.categoryId) { setTagIdeas([]); return }
+    const query = new URLSearchParams({ categoryId: form.categoryId, valuationMethod: form.valuationMethod })
+    api<string[]>(`/api/holdings/tag-suggestions?${query}`).then(setTagIdeas).catch(() => setTagIdeas([]))
+  }, [form.categoryId, form.valuationMethod])
+  const currentTags = form.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+  const addTag = (tag: string) => setForm(current => {
+    const list = current.tags.split(',').map(t => t.trim()).filter(Boolean)
+    if (list.some(t => t.toLowerCase() === tag.toLowerCase())) return current
+    return { ...current, tags: [...list, tag].join(', ') }
+  })
+
   // A holding is 1-1 with a (name, broker) pair — block a new one that would collide.
   const duplicate = !isEdit && !!form.name.trim() && !!form.broker.trim() && holdings.some(h =>
     h.name.trim().toLowerCase() === form.name.trim().toLowerCase()
@@ -576,9 +590,9 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
           </select>
         </Field>
         <Field label="Name" required><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Reliance Industries, HDFC FD" /></Field>
-        <label className="field wide"><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="Description — one line, shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></label>
-        <Field label="Valuation method"><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="BROKER_SYNC">Broker sync</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>
-        {(form.valuationMethod === 'MARKET_PRICE' || form.valuationMethod === 'BROKER_SYNC') && <Field label="Ticker symbol"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. RELIANCE, INFY" /></Field>}
+        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></Field>
+        <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>
+        {form.valuationMethod === 'MARKET_PRICE' && <Field label="Ticker symbol"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. RELIANCE, INFY" /></Field>}
         <Field label="Broker / platform" required><input required disabled={isEdit} value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>
         <Field label="Currency"><select value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
         <Field label={isEdit ? 'Quantity (from transactions)' : 'Quantity'}><input type="number" step="any" disabled={isEdit} value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>
@@ -588,7 +602,13 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
           <Field label="Compounding"><select value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}>{frequencies.map(item => <option key={item}>{item}</option>)}</select></Field>
           <Field label="Start date"><input type="date" value={form.fixedRateStartDate} onChange={e => set('fixedRateStartDate', e.target.value)} /></Field>
         </> : <Field label="Current value"><input type="number" min="0" step="0.01" value={form.currentValue} onChange={e => set('currentValue', e.target.value)} /></Field>}
-        <Field label="Tags"><input value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="retirement, long-term" /></Field>
+        <Field label="Tags" wide>
+          <input value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="retirement, long-term" />
+          {tagIdeas.filter(t => !currentTags.includes(t)).length > 0 && <div className="tag-ideas">
+            <span>Popular:</span>
+            {tagIdeas.filter(t => !currentTags.includes(t)).map(t => <button type="button" key={t} className="tag-idea" onClick={e => { e.preventDefault(); addTag(t) }}>+ {t}</button>)}
+          </div>}
+        </Field>
         <Field label="Notes" wide><textarea value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
         <div className="check-row"><label><input type="checkbox" checked={form.liquidWithinSevenDays} onChange={e => set('liquidWithinSevenDays', e.target.checked)} /> Liquid within 7 days</label><label><input type="checkbox" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} /> Blocked / NPA</label></div>
       </div>
@@ -764,10 +784,10 @@ function TransactionModal({ transaction, holdings, onClose, onSaved }: { transac
   return <div className="modal-backdrop"><section className="modal"><div className="modal-header"><div><p className="eyebrow">{transaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}</p><h2>{transaction ? label(transaction.type) : 'Log a transaction'}</h2></div><button className="close" onClick={onClose}>×</button></div>
     <form onSubmit={submit}><div className="form-grid">
       <Field label="Holding" required wide><select required value={form.holdingId} onChange={e => set('holdingId', e.target.value)}>{holdings.map(h => <option key={h.id} value={h.id}>{h.name} @ {h.broker || 'unassigned'}</option>)}</select></Field>
-      <Field label="Type"><select value={form.type} onChange={e => set('type', e.target.value)}>{transactionTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
+      <Field label="Type" required><select required value={form.type} onChange={e => set('type', e.target.value)}>{transactionTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
       <Field label="Amount"><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>
-      <Field label="Quantity (optional)"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>
+      <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>
       <Field label="Notes" wide><textarea value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
     </div>
     {error && <p className="form-error">{error}</p>}
@@ -1014,8 +1034,8 @@ function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntry | nul
     <form onSubmit={submit}>
       <div className="form-grid">
         <Field label="Name" required wide><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Nifty 50, Bitcoin" /></Field>
-        <Field label="Ticker (optional)"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. NIFTY, BTC" /></Field>
-        <Field label={item ? 'Update price (optional)' : 'Current price'} required={!item}>
+        <Field label="Ticker"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. NIFTY, BTC" /></Field>
+        <Field label={item ? 'Update price' : 'Current price'} required={!item}>
           <input type="number" min="0" step="any" required={!item} value={form.price} onChange={e => set('price', e.target.value)} />
         </Field>
         <Field label="Notes" wide><textarea value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
@@ -1344,7 +1364,7 @@ function LoginScreen({ initialMode, onBack, onEnter }: { initialMode: 'login' | 
       <section className="modal narrow login-card">
         <h2>{mode === 'signup' ? 'Create your account' : 'Log in'}</h2>
         <form onSubmit={submit} className="auth-form">
-          {mode === 'signup' && <Field label="Name (optional)"><input value={form.displayName} onChange={e => set('displayName', e.target.value)} placeholder="Your name" autoComplete="name" /></Field>}
+          {mode === 'signup' && <Field label="Name"><input value={form.displayName} onChange={e => set('displayName', e.target.value)} placeholder="Your name" autoComplete="name" /></Field>}
           <Field label="Email" required><input type="email" required value={form.email} onChange={e => set('email', e.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
           <Field label="Password" required><input type="password" required minLength={mode === 'signup' ? 8 : undefined} value={form.password} onChange={e => set('password', e.target.value)} placeholder={mode === 'signup' ? 'At least 8 characters' : ''} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} /></Field>
           {error && <p className="form-error">{error}</p>}

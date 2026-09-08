@@ -7,6 +7,7 @@ import com.finsights.portfolio.dto.SettingsRequest;
 import com.finsights.portfolio.dto.SettingsResponse;
 import com.finsights.portfolio.repository.HoldingRepository;
 import com.finsights.portfolio.repository.CategoryRepository;
+import com.finsights.portfolio.repository.TagSuggestionRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import com.finsights.portfolio.repository.UserAccountRepository;
 import com.finsights.portfolio.repository.WatchlistRepository;
@@ -29,10 +30,12 @@ public class SettingsService {
     private final CountryCurrencyService countries;
     private final WatchlistRepository watchlist;
     private final PriceSnapshotService snapshots;
+    private final TagSuggestionRepository tagSuggestions;
 
     public SettingsService(UserAccountRepository users, HoldingRepository holdings, CategoryRepository categories,
                            TransactionRepository transactions, HoldingService holdingService, CurrentUserService currentUser,
-                           CountryCurrencyService countries, WatchlistRepository watchlist, PriceSnapshotService snapshots) {
+                           CountryCurrencyService countries, WatchlistRepository watchlist, PriceSnapshotService snapshots,
+                           TagSuggestionRepository tagSuggestions) {
         this.users = users;
         this.holdings = holdings;
         this.categories = categories;
@@ -42,6 +45,7 @@ public class SettingsService {
         this.watchlist = watchlist;
         this.snapshots = snapshots;
         this.countries = countries;
+        this.tagSuggestions = tagSuggestions;
     }
 
     public SettingsResponse current() {
@@ -111,6 +115,7 @@ public class SettingsService {
         categories.deleteByUser_Id(user.getId());
         watchlist.deleteByUser_Id(user.getId());
         snapshots.deleteForUser(user.getId());
+        tagSuggestions.deleteByUser_Id(user.getId());
         users.delete(user);
     }
 
