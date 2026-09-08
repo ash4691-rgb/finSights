@@ -588,15 +588,18 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
         <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>
         {form.valuationMethod === 'MARKET_PRICE' && <Field label="Ticker symbol"><input value={form.tickerSymbol} onChange={e => set('tickerSymbol', e.target.value.toUpperCase())} placeholder="e.g. RELIANCE, INFY" /></Field>}
         {!isEdit && <Field label="Broker / platform" required><input required value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>}
-        <Field label="Currency"><select disabled={isEdit} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
+        {!isEdit && <Field label="Currency"><select value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>}
         {!isEdit && <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
         {!isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'}><input type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
-        {isFixedRate ? <>
+        {isFixedRate && <>
           <Field label="Annual rate (%)"><input type="number" min="0" step="0.01" value={form.fixedAnnualRate} onChange={e => set('fixedAnnualRate', e.target.value)} /></Field>
           <Field label="Compounding"><select value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}>{frequencies.map(item => <option key={item}>{item}</option>)}</select></Field>
           <Field label="Start date"><input type="date" value={form.fixedRateStartDate} onChange={e => set('fixedRateStartDate', e.target.value)} /></Field>
-          {isEdit && <Field label="Current value (computed)"><input type="number" disabled value={form.currentValue} /></Field>}
-        </> : <Field label={isEdit && form.valuationMethod === 'MARKET_PRICE' ? 'Current value (from market price)' : 'Current value'}><input type="number" min="0" step="0.01" disabled={isEdit && form.valuationMethod === 'MARKET_PRICE'} value={form.currentValue} onChange={e => set('currentValue', e.target.value)} /></Field>}
+        </>}
+        {isEdit ? <div className="field-pair">
+          <Field label="Currency"><select disabled value={form.currency}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
+          <Field label={isFixedRate ? 'Current value (computed)' : form.valuationMethod === 'MARKET_PRICE' ? 'Current value (from market price)' : 'Current value'}><input type="number" min="0" step="0.01" disabled={isFixedRate || form.valuationMethod === 'MARKET_PRICE'} value={form.currentValue} onChange={e => set('currentValue', e.target.value)} /></Field>
+        </div> : !isFixedRate && <Field label="Current value"><input type="number" min="0" step="0.01" value={form.currentValue} onChange={e => set('currentValue', e.target.value)} /></Field>}
         <div className="check-row">
           <label><input type="checkbox" checked={form.liquidWithinSevenDays} onChange={e => set('liquidWithinSevenDays', e.target.checked)} /> Liquid within 7 days <InfoTip text="Money you could realistically access within a week. Feeds the “liquid within 7 days” figure on the overview so you know how much of the portfolio is reachable in an emergency." /></label>
           <label><input type="checkbox" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} /> Blocked / NPA <InfoTip text="The holding is locked, pledged, in default, or a non-performing asset. It is valued separately from healthy assets and flagged in the data-quality checks." /></label>

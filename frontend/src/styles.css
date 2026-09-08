@@ -186,6 +186,7 @@ th.sortable:hover{color:var(--text)}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
 .field input:disabled{opacity:.5}
 .field textarea{min-height:64px;resize:vertical}
+.field-pair{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:15px}
 .check-row{grid-column:1/-1;display:flex;gap:20px;color:var(--text-2);font-size:12px}
 .check-row label{display:flex;gap:7px;align-items:center}
 .form-error{color:var(--error-text);font-size:12px;background:var(--error-bg);padding:9px;border-radius:6px;margin:16px 0 0}
@@ -421,7 +422,7 @@ th.sortable:hover{color:var(--text)}
   main{padding:24px 16px}
   .hero{padding:22px;align-items:flex-start;gap:20px;flex-direction:column}
   .hero h2{font-size:32px}
-  .metric-grid,.insight-grid,.form-grid,.broker-grid,.instrument-grid,.settings-grid,.drawer-metrics,.drawer-facts{grid-template-columns:1fr}
+  .metric-grid,.insight-grid,.form-grid,.broker-grid,.instrument-grid,.settings-grid,.drawer-metrics,.drawer-facts,.field-pair{grid-template-columns:1fr}
   .holdings-toolbar{flex-wrap:wrap}
   .bulk-bar{align-items:stretch;flex-direction:column}
   .panel{min-height:auto}
