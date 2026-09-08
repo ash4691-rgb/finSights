@@ -615,8 +615,13 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
 function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding: Holding; displayCurrency: string; onClose: () => void; onEdit: (holding: Holding) => void }) {
   const [detail, setDetail] = useState<ValuationDetail | null>(null)
   const [txns, setTxns] = useState<Transaction[] | null>(null)
+  const [visibleTxns, setVisibleTxns] = useState(10)
   useEffect(() => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }, [holding.id])
-  useEffect(() => { api<Transaction[]>(`/api/transactions?holdingId=${holding.id}&currency=${displayCurrency}`).then(setTxns).catch(() => setTxns([])) }, [holding.id, displayCurrency])
+  useEffect(() => { setVisibleTxns(10); api<Transaction[]>(`/api/transactions?holdingId=${holding.id}&currency=${displayCurrency}`).then(setTxns).catch(() => setTxns([])) }, [holding.id, displayCurrency])
+  const onTxnScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) setVisibleTxns(count => count + 10)
+  }
   return <div className="modal-backdrop" onClick={onClose}><section className="modal drawer" onClick={e => e.stopPropagation()}>
     <div className="modal-header">
       <div><p className="eyebrow">{label(holding.kind)} · {holding.broker || 'Unassigned broker'}</p><h2>{holding.name}</h2><p className="drawer-ref">{holding.holdingId}</p></div>
@@ -640,15 +645,15 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
     {detail ? <ol className="audit-list">{detail.steps.map((step, i) => <li key={i}>{step}</li>)}</ol> : <p className="hint">Loading calculation…</p>}
     {detail?.projectedMaturityValue != null && <p className="hint">By {since(detail.projectedMaturityDate)}, if the rate holds: <b>{money(detail.projectedMaturityValue, holding.currency)}</b>.</p>}
 
-    <div className="panel-heading"><h3>Transactions</h3><span>{txns && txns.length ? `${txns.length} · most recent first` : ''}</span></div>
+    <div className="panel-heading"><h3>Transactions</h3><span>{txns && txns.length ? `${txns.length}` : ''}</span></div>
     {txns === null ? <p className="hint">Loading transactions…</p>
       : txns.length === 0 ? <p className="hint">No transactions logged against this holding yet.</p>
-      : <div className="drawer-txns">{txns.map(t => <div className="drawer-txn" key={t.id}>
+      : <div className="drawer-txns" onScroll={onTxnScroll}>{txns.slice(0, visibleTxns).map(t => <div className="drawer-txn" key={t.id}>
           <span className={`badge txn-${t.type.toLowerCase()}`}>{label(t.type)}</span>
           <span className="drawer-txn-date">{since(t.date)}</span>
           <span className="drawer-txn-amount">{money(t.amount, t.currency)}{t.quantity != null ? ` · qty ${t.quantity}` : ''}</span>
           {t.notes && <span className="drawer-txn-notes">{t.notes}</span>}
-        </div>)}</div>}
+        </div>)}{visibleTxns < txns.length && <p className="hint drawer-txns-more">Scroll for {txns.length - visibleTxns} more</p>}</div>}
 
     <div className="modal-actions"><button className="outline" onClick={onClose}>Close</button><button className="primary" onClick={() => onEdit(holding)}>Edit holding</button></div>
   </section></div>
