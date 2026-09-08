@@ -638,9 +638,9 @@ function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding:
     <div className="drawer-facts">
       <span>Broker / owner<b>{holding.broker || '—'}{holding.ownerName ? ` · ${holding.ownerName}` : ''}</b></span>
       <span>Currency<b>{holding.currency}</b></span>
-      <span>Valuation method<b>{label(holding.valuationMethod)}</b>
+      <span>Valuation method<b className="fact-with-icon">{label(holding.valuationMethod)}
         <button type="button" className={`calc-toggle${calcOpen ? ' open' : ''}`} aria-expanded={calcOpen} aria-label="How this value is calculated" title="How this value is calculated" onClick={() => setCalcOpen(o => !o)}><i>i</i></button>
-      </span>
+      </b></span>
       <span>Last updated<b>{since(holding.updatedAt)}</b></span>
       {holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
     </div>
