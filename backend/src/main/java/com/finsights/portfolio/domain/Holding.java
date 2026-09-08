@@ -22,7 +22,7 @@ public class Holding {
     // and it avoids LazyInitializationException once the loading transaction has closed.
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     private Category category;
-    @Column(nullable = false)
+    @Column(nullable = false, length = 128)
     private String name;
     /** Auto-generated, human-readable, space-free reference (e.g. "reliance-industries-4f2a"). Never editable. */
     @Column(unique = true)
@@ -52,13 +52,13 @@ public class Holding {
     @Column(nullable = false)
     private int sortOrder = 0;
     /** Short one-liner shown in the ⓘ hover on the Holdings table; {@link #notes} is the longer free text. */
-    @Column(length = 280)
+    @Column(length = 1024)
     private String description;
     @Column(length = 1000)
     private String notes;
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "holding_tags", joinColumns = @JoinColumn(name = "holding_id"))
-    @Column(name = "tag")
+    @Column(name = "tag", length = 48)
     private Set<String> tags = new LinkedHashSet<>();
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();

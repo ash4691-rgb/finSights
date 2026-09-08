@@ -436,9 +436,9 @@ function CategoryModal({ category, onClose, onSaved }: { category: Category | nu
   return <div className="modal-backdrop"><section className="modal narrow"><div className="modal-header"><div><p className="eyebrow">{category ? 'EDIT CATEGORY' : 'NEW CATEGORY'}</p><h2>{category ? category.name : 'Add a category'}</h2></div><button className="close" onClick={onClose}>×</button></div>
     <form onSubmit={submit}>
       <div className="form-grid">
-        <Field label="Name" required wide><input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Growth Equity, Emergency Fund" /></Field>
+        <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Growth Equity, Emergency Fund" /></Field>
         <Field label="Type" required wide><select value={form.kind} onChange={e => set('kind', e.target.value)}><option value="ASSET">Asset</option><option value="LIABILITY">Liability</option></select></Field>
-        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={280} /></Field>
+        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={1024} /></Field>
       </div>
       {error && <p className="form-error">{error}</p>}
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : category ? 'Save changes' : 'Add category'}</button></div>
@@ -611,8 +611,8 @@ function HoldingModal({ holding, category, categories, holdings, onClose, onSave
         </Field>
         <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>
         {isMarket && <Field label="Ticker symbol" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
-        <Field label="Name" required><input required value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
-        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={280} /></Field>
+        <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
+        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
         {!isEdit && <Field label="Broker / platform" required><input required value={form.broker} onChange={e => set('broker', e.target.value)} placeholder="Kite, Groww, HDFC Bank…" /></Field>}
         {!isEdit && <Field label="Quantity"><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
         {!isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'}><input type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
@@ -1242,7 +1242,7 @@ function TagInput({ tags, suggestions, onChange }: { tags: string[]; suggestions
   const [input, setInput] = useState('')
   const [open, setOpen] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
-  const norm = (t: string) => t.trim().toLowerCase()
+  const norm = (t: string) => t.trim().toLowerCase().slice(0, 48)
   const has = (t: string) => tags.some(x => norm(x) === norm(t))
   const add = (raw: string) => { const t = norm(raw); if (t && !has(t)) onChange([...tags, t]); setInput(''); setOpen(false) }
   const remove = (t: string) => onChange(tags.filter(x => x !== t))
@@ -1262,7 +1262,7 @@ function TagInput({ tags, suggestions, onChange }: { tags: string[]; suggestions
     <div className="tag-input-field">
       <div className="tag-input-box" onClick={() => setOpen(true)}>
         {tags.map(t => <span className="tag-chip" key={t}>{t}<button type="button" aria-label={`Remove ${t}`} onClick={e => { e.stopPropagation(); remove(t) }}>×</button></span>)}
-        <input value={input} placeholder={tags.length ? 'Add another…' : 'Search or add a tag'}
+        <input value={input} maxLength={48} placeholder={tags.length ? 'Add another…' : 'Search or add a tag'}
           onFocus={() => setOpen(true)}
           onChange={e => { setInput(e.target.value); setOpen(true) }}
           onKeyDown={e => {

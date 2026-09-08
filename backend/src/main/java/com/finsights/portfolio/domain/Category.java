@@ -15,12 +15,12 @@ public class Category {
     private String id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     private UserAccount user;
-    @Column(nullable = false)
+    @Column(nullable = false, length = 128)
     private String name;
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private HoldingKind kind;
     /** Short one-liner shown in the ⓘ hover on the Categories table. */
-    @Column(length = 280)
+    @Column(length = 1024)
     private String description;
     /** Manual drag-to-reorder position within the Categories table; new categories append to the end. */
     @Column(nullable = false)
