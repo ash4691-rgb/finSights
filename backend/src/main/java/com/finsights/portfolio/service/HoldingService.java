@@ -246,6 +246,7 @@ public class HoldingService {
             switch (t.getType()) {
                 case BUY, ADJUSTMENT -> { costBasis = costBasis.add(amount); quantity = quantity.add(units); }
                 case SELL -> {
+                    if (costBasis.signum() <= 0 && quantity.signum() <= 0) continue; // nothing on the books to sell
                     BigDecimal costOfSold;
                     if (units.signum() > 0 && quantity.signum() > 0) {
                         BigDecimal averageCost = costBasis.divide(quantity, 10, RoundingMode.HALF_UP);
