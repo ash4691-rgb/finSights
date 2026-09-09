@@ -1074,27 +1074,46 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
   if (!data) return <p className="hint">Loading insights…</p>
   const thresholdsSet = Object.values(thresholds).filter(value => value.trim() !== '').length
 
+  const isPendingAction = (kind: string) =>
+    kind === 'EMI_DUE' || kind === 'EMI_OVERDUE' || kind === 'INTEREST_DUE' || kind === 'INTEREST_OVERDUE'
+  const pendingActions = data.actions.filter(a => isPendingAction(a.kind))
+  const radarItems = data.actions.filter(a => !isPendingAction(a.kind))
+  const renderAction = (a: ActionItem, i: number) => {
+    const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
+    const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
+    return <div key={`${a.kind}-${a.holdingId ?? ''}-${a.period ?? ''}-${i}`} className={`warning ${a.severity.toLowerCase()}`}>
+      <b>{a.severity}</b>
+      <button className="warning-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
+        <strong>{a.title}</strong><span>{a.detail}</span>
+      </button>
+      {(isEmi || isInterest) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
+        e.stopPropagation()
+        const url = isEmi
+          ? `/api/emis/${a.holdingId}/pay?dueDate=${a.period}`
+          : `/api/interest-payouts/${a.holdingId}/confirm?dueDate=${a.period}`
+        try { await api(url, { method: 'POST' }); await reload() }
+        catch (err) { setError(err instanceof Error ? err.message : 'Could not record that') }
+      }}>{isEmi ? 'Log repayment' : 'Log interest'}</button>}
+    </div>
+  }
+
   return <>
     <section className="panel data-quality">
       <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
-      {data.actions.length ? <div className="warning-list">{data.actions.map((a, i) => {
-        const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
-        const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
-        return <div key={i} className={`warning ${a.severity.toLowerCase()}`}>
-          <b>{a.severity}</b>
-          <button className="warning-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
-            <strong>{a.title}</strong><span>{a.detail}</span>
-          </button>
-          {(isEmi || isInterest) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
-            e.stopPropagation()
-            const url = isEmi
-              ? `/api/emis/${a.holdingId}/pay?dueDate=${a.period}`
-              : `/api/interest-payouts/${a.holdingId}/confirm?dueDate=${a.period}`
-            try { await api(url, { method: 'POST' }); await reload() }
-            catch (err) { setError(err instanceof Error ? err.message : 'Could not record that') }
-          }}>{isEmi ? 'Mark paid' : 'Log interest'}</button>}
+      <div className="action-split">
+        <div className="action-col">
+          <div className="action-col-head"><span className="action-col-icon">⚡</span><h4>Pending actions</h4><span className="action-col-count">{pendingActions.length}</span></div>
+          {pendingActions.length
+            ? <div className="warning-list action-col-list">{pendingActions.map(renderAction)}</div>
+            : <p className="hint">Nothing to log right now — you're caught up.</p>}
         </div>
-      })}</div> : <p className="hint">Nothing needs your attention right now.</p>}
+        <div className="action-col">
+          <div className="action-col-head"><span className="action-col-icon">🔭</span><h4>On your radar</h4><span className="action-col-count">{radarItems.length}</span></div>
+          {radarItems.length
+            ? <div className="warning-list action-col-list">{radarItems.map(renderAction)}</div>
+            : <p className="hint">Nothing needs a second look right now.</p>}
+        </div>
+      </div>
     </section>
 
     <section className="panel">
