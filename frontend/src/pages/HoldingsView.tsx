@@ -3,7 +3,7 @@ import type * as React from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
 import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies } from '../util'
-import { Field, InfoTip, TagInput, SymbolSearchInput } from '../ui'
+import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput } from '../ui'
 import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
@@ -116,6 +116,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
     ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
     : blankHoldingForm(startCategoryId))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
   const isLiability = categories.find(c => c.id === form.categoryId)?.kind === 'LIABILITY'
   const isFixedRate = !isLiability && form.valuationMethod === 'FIXED_RATE'
   const isMarket = !isLiability && form.valuationMethod === 'MARKET_PRICE'
@@ -192,7 +193,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
           ? <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
           : <div className="field-pair">
               <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries'} /></Field>
-              <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><input required maxLength={96} value={form.broker} onChange={e => set('broker', e.target.value)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>
+              <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><SuggestInput required maxLength={96} value={form.broker} suggestions={brokerSuggestions} onChange={v => set('broker', v)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>
             </div>}
         <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
         {!isLiability && !isEdit && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
