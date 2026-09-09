@@ -126,6 +126,8 @@ const ago = (value?: string) => {
   return since(value)
 }
 const shortId = (id: string) => `#${id.slice(-8)}`
+// Collapsed / expanded affordance text — shared by every expandable section for consistency.
+const toggleLabel = (open: boolean) => (open ? 'Hide ▴' : 'Show ▾')
 
 function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
   const escape = (value: string | number) => { const s = String(value ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
@@ -1077,19 +1079,22 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
 
       <button className="section-toggle" onClick={() => setThresholdsOpen(open => !open)}>
         <span>Movement thresholds</span>
-        <span className="toggle-meta">{thresholdsSet ? `${thresholdsSet} set` : 'none set'} {thresholdsOpen ? '▴' : '▾'}</span>
+        <span className="toggle-meta">{toggleLabel(thresholdsOpen)}</span>
       </button>
-      {thresholdsOpen && <div className="threshold-row">
-        {periodFields.map(([key, text]) => <Field label={`${text} threshold %`} key={key}>
-          <input type="number" min="0" step="0.1" placeholder="e.g. 5" value={thresholds[key]}
-            onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))} />
-        </Field>)}
-        <button className="primary compact" onClick={() => void saveThresholds()} disabled={savingThresholds}>{savingThresholds ? 'Saving…' : 'Save thresholds'}</button>
+      {thresholdsOpen && <div className="watchlist-body">
+        <p className="watchlist-count">{thresholdsSet ? `${thresholdsSet} threshold${thresholdsSet === 1 ? '' : 's'} set` : 'No thresholds set yet'}</p>
+        <div className="threshold-row">
+          {periodFields.map(([key, text]) => <Field label={`${text} threshold %`} key={key}>
+            <input type="number" min="0" step="0.1" placeholder="e.g. 5" value={thresholds[key]}
+              onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))} />
+          </Field>)}
+          <button className="primary compact" onClick={() => void saveThresholds()} disabled={savingThresholds}>{savingThresholds ? 'Saving…' : 'Save thresholds'}</button>
+        </div>
       </div>}
 
       <button className="section-toggle" onClick={() => setWatchlistOpen(open => !open)}>
         <span>Watchlist</span>
-        <span className="toggle-meta">{watchlistOpen ? 'Hide ▴' : 'Expand ▾'}</span>
+        <span className="toggle-meta">{toggleLabel(watchlistOpen)}</span>
       </button>
       {watchlistOpen && <div className="watchlist-body">
         <div className="watchlist-actions">
@@ -1133,7 +1138,7 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
 
     <section className="overview-section">
       <button className="overview-toggle" onClick={() => setOverviewOpen(current => !current)}>
-        <h3>Portfolio overview</h3><span>{overviewOpen ? '▴ Hide' : '▾ Show'}</span>
+        <h3>Portfolio overview</h3><span>{toggleLabel(overviewOpen)}</span>
       </button>
       {overviewOpen && <div className="insight-grid">
         <BreakdownCard title="By category" items={data.byCategory} total={total} />
@@ -1369,7 +1374,7 @@ function SettingsSection({ title, subtitle, defaultOpen, children }: {
   return <article className="panel settings-section">
     <button type="button" className="settings-section-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
       <span className="settings-section-title"><h3>{title}</h3><span>{subtitle}</span></span>
-      <span className="settings-section-caret">{open ? '▴' : '▾'}</span>
+      <span className="settings-section-toggle">{toggleLabel(open)}</span>
     </button>
     {open && <div className="settings-section-body">{children}</div>}
   </article>
