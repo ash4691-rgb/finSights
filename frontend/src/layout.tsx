@@ -3,7 +3,7 @@ import type * as React from 'react'
 import type { ReactNode } from 'react'
 import { PAGE_LAYOUT } from './layout-config'
 import type { Widget } from './layout-config'
-import { WIDGET_TYPES, WidgetView, AddWidgetModal, WidgetConfigMenu } from './widgets'
+import { WIDGET_TYPES, WidgetView, AddWidgetModal } from './widgets'
 import type { PageDataSource } from './widgets'
 import { saveLayout } from './layout-api'
 
@@ -238,13 +238,15 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
         {editing && <div className="layout-item-bar">
           <span className="drag-handle" draggable onDragStart={() => setDragKey(item.key)}
             onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
-          <span className="layout-item-size">{span}/12{height != null ? ` · ${Math.round(height)}px` : ''}</span>
+          {isWidgetZone && widget
+            ? <button type="button" className="layout-item-edit" onClick={() => setEditingWidgetId(widget.id)}>Edit</button>
+            : <span className="layout-item-size">{span}/12{height != null ? ` · ${Math.round(height)}px` : ''}</span>}
         </div>}
         {isWidgetZone
           ? widget && <article className="panel widget-panel">
               <div className="panel-heading">
                 <h3>{widget.title}</h3>
-                {editing && <WidgetConfigMenu widget={widget} onEdit={() => setEditingWidgetId(widget.id)} onDelete={() => removeWidget(widget.id)} />}
+                {editing && widget.deletable && <button type="button" className="widget-delete" title="Delete widget" onClick={() => removeWidget(widget.id)}>Delete</button>}
               </div>
               {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
             </article>

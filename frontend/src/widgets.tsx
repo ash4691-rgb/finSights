@@ -106,21 +106,3 @@ export function AddWidgetModal({ dataSource, initial, onAdd, onClose }: {
         </>}
   </section></div>
 }
-
-// "⋯" menu on a widget panel — Edit always, Delete only when the widget allows it.
-export function WidgetConfigMenu({ widget, onEdit, onDelete }: { widget: Widget; onEdit: () => void; onDelete: () => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [])
-  return <div className="widget-menu" ref={ref}>
-    <button type="button" className="widget-menu-trigger" onClick={() => setOpen(o => !o)} title="Widget options">⋯</button>
-    {open && <ul className="widget-menu-dropdown">
-      <li><button type="button" onClick={() => { setOpen(false); onEdit() }}>Edit</button></li>
-      {widget.deletable && <li><button type="button" className="danger-link" onClick={() => { setOpen(false); onDelete() }}>Delete</button></li>}
-    </ul>}
-  </div>
-}
