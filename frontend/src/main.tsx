@@ -49,7 +49,7 @@ type Transaction = {
   currency: string; type: TransactionType; date: string; amount: number; quantity?: number; principalPortion?: number; interestPaid?: boolean; notes?: string; createdAt?: string
 }
 type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
-type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string }
+type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string; key: string }
 type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[] }
 type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
 type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
@@ -1078,10 +1078,14 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
     kind === 'EMI_DUE' || kind === 'EMI_OVERDUE' || kind === 'INTEREST_DUE' || kind === 'INTEREST_OVERDUE'
   const pendingActions = data.actions.filter(a => isPendingAction(a.kind))
   const radarItems = data.actions.filter(a => !isPendingAction(a.kind))
+  const dismissAction = async (key: string, status: 'DONE' | 'DEFERRED' | 'DELETED') => {
+    try { await api('/api/insights/actions', { method: 'POST', body: JSON.stringify({ key, status }) }); await reload() }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not update that item') }
+  }
   const renderAction = (a: ActionItem, i: number) => {
     const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
     const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
-    return <div key={`${a.kind}-${a.holdingId ?? ''}-${a.period ?? ''}-${i}`} className={`warning ${a.severity.toLowerCase()}`}>
+    return <div key={`${a.key}-${i}`} className={`warning ${a.severity.toLowerCase()}`}>
       <b>{a.severity}</b>
       <button className="warning-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
         <strong>{a.title}</strong><span>{a.detail}</span>
@@ -1094,6 +1098,14 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
         try { await api(url, { method: 'POST' }); await reload() }
         catch (err) { setError(err instanceof Error ? err.message : 'Could not record that') }
       }}>{isEmi ? 'Log repayment' : 'Log interest'}</button>}
+      <div className="warning-tools">
+        <button className="warning-tool done" title="Mark done" aria-label="Mark done"
+          onClick={e => { e.stopPropagation(); void dismissAction(a.key, 'DONE') }}>✓</button>
+        <button className="warning-tool defer" title="Snooze for a week" aria-label="Snooze for a week"
+          onClick={e => { e.stopPropagation(); void dismissAction(a.key, 'DEFERRED') }}>⏰</button>
+        <button className="warning-tool delete" title="Dismiss" aria-label="Dismiss"
+          onClick={e => { e.stopPropagation(); void dismissAction(a.key, 'DELETED') }}>🗑</button>
+      </div>
     </div>
   }
 

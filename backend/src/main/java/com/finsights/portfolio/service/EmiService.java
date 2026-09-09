@@ -71,12 +71,14 @@ public class EmiService {
             for (LocalDate due : occurrences(h, today)) {
                 if (due.isAfter(today.plusDays(DUE_SOON_DAYS))) continue;
                 boolean overdue = due.isBefore(today);
+                String kind = overdue ? "EMI_OVERDUE" : "EMI_DUE";
                 items.add(new ActionItemResponse(
-                        overdue ? "EMI_OVERDUE" : "EMI_DUE",
+                        kind,
                         overdue ? "WARN" : "INFO",
                         (overdue ? noun + " overdue — " : noun + " due — ") + h.getName(),
                         money(amount, h) + (overdue ? ", was due " + due : ", due " + due),
-                        h.getId(), h.getName(), due, amount, due.toString()));
+                        h.getId(), h.getName(), due, amount, due.toString(),
+                        ActionItemResponse.keyOf("EMI", h.getId(), due.toString())));
             }
         }
         items.sort((a, b) -> a.dueDate().compareTo(b.dueDate()));

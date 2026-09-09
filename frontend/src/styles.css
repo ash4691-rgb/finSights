@@ -259,21 +259,27 @@ th.sortable:hover{color:var(--text)}
 .warning:hover{border-color:var(--border-strong)}
 .warning-body{flex:1;min-width:0;display:grid;gap:2px;border:0;background:none;text-align:left;color:inherit;cursor:pointer;padding:0}
 .warning-body strong{color:var(--text);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.warning-body span{color:var(--text-3);font-size:11px;line-height:1.4}
-.warning{flex-wrap:wrap}
+.warning-body span{color:var(--text-3);font-size:11px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .warning-action{flex-shrink:0;align-self:center;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-soft-text);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer}
 .warning-action:hover{background:var(--accent);color:#fff}
-/* Action centre — two side-by-side columns, each scrolling past ~5-6 rows */
+/* per-card done / snooze / dismiss */
+.warning-tools{display:flex;gap:4px;flex-shrink:0;align-self:center;margin-left:auto}
+.warning-tool{width:24px;height:24px;display:grid;place-items:center;border:1px solid var(--border-soft);background:var(--surface);color:var(--text-3);border-radius:6px;font-size:12px;line-height:1;cursor:pointer}
+.warning-tool:hover{border-color:var(--border-strong);color:var(--text)}
+.warning-tool.done:hover{border-color:var(--positive);color:var(--positive)}
+.warning-tool.defer:hover{border-color:var(--accent);color:var(--accent-soft-text)}
+.warning-tool.delete:hover{border-color:var(--negative);color:var(--negative)}
+/* Action centre — two side-by-side columns, each scrolling past ~5 rows */
 .action-split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .action-col{display:flex;flex-direction:column;min-width:0}
 .action-col-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .action-col-head h4{margin:0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-2)}
 .action-col-icon{font-size:15px;line-height:1}
 .action-col-count{margin-left:auto;font-size:11px;color:var(--text-3);background:var(--surface-2);border:1px solid var(--border-soft);border-radius:999px;padding:1px 8px;font-variant-numeric:tabular-nums}
-.action-col-list{max-height:340px}
+.action-col-list{max-height:356px}
 .threshold-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:12px 0 8px;padding:14px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px}
 .threshold-row .field{min-width:110px}
-.hot-pick-list{display:grid;gap:8px;margin-bottom:8px;max-height:540px;overflow-y:auto;padding-right:4px}
+.hot-pick-list{display:grid;gap:8px;margin-bottom:8px;max-height:312px;overflow-y:auto;padding-right:4px}
 /* Collapsible sub-sections inside a panel (Movement thresholds, Watchlist) */
 .section-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;background:transparent;border:0;border-top:1px solid var(--border-soft);padding:14px 2px 4px;margin-top:10px;cursor:pointer;color:var(--text);font-size:12px;font-weight:700;text-align:left}
 .section-toggle:hover{color:var(--accent-soft-text)}
@@ -488,6 +494,7 @@ th.sortable:hover{color:var(--text)}
   .hero{padding:22px;align-items:flex-start;gap:20px;flex-direction:column}
   .hero h2{font-size:32px}
   .metric-grid,.insight-grid,.form-grid,.broker-grid,.instrument-grid,.drawer-metrics,.drawer-facts,.field-pair,.action-split{grid-template-columns:1fr}
+  .warning{flex-wrap:wrap}
   .holdings-toolbar{flex-wrap:wrap}
   .bulk-bar{align-items:stretch;flex-direction:column}
   .panel{min-height:auto}
