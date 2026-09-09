@@ -1,4 +1,4 @@
-import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
 
@@ -101,6 +101,107 @@ function initialTheme(): Theme {
   return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
 }
 
+// ---------------------------------------------------------------------------
+// Editable layout — per-page "Edit layout" mode. Each page is a set of zones
+// (a page zone = its stack of sections; a grid zone = a row of cards inside a
+// section). Within a zone the user can drag items to reorder them and cycle
+// each item's width through preset spans. Preferences live in localStorage,
+// keyed "page/zone" — never syncs to the backend (same as the theme toggle).
+// Nothing crosses from one zone to another.
+// ---------------------------------------------------------------------------
+const LAYOUT_KEY = 'finsights-layout-v1'
+const SPAN_STEPS = [3, 4, 6, 12] // quarter · third · half · full (12-col grid)
+const spanLabel = (span: number) => ({ 3: 'Quarter', 4: 'Third', 6: 'Half', 12: 'Full' } as Record<number, string>)[span] ?? 'Half'
+type ZonePref = { order: string[]; spans: Record<string, number> }
+type LayoutState = Record<string, ZonePref>
+type ZoneItem = { key: string; span: number }
+
+function readLayout(): LayoutState {
+  try { const raw = localStorage.getItem(LAYOUT_KEY); return raw ? JSON.parse(raw) as LayoutState : {} }
+  catch { return {} }
+}
+function writeLayout(next: LayoutState) {
+  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(next)) } catch { /* storage unavailable */ }
+}
+function clearPageLayout(page: string) {
+  const next = readLayout()
+  for (const key of Object.keys(next)) if (key.startsWith(`${page}/`)) delete next[key]
+  writeLayout(next)
+}
+
+// Merge a saved preference over the defaults: known keys in their saved order
+// first, then any default keys the save didn't know about, appended in default
+// order. Keys no longer in `defaults` are dropped from the render list (but
+// left in storage, so a transient view — filtered brokers, say — doesn't wipe
+// them). Spans fall back to the default span.
+function mergeZone(defaults: ZoneItem[], pref?: ZonePref): ZoneItem[] {
+  const defaultByKey = new Map(defaults.map(d => [d.key, d]))
+  const savedOrder = (pref?.order ?? []).filter(k => defaultByKey.has(k))
+  const seen = new Set(savedOrder)
+  const order = [...savedOrder, ...defaults.map(d => d.key).filter(k => !seen.has(k))]
+  return order.map(key => ({ key, span: pref?.spans?.[key] ?? defaultByKey.get(key)!.span }))
+}
+
+function useZoneLayout(zoneKey: string, defaults: ZoneItem[], nonce: number) {
+  const defaultsRef = useRef(defaults)
+  defaultsRef.current = defaults
+  const [items, setItems] = useState<ZoneItem[]>(() => mergeZone(defaults, readLayout()[zoneKey]))
+  // Re-read from storage when the zone changes or a Reset bumps the nonce.
+  useEffect(() => { setItems(mergeZone(defaultsRef.current, readLayout()[zoneKey])) }, [zoneKey, nonce])
+  // Re-merge if the default set itself changes (e.g. brokers loaded in).
+  const sig = defaults.map(d => `${d.key}:${d.span}`).join('|')
+  useEffect(() => { setItems(current => mergeZone(defaultsRef.current, {
+    order: current.map(i => i.key),
+    spans: Object.fromEntries(current.map(i => [i.key, i.span])),
+  })) }, [sig])
+
+  const persist = (nextItems: ZoneItem[]) => {
+    const all = readLayout()
+    all[zoneKey] = { order: nextItems.map(i => i.key), spans: Object.fromEntries(nextItems.map(i => [i.key, i.span])) }
+    writeLayout(all)
+  }
+  const move = (fromKey: string, toKey: string) => setItems(current => {
+    if (fromKey === toKey) return current
+    const from = current.findIndex(i => i.key === fromKey), to = current.findIndex(i => i.key === toKey)
+    if (from === -1 || to === -1) return current
+    const next = [...current]
+    next.splice(to, 0, next.splice(from, 1)[0])
+    persist(next); return next
+  })
+  const setSpan = (key: string, span: number) => setItems(current => {
+    const next = current.map(i => i.key === key ? { ...i, span } : i)
+    persist(next); return next
+  })
+  return { items, move, setSpan }
+}
+
+function LayoutZone({ zoneKey, editing, nonce, defaults, render, className }: {
+  zoneKey: string; editing: boolean; nonce: number; defaults: ZoneItem[]
+  render: Record<string, ReactNode>; className?: string
+}) {
+  const { items, move, setSpan } = useZoneLayout(zoneKey, defaults, nonce)
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const [overKey, setOverKey] = useState<string | null>(null)
+  const cycleSpan = (key: string, span: number) =>
+    setSpan(key, SPAN_STEPS[(SPAN_STEPS.indexOf(span) + 1) % SPAN_STEPS.length] ?? 6)
+  return <div className={`layout-zone${editing ? ' editing' : ''}${className ? ` ${className}` : ''}`}>
+    {items.filter(i => render[i.key] != null).map(({ key, span }) => (
+      <div key={key} className={`layout-item span-${span}${overKey === key ? ' drag-over' : ''}`}
+        onDragOver={e => { if (editing && dragKey) { e.preventDefault(); setOverKey(key) } }}
+        onDragLeave={() => setOverKey(cur => cur === key ? null : cur)}
+        onDrop={e => { if (editing && dragKey) { e.preventDefault(); move(dragKey, key); setDragKey(null); setOverKey(null) } }}>
+        {editing && <div className="layout-item-bar">
+          <span className="drag-handle" draggable onDragStart={() => setDragKey(key)}
+            onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
+          <button type="button" className="outline compact" onClick={() => cycleSpan(key, span)}
+            title="Cycle width">{spanLabel(span)} width</button>
+        </div>}
+        {render[key]}
+      </div>
+    ))}
+  </div>
+}
+
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     credentials: 'include',
@@ -167,7 +268,13 @@ function App({ onSignOut }: { onSignOut: () => void }) {
   const [dataVersion, setDataVersion] = useState(0)
   const [showImport, setShowImport] = useState(false)
   const [exportingTransactions, setExportingTransactions] = useState(false)
+  const [layoutEditing, setLayoutEditing] = useState(false)
+  const [layoutNonce, setLayoutNonce] = useState(0)
   const bootstrapped = useRef(false)
+
+  // Leaving a page always drops out of layout-edit mode.
+  useEffect(() => { setLayoutEditing(false) }, [page])
+  const canEditLayout = page === 'dashboard' || page === 'insights' || page === 'brokers'
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -270,15 +377,19 @@ function App({ onSignOut }: { onSignOut: () => void }) {
           </>}
           {page === 'categories' && <button className="tool-action" onClick={exportCategoriesCsv} disabled={!categories.length}>↓ Export</button>}
           {page === 'holdings' && <button className="tool-action" onClick={exportHoldingsCsv} disabled={!holdings.length}>↓ Export</button>}
+          {canEditLayout && <>
+            {layoutEditing && <button className="tool-action" onClick={() => { clearPageLayout(page); setLayoutNonce(n => n + 1) }}>↺ Reset layout</button>}
+            <button className="tool-action" onClick={() => setLayoutEditing(e => !e)}>{layoutEditing ? '✓ Done' : '⤢ Edit layout'}</button>
+          </>}
         </div>
       </header>
       {user?.demoMode && <div className="demo-banner"><strong>Demo mode</strong><span>Local data is saved in the backend. Configure Google OAuth before deployment.</span></div>}
-      {page === 'dashboard' && dashboard && <DashboardView dashboard={dashboard} holdings={holdings} onManage={() => setPage('categories')} />}
+      {page === 'dashboard' && dashboard && <DashboardView dashboard={dashboard} holdings={holdings} onManage={() => setPage('categories')} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
       {page === 'categories' && <CategoriesView categories={categories} onOpen={setCategoryDetail} onEdit={setEditingCategory} onAdd={() => setCreatingCategory(true)} reload={load} />}
       {page === 'holdings' && <HoldingsView holdings={holdings} categories={categories} reload={load} onEdit={setEditingHolding} onAdd={() => setCreatingHolding(true)} onOpen={setHoldingDetail} />}
       {page === 'transactions' && <TransactionsView holdings={holdings} displayCurrency={displayCurrency} dataVersion={dataVersion} reload={load} />}
-      {page === 'insights' && settings && <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} />}
-      {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} />}
+      {page === 'insights' && settings && <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
+      {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
       {page === 'settings' && settings && <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme} />}
     </main>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
@@ -290,21 +401,31 @@ function App({ onSignOut }: { onSignOut: () => void }) {
 }
 
 
-function DashboardView({ dashboard, holdings, onManage }: { dashboard: Dashboard; holdings: Holding[]; onManage: () => void }) {
-  const cards = [
-    ['Net worth', dashboard.netWorth, 'Assets less liabilities'], ['Total assets', dashboard.totalAssets, `${holdings.filter(h => h.kind === 'ASSET').length} active holdings`],
-    ['Total liabilities', dashboard.totalLiabilities, 'Outstanding obligations'], ['Portfolio P/L', dashboard.portfolioProfitLoss, `${dashboard.investedAssets ? percent((dashboard.portfolioProfitLoss / dashboard.investedAssets) * 100) : '0.0%'} on invested assets`],
-  ] as const
-  return <>
-    <section className="hero"><div><p>Current portfolio value</p><h2>{money(dashboard.netWorth)}</h2><span className={dashboard.portfolioProfitLoss >= 0 ? 'positive' : 'negative'}>{dashboard.portfolioProfitLoss >= 0 ? '↑' : '↓'} {money(Math.abs(dashboard.portfolioProfitLoss))} total gain/loss</span></div><button className="outline" onClick={onManage}>Manage categories →</button></section>
-    <section className="metric-grid">{cards.map(([title, value, note]) => <article className="metric-card" key={title}><p>{title}</p><strong className={title === 'Portfolio P/L' && Number(value) < 0 ? 'negative' : ''}>{money(value as number)}</strong><small>{note}</small></article>)}</section>
-    <section className="insight-grid">
-      <BreakdownCard title="Allocation by category" items={dashboard.byCategory} total={dashboard.totalAssets} />
-      <BreakdownCard title="Value by broker" items={dashboard.byBroker} total={dashboard.totalAssets} />
-      <article className="panel recent"><div className="panel-heading"><h3>Portfolio pulse</h3><span>Live calculation</span></div><div className="pulse-row"><span>Liquid within 7 days</span><strong>{money(holdings.filter(h => h.liquidWithinSevenDays).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Blocked / NPA</span><strong>{money(holdings.filter(h => h.blocked).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Fixed-rate instruments</span><strong>{holdings.filter(h => h.valuationMethod === 'FIXED_RATE').length}</strong></div><p className="hint">Daily portfolio snapshots and broker reconciliation are the next integration layer.</p></article>
-      <BreakdownCard title="Value by tag" items={dashboard.byTag} total={dashboard.totalAssets} />
-    </section>
-  </>
+function DashboardView({ dashboard, holdings, onManage, layoutEditing, layoutNonce }: {
+  dashboard: Dashboard; holdings: Holding[]; onManage: () => void; layoutEditing: boolean; layoutNonce: number
+}) {
+  const kpi = (key: string, title: string, value: number, note: string) => [key, <article className="metric-card" key={key}>
+    <p>{title}</p><strong className={key === 'pl' && value < 0 ? 'negative' : ''}>{money(value)}</strong><small>{note}</small>
+  </article>] as const
+  const kpis = Object.fromEntries([
+    kpi('netWorth', 'Net worth', dashboard.netWorth, 'Assets less liabilities'),
+    kpi('assets', 'Total assets', dashboard.totalAssets, `${holdings.filter(h => h.kind === 'ASSET').length} active holdings`),
+    kpi('liabilities', 'Total liabilities', dashboard.totalLiabilities, 'Outstanding obligations'),
+    kpi('pl', 'Portfolio P/L', dashboard.portfolioProfitLoss, `${dashboard.investedAssets ? percent((dashboard.portfolioProfitLoss / dashboard.investedAssets) * 100) : '0.0%'} on invested assets`),
+  ])
+  const zone = { editing: layoutEditing, nonce: layoutNonce }
+  return <LayoutZone zoneKey="dashboard/page" {...zone} defaults={[{ key: 'hero', span: 12 }, { key: 'kpis', span: 12 }, { key: 'breakdowns', span: 12 }]} render={{
+    hero: <section className="hero"><div><p>Current portfolio value</p><h2>{money(dashboard.netWorth)}</h2><span className={dashboard.portfolioProfitLoss >= 0 ? 'positive' : 'negative'}>{dashboard.portfolioProfitLoss >= 0 ? '↑' : '↓'} {money(Math.abs(dashboard.portfolioProfitLoss))} total gain/loss</span></div><button className="outline" onClick={onManage}>Manage categories →</button></section>,
+    kpis: <LayoutZone zoneKey="dashboard/kpis" {...zone}
+      defaults={['netWorth', 'assets', 'liabilities', 'pl'].map(key => ({ key, span: 3 }))} render={kpis} />,
+    breakdowns: <LayoutZone zoneKey="dashboard/breakdowns" {...zone}
+      defaults={['byCategory', 'byBroker', 'pulse', 'byTag'].map(key => ({ key, span: 6 }))} render={{
+        byCategory: <BreakdownCard title="Allocation by category" items={dashboard.byCategory} total={dashboard.totalAssets} />,
+        byBroker: <BreakdownCard title="Value by broker" items={dashboard.byBroker} total={dashboard.totalAssets} />,
+        pulse: <article className="panel recent"><div className="panel-heading"><h3>Portfolio pulse</h3><span>Live calculation</span></div><div className="pulse-row"><span>Liquid within 7 days</span><strong>{money(holdings.filter(h => h.liquidWithinSevenDays).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Blocked / NPA</span><strong>{money(holdings.filter(h => h.blocked).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Fixed-rate instruments</span><strong>{holdings.filter(h => h.valuationMethod === 'FIXED_RATE').length}</strong></div><p className="hint">Daily portfolio snapshots and broker reconciliation are the next integration layer.</p></article>,
+        byTag: <BreakdownCard title="Value by tag" items={dashboard.byTag} total={dashboard.totalAssets} />,
+      }} />,
+  }} />
 }
 
 function BreakdownCard({ title, items, total }: { title: string; items: Breakdown[]; total: number }) {
@@ -1019,8 +1140,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
 // appears on the Dashboard lives in the collapsed "Portfolio overview" section at the bottom.
 // This page's own job is Hot picks (holdings + watchlist symbols moving beyond a configured
 // threshold) and data-quality checks.
-function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }: {
+function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen, layoutEditing, layoutNonce }: {
   displayCurrency: string; dataVersion: number; settings: Settings; reload: () => Promise<void>; onOpen: (id: string) => void
+  layoutEditing: boolean; layoutNonce: number
 }) {
   const [data, setData] = useState<Insights | null>(null)
   const [error, setError] = useState('')
@@ -1109,26 +1231,28 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
     </div>
   }
 
+  const zone = { editing: layoutEditing, nonce: layoutNonce }
   return <>
-    <section className="panel data-quality">
+    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'actions', span: 12 }, { key: 'hotpicks', span: 12 }, { key: 'timeline', span: 12 }]} render={{
+    actions: <section className="panel data-quality">
       <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
-      <div className="action-split">
-        <div className="action-col">
+      <LayoutZone zoneKey="insights/actions" {...zone} defaults={[{ key: 'pending', span: 6 }, { key: 'radar', span: 6 }]} render={{
+        pending: <div className="action-col">
           <div className="action-col-head"><span className="action-col-icon">⚡</span><h4>Pending actions</h4><span className="action-col-count">{pendingActions.length}</span></div>
           {pendingActions.length
             ? <div className="warning-list action-col-list">{pendingActions.map(renderAction)}</div>
             : <p className="hint">Nothing to log right now — you're caught up.</p>}
-        </div>
-        <div className="action-col">
+        </div>,
+        radar: <div className="action-col">
           <div className="action-col-head"><span className="action-col-icon">🔭</span><h4>On your radar</h4><span className="action-col-count">{radarItems.length}</span></div>
           {radarItems.length
             ? <div className="warning-list action-col-list">{radarItems.map(renderAction)}</div>
             : <p className="hint">Nothing needs a second look right now.</p>}
-        </div>
-      </div>
-    </section>
+        </div>,
+      }} />
+    </section>,
 
-    <section className="panel">
+    hotpicks: <section className="panel">
       <div className="panel-heading"><h3>Hot picks</h3><span>Movement beyond your thresholds</span></div>
 
       {hotPicks === null ? <p className="hint">Loading hot picks…</p> : hotPicks.length ? <div className="hot-pick-list">
@@ -1177,9 +1301,9 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
           </tr>)}</tbody>
         </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Hot picks too.</p>}
       </div>}
-    </section>
+    </section>,
 
-    <section className="overview-section">
+    timeline: <section className="overview-section">
       <button className="overview-toggle" onClick={() => setTimelineOpen(current => !current)}>
         <h3>Portfolio timeline</h3><span>{toggleLabel(timelineOpen)}</span>
       </button>
@@ -1198,8 +1322,8 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
             : <><NetWorthChart weeks={timeline.weeks} /><TimelineTable weeks={timeline.weeks} /></>}
         {timeline?.lastCapturedAt && <p className="hint timeline-foot">Last snapshot {ago(timeline.lastCapturedAt)}.</p>}
       </div>}
-    </section>
-
+    </section>,
+    }} />
     {(addingWatch || editingWatch) && <WatchlistModal item={editingWatch}
       onClose={() => { setAddingWatch(false); setEditingWatch(null) }}
       onSaved={() => { setAddingWatch(false); setEditingWatch(null); void loadWatchlist(); void loadHotPicks() }} />}
@@ -1346,29 +1470,35 @@ function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntry | nul
   </section></div>
 }
 
-function BrokersView({ displayCurrency, dataVersion }: { displayCurrency: string; dataVersion: number }) {
+function BrokersView({ displayCurrency, dataVersion, layoutEditing, layoutNonce }: {
+  displayCurrency: string; dataVersion: number; layoutEditing: boolean; layoutNonce: number
+}) {
   const [data, setData] = useState<Brokers | null>(null)
   const [error, setError] = useState('')
   useEffect(() => { api<Brokers>(`/api/brokers?currency=${displayCurrency}`).then(setData).catch(e => setError(e.message)) }, [displayCurrency, dataVersion])
   if (error) return <p className="hint">{error}</p>
   if (!data) return <p className="hint">Loading brokers…</p>
-  return <>
-    <section className="broker-grid">{data.brokers.map(b => <article className="panel broker-card" key={b.name}>
-      <div className="panel-heading"><h3>{b.name}</h3><span>{b.holdingCount} holding{b.holdingCount === 1 ? '' : 's'}</span></div>
-      <strong className="broker-value">{money(b.currentValue)}</strong>
-      <div className="broker-meta"><span>Invested {money(b.investedValue)}</span><span className={b.profitLoss >= 0 ? 'positive' : 'negative'}>{b.profitLoss >= 0 ? '+' : ''}{money(b.profitLoss)}</span></div>
-      <div className="tag-row">{b.categories.map(c => <em key={c}>{c}</em>)}</div>
-      <p className="hint">Last change {since(b.lastUpdated)}{b.currencies.length > 1 ? ` · ${b.currencies.join(', ')}` : ''}</p>
-    </article>)}{!data.brokers.length && <p className="hint">Assign holdings to a broker to see them grouped here.</p>}</section>
-    <section className="panel">
+  const zone = { editing: layoutEditing, nonce: layoutNonce }
+  const brokerCards = Object.fromEntries(data.brokers.map(b => [b.name, <article className="panel broker-card" key={b.name}>
+    <div className="panel-heading"><h3>{b.name}</h3><span>{b.holdingCount} holding{b.holdingCount === 1 ? '' : 's'}</span></div>
+    <strong className="broker-value">{money(b.currentValue)}</strong>
+    <div className="broker-meta"><span>Invested {money(b.investedValue)}</span><span className={b.profitLoss >= 0 ? 'positive' : 'negative'}>{b.profitLoss >= 0 ? '+' : ''}{money(b.profitLoss)}</span></div>
+    <div className="tag-row">{b.categories.map(c => <em key={c}>{c}</em>)}</div>
+    <p className="hint">Last change {since(b.lastUpdated)}{b.currencies.length > 1 ? ` · ${b.currencies.join(', ')}` : ''}</p>
+  </article>]))
+  return <LayoutZone zoneKey="brokers/page" {...zone} defaults={[{ key: 'brokerGrid', span: 12 }, { key: 'connect', span: 12 }]} render={{
+    brokerGrid: data.brokers.length
+      ? <LayoutZone zoneKey="brokers/grid" {...zone} defaults={data.brokers.map(b => ({ key: b.name, span: 4 }))} render={brokerCards} />
+      : <p className="hint">Assign holdings to a broker to see them grouped here.</p>,
+    connect: <section className="panel">
       <div className="panel-heading"><h3>Connect a source</h3><span>Automated sync — Phase 3</span></div>
       <p className="hint">Automated sync isn't live yet — bulk-load transactions from a broker's CSV or XML statement on the Transactions page.</p>
       <div className="source-list">{data.sources.map(s => <div className="source" key={s.key}>
         <div><strong>{s.name}</strong><small>{s.description}</small><div className="tag-row">{s.capabilities.map(c => <em key={c}>{c}</em>)}</div></div>
         <div className="source-action"><span className={`status ${s.status.toLowerCase()}`}>{label(s.status)}</span>{s.docsUrl && <a href={s.docsUrl} target="_blank" rel="noreferrer">API docs ↗</a>}</div>
       </div>)}</div>
-    </section>
-  </>
+    </section>,
+  }} />
 }
 
 function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme }: {
