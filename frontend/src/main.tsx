@@ -1089,10 +1089,13 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
 
       <button className="section-toggle" onClick={() => setWatchlistOpen(open => !open)}>
         <span>Watchlist</span>
-        <span className="toggle-meta">{watchlist.length ? `${watchlist.length} tracked` : 'empty'} {watchlistOpen ? '▴' : '▾'}</span>
+        <span className="toggle-meta">{watchlistOpen ? 'Hide ▴' : 'Expand ▾'}</span>
       </button>
       {watchlistOpen && <div className="watchlist-body">
-        <div className="watchlist-actions"><button className="outline compact" onClick={() => setAddingWatch(true)}>+ Add to watchlist</button></div>
+        <div className="watchlist-actions">
+          <span className="watchlist-count">{watchlist.length ? `${watchlist.length} symbol${watchlist.length === 1 ? '' : 's'} tracked` : 'No symbols yet'}</span>
+          <button className="outline compact" onClick={() => setAddingWatch(true)}>+ Add to watchlist</button>
+        </div>
         {watchlist.length ? <div className="table-panel"><table>
           <thead><tr><th>Name</th><th>Ticker</th><th>Price</th><th>Last updated</th><th /></tr></thead>
           <tbody>{watchlist.map(item => <tr key={item.id}>
