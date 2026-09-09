@@ -9,8 +9,18 @@ export type ZoneConfig =
   | { kind: 'widget'; seed: Omit<Widget, 'id'>[] }
 
 export const PAGE_LAYOUT: Record<'dashboard' | 'insights' | 'brokers', Record<string, ZoneConfig>> = {
-  dashboard: {}, // INSIGHTS fills later
-  insights: {},  // INSIGHTS fills later
+  dashboard: {
+    'dashboard/widgets': { kind: 'widget', seed: [
+      { subType: 'counter', title: 'Net worth', query: { measure: 'netWorth' }, deletable: false },
+      { subType: 'pie-chart', title: 'Allocation by category', query: { dimension: 'category', measure: 'value' }, deletable: false },
+    ] },
+  },
+  insights: {
+    'insights/widgets': { kind: 'widget', seed: [
+      { subType: '2d-graph', title: 'Net worth over time', query: { series: 'netWorth' }, deletable: false },
+      { subType: 'histogram', title: 'Value by category', query: { dimension: 'category', measure: 'value' }, deletable: false },
+    ] },
+  },
   brokers: {
     'brokers/widgets': { kind: 'widget', seed: [
       { subType: 'histogram', title: 'Value by broker', query: { dimension: 'broker', measure: 'currentValue' }, deletable: false },

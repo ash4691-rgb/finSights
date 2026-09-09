@@ -238,15 +238,15 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
         {editing && <div className="layout-item-bar">
           <span className="drag-handle" draggable onDragStart={() => setDragKey(item.key)}
             onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
-          {isWidgetZone && widget
-            ? <button type="button" className="layout-item-edit" onClick={() => setEditingWidgetId(widget.id)}>Edit</button>
-            : <span className="layout-item-size">{span}/12{height != null ? ` · ${Math.round(height)}px` : ''}</span>}
+          {isWidgetZone && widget &&
+            <button type="button" className="layout-item-edit" onClick={() => setEditingWidgetId(widget.id)}>Edit</button>}
         </div>}
         {isWidgetZone
           ? widget && <article className="panel widget-panel">
               <div className="panel-heading">
                 <h3>{widget.title}</h3>
-                {editing && widget.deletable && <button type="button" className="widget-delete" title="Delete widget" onClick={() => removeWidget(widget.id)}>Delete</button>}
+                {editing && widget.deletable &&
+                  <button type="button" className="widget-delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>×</button>}
               </div>
               {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
             </article>
