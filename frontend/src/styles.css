@@ -250,8 +250,8 @@ th.sortable:hover{color:var(--text)}
 .mover:hover{border-color:var(--border-strong)}
 .mover b{white-space:nowrap;font-size:11px}
 .data-quality{margin-top:16px;min-height:auto}
-.warning-list{display:grid;gap:7px}
-.warning-list-scroll{max-height:420px;overflow-y:auto;padding-right:4px}
+/* Insights lists cap at roughly ten rows and scroll for the rest. */
+.warning-list{display:grid;gap:7px;max-height:540px;overflow-y:auto;padding-right:4px}
 .warning{display:flex;gap:10px;align-items:flex-start;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:9px 11px;text-align:left;color:var(--text-2);font-size:12px}
 .warning b{font-size:9px;font-weight:800;letter-spacing:.5px;padding:2px 5px;border-radius:4px;flex-shrink:0;margin-top:1px}
 .warning.warn b{background:var(--warn-bg);color:var(--warn-text)}
@@ -264,7 +264,7 @@ th.sortable:hover{color:var(--text)}
 .warning-action:hover{background:var(--accent);color:#fff}
 .threshold-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:12px 0 8px;padding:14px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px}
 .threshold-row .field{min-width:110px}
-.hot-pick-list{display:grid;gap:8px;margin-bottom:8px}
+.hot-pick-list{display:grid;gap:8px;margin-bottom:8px;max-height:540px;overflow-y:auto;padding-right:4px}
 /* Collapsible sub-sections inside a panel (Movement thresholds, Watchlist) */
 .section-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;background:transparent;border:0;border-top:1px solid var(--border-soft);padding:14px 2px 4px;margin-top:10px;cursor:pointer;color:var(--text);font-size:12px;font-weight:700;text-align:left}
 .section-toggle:hover{color:var(--accent-soft-text)}
@@ -295,6 +295,9 @@ th.sortable:hover{color:var(--text)}
 .timeline-foot{margin:10px 0 0;font-size:11px}
 .timeline-table th:not(:first-child),.timeline-table td:not(:first-child),.timeline-detail td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
 .timeline-table th:first-child,.timeline-table td:first-child{text-align:left}
+/* Timeline caps at roughly ten weeks and scrolls, with the header pinned. */
+.timeline-panel .table-panel{max-height:440px;overflow-y:auto}
+.timeline-table thead th{position:sticky;top:0;z-index:1}
 .networth-chart{margin:14px 0 6px;border:1px solid var(--border-soft);border-radius:10px;padding:12px 14px;background:var(--surface-2)}
 .networth-caption{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--text-3);margin-bottom:6px}
 .networth-caption strong{font-size:12px}

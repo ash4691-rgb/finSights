@@ -1077,7 +1077,7 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
   return <>
     <section className="panel data-quality">
       <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
-      {data.actions.length ? <div className={`warning-list${data.actions.length > 10 ? ' warning-list-scroll' : ''}`}>{data.actions.map((a, i) => {
+      {data.actions.length ? <div className="warning-list">{data.actions.map((a, i) => {
         const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
         const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
         return <div key={i} className={`warning ${a.severity.toLowerCase()}`}>
