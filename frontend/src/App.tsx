@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, API_URL } from './api'
 import { applyLocale, currencies, nav, downloadCsv, label, rate, THEME_KEY, initialTheme } from './util'
-import { clearPageLayout } from './layout'
+import { clearPageLayout, hydrateLayouts } from './layout'
+import { fetchLayouts } from './layout-api'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
@@ -58,17 +59,19 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (isFirstLoad) { setLoading(true); setError('') }
     try {
       const cur = currency ?? displayCurrency
-      const [me, nextSettings, fx, nextCountries, nextDashboard, nextCategories, nextHoldings] = await Promise.all([
+      const [me, nextSettings, fx, nextCountries, nextDashboard, nextCategories, nextHoldings, nextLayouts] = await Promise.all([
         api<User>('/api/auth/me'), api<Settings>('/api/settings'), api<FxRates>('/api/fx-rates'), api<Country[]>('/api/countries'),
         api<Dashboard>(`/api/dashboard?currency=${cur}`), api<Category[]>(`/api/categories?currency=${cur}`),
-        api<Holding[]>(`/api/holdings?currency=${cur}`),
+        api<Holding[]>(`/api/holdings?currency=${cur}`), fetchLayouts(),
       ])
 
       applyLocale(cur, nextSettings.numberFormat)
+      hydrateLayouts(nextLayouts)
       setUser(me); setSettings(nextSettings); setFxCurrencies(Object.keys(fx.ratesToBase).sort())
       setFxRatesToBase(fx.ratesToBase); setCountries(nextCountries)
       setDashboard(nextDashboard); setCategories(nextCategories); setHoldings(nextHoldings); setDisplayCurrency(cur)
       setDataVersion(v => v + 1)
+      setLayoutNonce(n => n + 1)
       if (isFirstLoad) {
         bootstrapped.current = true
         if (!currency && nextSettings.baseCurrency && nextSettings.baseCurrency !== cur) {

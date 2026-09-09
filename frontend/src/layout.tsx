@@ -1,21 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import type * as React from 'react'
 import type { ReactNode } from 'react'
+import { PAGE_LAYOUT } from './layout-config'
+import type { Widget } from './layout-config'
+import { WIDGET_TYPES, WidgetView, AddWidgetModal, WidgetConfigMenu } from './widgets'
+import type { PageDataSource } from './widgets'
+import { saveLayout } from './layout-api'
 
 // ---------------------------------------------------------------------------
 // Editable layout — per-page "Edit layout" mode. Each page is a set of zones
 // (a page zone = its stack of sections; a grid zone = a row of cards inside a
-// section). Within a zone the user can drag items to reorder them, and — via
-// edge / corner handles — resize each item horizontally (width snaps to a
-// 12-column grid), vertically (free height, content scrolls), or diagonally.
-// Preferences live in localStorage keyed "page/zone" — never syncs to the
-// backend (same as the theme toggle). Nothing crosses from one zone to another.
+// section, or — per PAGE_LAYOUT — a grid of user-configurable widget panels).
+// Within a zone the user can drag items to reorder them, and — via edge /
+// corner handles — resize each item horizontally (width snaps to a 12-column
+// grid), vertically (free height, content scrolls), or diagonally.
+// Preferences write through to localStorage (instant, offline) and, debounced,
+// to the backend per page via saveLayout — hydrated back in on load by
+// hydrateLayouts(). Nothing crosses from one zone to another.
 // ---------------------------------------------------------------------------
 export const LAYOUT_KEY = 'finsights-layout-v1'
 export const MIN_SPAN = 1, MAX_SPAN = 12, MIN_ITEM_HEIGHT = 96
 export const clampSpan = (n: number) => Math.max(MIN_SPAN, Math.min(MAX_SPAN, Math.round(n)))
 export type ResizeMode = 'e' | 's' | 'se'
-export type ZonePref = { order: string[]; spans: Record<string, number>; heights?: Record<string, number> }
+export type ZonePref = { order: string[]; spans: Record<string, number>; heights?: Record<string, number>; widgets?: Record<string, Widget> }
 export type LayoutState = Record<string, ZonePref>
 export type ZoneItem = { key: string; span: number; height?: number }
 
@@ -30,6 +37,19 @@ export function clearPageLayout(page: string) {
   const next = readLayout()
   for (const key of Object.keys(next)) if (key.startsWith(`${page}/`)) delete next[key]
   writeLayout(next)
+  void saveLayout(page, {})
+}
+
+// Overlay the backend's per-page layout rows (from fetchLayouts()) onto localStorage before
+// first paint, so a signed-in user's saved arrangement follows them across devices.
+export function hydrateLayouts(byPage: Record<string, unknown>) {
+  const all = readLayout()
+  for (const [page, config] of Object.entries(byPage)) {
+    if (!config || typeof config !== 'object') continue
+    for (const key of Object.keys(all)) if (key.startsWith(`${page}/`)) delete all[key]
+    Object.assign(all, config as LayoutState)
+  }
+  writeLayout(all)
 }
 
 // Merge a saved preference over the defaults: known keys in their saved order
@@ -49,48 +69,112 @@ export function mergeZone(defaults: ZoneItem[], pref?: ZonePref): ZoneItem[] {
   }))
 }
 
-export function useZoneLayout(zoneKey: string, defaults: ZoneItem[], nonce: number) {
+function prefFrom(items: ZoneItem[], widgets?: Record<string, Widget>): ZonePref {
+  const pref: ZonePref = {
+    order: items.map(i => i.key),
+    spans: Object.fromEntries(items.map(i => [i.key, i.span])),
+    heights: Object.fromEntries(items.flatMap(i => i.height != null ? [[i.key, i.height]] : [])),
+  }
+  if (widgets && Object.keys(widgets).length) pref.widgets = widgets
+  return pref
+}
+
+// Seeded widget id = `${zoneKey}:seed:${index}` — stable across reloads, so a seed widget is
+// reconfigurable (Edit) rather than re-created each time storage is empty.
+function seedWidgetPref(zoneKey: string, seed: Omit<Widget, 'id'>[]): ZonePref {
+  const widgets: Record<string, Widget> = {}, spans: Record<string, number> = {}, heights: Record<string, number> = {}
+  const order = seed.map((w, i) => {
+    const id = `${zoneKey}:seed:${i}`
+    widgets[id] = { ...w, id }
+    spans[id] = WIDGET_TYPES[w.subType].defaultSpan
+    heights[id] = WIDGET_TYPES[w.subType].defaultHeight
+    return id
+  })
+  return { order, spans, heights, widgets }
+}
+
+// Debounced (~600ms) per-page backend sync — fires at most once per page per burst of moves/
+// resizes/widget edits, mirroring what's now in that page's zones in localStorage.
+const saveTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+function schedulePageSave(page: string) {
+  clearTimeout(saveTimers[page])
+  saveTimers[page] = setTimeout(() => {
+    const all = readLayout()
+    const slice: LayoutState = {}
+    for (const key of Object.keys(all)) if (key.startsWith(`${page}/`)) slice[key] = all[key]
+    void saveLayout(page, slice)
+  }, 600)
+}
+
+// `widgetSeed` marks a widget zone: item list + persisted `widgets` map are self-managed
+// (derived from storage / the seed) rather than from a page-supplied `defaults` list.
+export function useZoneLayout(zoneKey: string, defaults: ZoneItem[], nonce: number, widgetSeed?: Omit<Widget, 'id'>[]) {
   const defaultsRef = useRef(defaults)
   defaultsRef.current = defaults
-  const [items, setItems] = useState<ZoneItem[]>(() => mergeZone(defaults, readLayout()[zoneKey]))
-  // Re-read from storage when the zone changes or a Reset bumps the nonce.
-  useEffect(() => { setItems(mergeZone(defaultsRef.current, readLayout()[zoneKey])) }, [zoneKey, nonce])
-  // Re-merge if the default set itself changes (e.g. brokers loaded in) — keep
-  // the user's current order / spans / heights.
-  const sig = defaults.map(d => `${d.key}:${d.span}`).join('|')
-  useEffect(() => { setItems(current => mergeZone(defaultsRef.current, {
-    order: current.map(i => i.key),
-    spans: Object.fromEntries(current.map(i => [i.key, i.span])),
-    heights: Object.fromEntries(current.flatMap(i => i.height != null ? [[i.key, i.height]] : [])),
-  })) }, [sig])
+  const seedRef = useRef(widgetSeed)
+  seedRef.current = widgetSeed
+  const page = zoneKey.split('/')[0]
 
-  const persist = (nextItems: ZoneItem[]) => {
-    const all = readLayout()
-    all[zoneKey] = {
-      order: nextItems.map(i => i.key),
-      spans: Object.fromEntries(nextItems.map(i => [i.key, i.span])),
-      heights: Object.fromEntries(nextItems.flatMap(i => i.height != null ? [[i.key, i.height]] : [])),
+  const load = (): { items: ZoneItem[]; widgets: Record<string, Widget> } => {
+    if (seedRef.current) {
+      let pref = readLayout()[zoneKey]
+      if (!pref?.widgets || !Object.keys(pref.widgets).length) pref = seedWidgetPref(zoneKey, seedRef.current)
+      const widgetDefaults = Object.entries(pref.widgets!).map(([id, w]) => ({ key: id, span: WIDGET_TYPES[w.subType].defaultSpan }))
+      return { items: mergeZone(widgetDefaults, pref), widgets: pref.widgets! }
     }
-    writeLayout(all)
+    return { items: mergeZone(defaultsRef.current, readLayout()[zoneKey]), widgets: {} }
   }
-  const move = (fromKey: string, toKey: string) => setItems(current => {
-    if (fromKey === toKey) return current
-    const from = current.findIndex(i => i.key === fromKey), to = current.findIndex(i => i.key === toKey)
-    if (from === -1 || to === -1) return current
-    const next = [...current]
+
+  const [state, setState] = useState(load)
+  // Re-read from storage when the zone changes or a Reset bumps the nonce.
+  useEffect(() => { setState(load()) }, [zoneKey, nonce])
+  // Re-merge if the default set itself changes (e.g. brokers loaded in) — keep the user's
+  // current order / spans / heights. Only meaningful for non-widget zones.
+  const sig = defaults.map(d => `${d.key}:${d.span}`).join('|')
+  useEffect(() => {
+    if (seedRef.current) return
+    setState(current => ({ items: mergeZone(defaultsRef.current, prefFrom(current.items)), widgets: {} }))
+  }, [sig])
+
+  const persist = (items: ZoneItem[], widgets: Record<string, Widget>) => {
+    const all = readLayout()
+    all[zoneKey] = prefFrom(items, widgets)
+    writeLayout(all)
+    schedulePageSave(page)
+  }
+  const move = (fromKey: string, toKey: string) => setState(({ items, widgets }) => {
+    if (fromKey === toKey) return { items, widgets }
+    const from = items.findIndex(i => i.key === fromKey), to = items.findIndex(i => i.key === toKey)
+    if (from === -1 || to === -1) return { items, widgets }
+    const next = [...items]
     next.splice(to, 0, next.splice(from, 1)[0])
-    persist(next); return next
+    persist(next, widgets); return { items: next, widgets }
   })
   // patch.height === null clears the manual height (back to auto).
-  const resize = (key: string, patch: { span?: number; height?: number | null }) => setItems(current => {
-    const next = current.map(i => i.key !== key ? i : {
+  const resize = (key: string, patch: { span?: number; height?: number | null }) => setState(({ items, widgets }) => {
+    const next = items.map(i => i.key !== key ? i : {
       ...i,
       span: patch.span != null ? clampSpan(patch.span) : i.span,
       height: patch.height === null ? undefined : (patch.height != null ? Math.round(patch.height) : i.height),
     })
-    persist(next); return next
+    persist(next, widgets); return { items: next, widgets }
   })
-  return { items, move, resize }
+  const addWidget = (w: Widget) => setState(({ items, widgets }) => {
+    const nextWidgets = { ...widgets, [w.id]: w }
+    const nextItems = [...items, { key: w.id, span: WIDGET_TYPES[w.subType].defaultSpan, height: WIDGET_TYPES[w.subType].defaultHeight }]
+    persist(nextItems, nextWidgets); return { items: nextItems, widgets: nextWidgets }
+  })
+  const removeWidget = (id: string) => setState(({ items, widgets }) => {
+    const nextWidgets = { ...widgets }
+    delete nextWidgets[id]
+    const nextItems = items.filter(i => i.key !== id)
+    persist(nextItems, nextWidgets); return { items: nextItems, widgets: nextWidgets }
+  })
+  const updateWidget = (id: string, patch: Partial<Widget>) => setState(({ items, widgets }) => {
+    const nextWidgets = { ...widgets, [id]: { ...widgets[id], ...patch } }
+    persist(items, nextWidgets); return { items, widgets: nextWidgets }
+  })
+  return { items: state.items, widgets: state.widgets, move, resize, addWidget, removeWidget, updateWidget }
 }
 
 export type DragState = {
@@ -99,15 +183,22 @@ export type DragState = {
   span: number; height: number
 }
 
-export function LayoutZone({ zoneKey, editing, nonce, defaults, render, className }: {
-  zoneKey: string; editing: boolean; nonce: number; defaults: ZoneItem[]
-  render: Record<string, ReactNode>; className?: string
+export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dataSource, className }: {
+  zoneKey: string; editing: boolean; nonce: number; defaults?: ZoneItem[]
+  render?: Record<string, ReactNode>; dataSource?: PageDataSource; className?: string
 }) {
-  const { items, move, resize } = useZoneLayout(zoneKey, defaults, nonce)
+  const page = zoneKey.split('/')[0] as keyof typeof PAGE_LAYOUT
+  const config = PAGE_LAYOUT[page]?.[zoneKey]
+  const widgetConfig = config?.kind === 'widget' ? config : undefined
+  const isWidgetZone = !!widgetConfig
+  const { items, widgets, move, resize, addWidget, removeWidget, updateWidget } =
+    useZoneLayout(zoneKey, defaults, nonce, widgetConfig?.seed)
   const zoneRef = useRef<HTMLDivElement>(null)
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
   const [rz, setRz] = useState<DragState | null>(null)
+  const [addingWidget, setAddingWidget] = useState(false)
+  const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null)
 
   const beginResize = (e: React.PointerEvent, item: ZoneItem, mode: ResizeMode) => {
     e.preventDefault(); e.stopPropagation()
@@ -128,12 +219,16 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults, render, classNam
     return null
   })
 
+  const visibleItems = isWidgetZone ? items : items.filter(i => render?.[i.key] != null)
+  const editingWidget = editingWidgetId ? widgets[editingWidgetId] : undefined
+
   return <div ref={zoneRef} className={`layout-zone${editing ? ' editing' : ''}${rz ? ' resizing' : ''}${className ? ` ${className}` : ''}`}>
-    {items.filter(i => render[i.key] != null).map(item => {
+    {visibleItems.map(item => {
       const live = rz && rz.key === item.key ? rz : null
       const span = live ? live.span : item.span
       const height = live ? live.height : item.height
       const style = { '--span': span, ...(height != null ? { height: `${height}px`, overflow: 'auto' } : null) } as React.CSSProperties
+      const widget = widgets[item.key]
       return <div key={item.key}
         className={`layout-item${overKey === item.key ? ' drag-over' : ''}${live ? ' resizing' : ''}`}
         style={style}
@@ -145,7 +240,15 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults, render, classNam
             onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
           <span className="layout-item-size">{span}/12{height != null ? ` · ${Math.round(height)}px` : ''}</span>
         </div>}
-        {render[item.key]}
+        {isWidgetZone
+          ? widget && <article className="panel widget-panel">
+              <div className="panel-heading">
+                <h3>{widget.title}</h3>
+                {editing && <WidgetConfigMenu widget={widget} onEdit={() => setEditingWidgetId(widget.id)} onDelete={() => removeWidget(widget.id)} />}
+              </div>
+              {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
+            </article>
+          : render![item.key]}
         {editing && (['e', 's', 'se'] as ResizeMode[]).map(mode => (
           <span key={mode} className={`layout-resize layout-resize-${mode}`}
             onPointerDown={e => beginResize(e, { ...item, span, height }, mode)}
@@ -155,5 +258,13 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults, render, classNam
         ))}
       </div>
     })}
+    {isWidgetZone && editing && <div className="layout-item widget-add-item" style={{ '--span': 3 } as React.CSSProperties}>
+      <button type="button" className="widget-add-tile" onClick={() => setAddingWidget(true)}>+ Add widget</button>
+    </div>}
+    {isWidgetZone && dataSource && (addingWidget || editingWidget) && <AddWidgetModal
+      dataSource={dataSource}
+      initial={editingWidget}
+      onAdd={w => { if (editingWidget) updateWidget(editingWidget.id, w); else addWidget(w); setAddingWidget(false); setEditingWidgetId(null) }}
+      onClose={() => { setAddingWidget(false); setEditingWidgetId(null) }} />}
   </div>
 }
