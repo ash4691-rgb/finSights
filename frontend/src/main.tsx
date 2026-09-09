@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
 
@@ -58,6 +58,9 @@ type HotPick = {
   currentValue?: number; currency?: string; triggered: PeriodMovement[]
 }
 type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; lastUpdated?: string; createdAt?: string }
+type TimelineCategoryPoint = { categoryId: string; categoryName: string; kind: 'ASSET' | 'LIABILITY'; invested: number; current: number }
+type TimelineWeek = { weekOf: string; invested: number; current: number; liabilities: number; netWorth: number; categories: TimelineCategoryPoint[] }
+type PortfolioTimeline = { weeks: TimelineWeek[] }
 type BrokerGroup = { name: string; holdingCount: number; currentValue: number; investedValue: number; profitLoss: number; lastUpdated?: string; categories: string[]; currencies: string[] }
 type Source = { key: string; name: string; status: string; description: string; capabilities: string[]; docsUrl?: string }
 type Brokers = { brokers: BrokerGroup[]; sources: Source[] }
@@ -1029,9 +1032,12 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
   const [editingWatch, setEditingWatch] = useState<WatchlistEntry | null>(null)
   const [thresholdsOpen, setThresholdsOpen] = useState(false)
   const [watchlistOpen, setWatchlistOpen] = useState(false)
+  const [timelineOpen, setTimelineOpen] = useState(false)
   const [overviewOpen, setOverviewOpen] = useState(false)
+  const [timeline, setTimeline] = useState<PortfolioTimeline | null>(null)
 
   useEffect(() => { api<Insights>(`/api/insights?currency=${displayCurrency}`).then(setData).catch(e => setError(e.message)) }, [displayCurrency, dataVersion])
+  useEffect(() => { api<PortfolioTimeline>(`/api/insights/timeline?currency=${displayCurrency}`).then(setTimeline).catch(() => setTimeline({ weeks: [] })) }, [displayCurrency, dataVersion])
   const loadHotPicks = () => api<HotPick[]>(`/api/insights/hot-picks?currency=${displayCurrency}`).then(setHotPicks).catch(() => setHotPicks([]))
   const loadWatchlist = () => api<WatchlistEntry[]>('/api/watchlist').then(setWatchlist).catch(() => setWatchlist([]))
   useEffect(() => { void loadHotPicks() }, [displayCurrency, dataVersion])
@@ -1137,6 +1143,19 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
     </section>
 
     <section className="overview-section">
+      <button className="overview-toggle" onClick={() => setTimelineOpen(current => !current)}>
+        <h3>Portfolio timeline</h3><span>{toggleLabel(timelineOpen)}</span>
+      </button>
+      {timelineOpen && <div className="panel timeline-panel">
+        <p className="hint">Each category's invested and current value is captured once a week.</p>
+        {!timeline ? <p className="hint">Loading timeline…</p>
+          : timeline.weeks.length === 0
+            ? <p className="hint">No snapshots yet — this week's is being recorded now. Come back next week to see how things moved.</p>
+            : <TimelineTable weeks={timeline.weeks} />}
+      </div>}
+    </section>
+
+    <section className="overview-section">
       <button className="overview-toggle" onClick={() => setOverviewOpen(current => !current)}>
         <h3>Portfolio overview</h3><span>{toggleLabel(overviewOpen)}</span>
       </button>
@@ -1161,6 +1180,47 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
       onClose={() => { setAddingWatch(false); setEditingWatch(null) }}
       onSaved={() => { setAddingWatch(false); setEditingWatch(null); void loadWatchlist(); void loadHotPicks() }} />}
   </>
+}
+
+// Weekly portfolio history. Newest week first; each row expands to the per-category split.
+function TimelineTable({ weeks }: { weeks: TimelineWeek[] }) {
+  const [openWeek, setOpenWeek] = useState<string | null>(null)
+  const ordered = [...weeks].reverse()
+  const delta = (a: number, b?: number) => (b == null ? null : a - b)
+  return <div className="table-panel"><table className="timeline-table">
+    <thead><tr><th>Week of</th><th>Invested</th><th>Current</th><th>Unrealised P/L</th><th>Net worth</th></tr></thead>
+    <tbody>{ordered.map((w, i) => {
+      const prev = ordered[i + 1]
+      const pl = w.current - w.invested
+      const nwMove = delta(w.netWorth, prev?.netWorth)
+      const isOpen = openWeek === w.weekOf
+      return <Fragment key={w.weekOf}>
+        <tr className="clickable-row" onClick={() => setOpenWeek(isOpen ? null : w.weekOf)}>
+          <td><strong>{since(w.weekOf)}</strong> <span className="row-caret">{isOpen ? '▴' : '▾'}</span></td>
+          <td>{money(w.invested)}</td>
+          <td>{money(w.current)}</td>
+          <td className={pl >= 0 ? 'positive' : 'negative'}>{pl >= 0 ? '+' : ''}{money(pl)}</td>
+          <td>{money(w.netWorth)}{nwMove != null && nwMove !== 0 &&
+            <small className={nwMove > 0 ? 'positive' : 'negative'}> {nwMove > 0 ? '▲' : '▼'} {money(Math.abs(nwMove))}</small>}</td>
+        </tr>
+        {isOpen && <tr className="timeline-detail-row"><td colSpan={5}>
+          <table className="timeline-detail"><tbody>
+            {w.categories.map(c => {
+              const cpl = c.current - c.invested
+              const liability = c.kind === 'LIABILITY'
+              return <tr key={c.categoryId}>
+                <td>{c.categoryName}{liability && <em className="pill-liability">liability</em>}</td>
+                <td>{liability ? '—' : money(c.invested)}</td>
+                <td>{money(c.current)}</td>
+                <td className={liability ? '' : cpl >= 0 ? 'positive' : 'negative'}>
+                  {liability ? '' : `${cpl >= 0 ? '+' : ''}${money(cpl)}`}</td>
+              </tr>
+            })}
+          </tbody></table>
+        </td></tr>}
+      </Fragment>
+    })}</tbody>
+  </table></div>
 }
 
 function thresholdForm(settings: Settings): Record<PeriodKey, string> {

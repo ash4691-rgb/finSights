@@ -288,6 +288,15 @@ th.sortable:hover{color:var(--text)}
 .overview-toggle h3{font-size:14px;margin:0}
 .overview-toggle span{font-size:11px;color:var(--text-3)}
 .overview-section .insight-grid{margin-top:16px}
+.timeline-panel{margin-top:14px}
+.timeline-table td:not(:first-child),.timeline-detail td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+.timeline-table td small{font-weight:700;font-size:10px;margin-left:5px;white-space:nowrap}
+.timeline-table .row-caret{color:var(--text-3);font-size:10px;margin-left:4px}
+.timeline-detail-row>td{padding:0!important}
+.timeline-detail{width:100%;border-collapse:collapse;background:var(--surface-2)}
+.timeline-detail td{padding:8px 12px;font-size:12px;border-top:1px solid var(--border-soft);color:var(--text-2)}
+.timeline-detail td:first-child{padding-left:26px}
+.pill-liability{margin-left:7px;font-style:normal;font-size:9px;font-weight:700;background:var(--liability-bg);color:var(--liability-text);padding:2px 6px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px}
 .broker-grid,.instrument-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
 .broker-card{min-height:auto}
 .broker-value{font-size:21px;letter-spacing:-.5px;display:block;color:var(--text)}
