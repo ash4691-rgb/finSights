@@ -7,6 +7,7 @@ import com.finsights.portfolio.domain.Transaction;
 import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.dto.TransactionRequest;
 import com.finsights.portfolio.dto.TransactionResponse;
+import com.finsights.portfolio.repository.EmiPaymentRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import java.math.BigDecimal;
@@ -28,14 +29,17 @@ public class TransactionService {
     private final CurrentUserService currentUser;
     private final FxRateService fx;
     private final HoldingService holdingService;
+    private final EmiPaymentRepository emiPayments;
 
     public TransactionService(TransactionRepository transactions, HoldingRepository holdings,
-                              CurrentUserService currentUser, FxRateService fx, HoldingService holdingService) {
+                              CurrentUserService currentUser, FxRateService fx, HoldingService holdingService,
+                              EmiPaymentRepository emiPayments) {
         this.transactions = transactions;
         this.holdings = holdings;
         this.currentUser = currentUser;
         this.fx = fx;
         this.holdingService = holdingService;
+        this.emiPayments = emiPayments;
     }
 
     @Transactional(readOnly = true)
@@ -95,6 +99,10 @@ public class TransactionService {
         Transaction transaction = findOwned(id);
         Holding holding = transaction.getHolding();
         reverseRepay(transaction);
+        // Deleting a repayment also un-marks the instalment it settled in the Action centre.
+        if (transaction.getType() == TransactionType.REPAY) {
+            emiPayments.deleteByHolding_IdAndPeriod(holding.getId(), transaction.getDate());
+        }
         transactions.delete(transaction);
         holdingService.syncFromTransactions(holding);
     }
@@ -128,7 +136,8 @@ public class TransactionService {
         holding.setCurrentValue(outstanding.add(repay.getPrincipalPortion()).setScale(2, RoundingMode.HALF_UP));
     }
 
-    private static BigDecimal periodFraction(RepaymentFrequency frequency) {
+    /** Slice of a year one repayment covers — used to settle the period's interest. */
+    static BigDecimal periodFraction(RepaymentFrequency frequency) {
         if (frequency == null) return BigDecimal.ZERO;
         return switch (frequency) {
             case WEEKLY -> BigDecimal.ONE.divide(BigDecimal.valueOf(52), MathContext.DECIMAL64);

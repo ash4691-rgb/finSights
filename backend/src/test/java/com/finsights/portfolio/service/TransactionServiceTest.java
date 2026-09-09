@@ -31,6 +31,7 @@ class TransactionServiceTest {
     @Mock HoldingRepository holdingRepository;
     @Mock CurrentUserService currentUserService;
     @Mock HoldingService holdingService;
+    @Mock com.finsights.portfolio.repository.EmiPaymentRepository emiPaymentRepository;
 
     private TransactionService service;
     private UserAccount user;
@@ -39,7 +40,7 @@ class TransactionServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new TransactionService(transactionRepository, holdingRepository, currentUserService, new FxRateService(), holdingService);
+        service = new TransactionService(transactionRepository, holdingRepository, currentUserService, new FxRateService(), holdingService, emiPaymentRepository);
         user = new UserAccount("demo@finsights.local", "Demo");
         setId(user, "u-1");
         when(currentUserService.currentUser()).thenReturn(user);

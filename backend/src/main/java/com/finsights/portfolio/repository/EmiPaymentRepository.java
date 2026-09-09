@@ -14,6 +14,9 @@ public interface EmiPaymentRepository extends JpaRepository<EmiPayment, String> 
     Optional<EmiPayment> findByHolding_IdAndPeriod(String holdingId, LocalDate period);
 
     @Transactional
+    long deleteByHolding_IdAndPeriod(String holdingId, LocalDate period);
+
+    @Transactional
     long deleteByHolding_Id(String holdingId);
 
     @Transactional

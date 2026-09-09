@@ -4,11 +4,15 @@ import com.finsights.portfolio.domain.EmiPayment;
 import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.HoldingKind;
 import com.finsights.portfolio.domain.RepaymentFrequency;
+import com.finsights.portfolio.domain.Transaction;
+import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.ActionItemResponse;
 import com.finsights.portfolio.repository.EmiPaymentRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
+import com.finsights.portfolio.repository.TransactionRepository;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -34,11 +38,14 @@ public class EmiService {
 
     private final HoldingRepository holdings;
     private final EmiPaymentRepository payments;
+    private final TransactionRepository transactions;
     private final CurrentUserService currentUser;
 
-    public EmiService(HoldingRepository holdings, EmiPaymentRepository payments, CurrentUserService currentUser) {
+    public EmiService(HoldingRepository holdings, EmiPaymentRepository payments,
+                      TransactionRepository transactions, CurrentUserService currentUser) {
         this.holdings = holdings;
         this.payments = payments;
+        this.transactions = transactions;
         this.currentUser = currentUser;
     }
 
@@ -85,18 +92,47 @@ public class EmiService {
         if (payments.findByHolding_IdAndPeriod(holdingId, dueDate).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "That repayment is already marked paid");
         }
-        BigDecimal amount = instalmentAmount(holding);
+        BigDecimal instalment = instalmentAmount(holding);
+        BigDecimal outstanding = holding.getCurrentValue() == null ? BigDecimal.ZERO : holding.getCurrentValue();
+        BigDecimal rate = holding.getFixedAnnualRate() == null ? BigDecimal.ZERO : holding.getFixedAnnualRate();
+        BigDecimal interest = outstanding
+                .multiply(rate, MathContext.DECIMAL64)
+                .multiply(TransactionService.periodFraction(holding.getRepaymentFrequency()), MathContext.DECIMAL64)
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal principal = instalment.subtract(interest).max(BigDecimal.ZERO).min(outstanding)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        String cur = "INR".equalsIgnoreCase(holding.getCurrency()) ? "₹" : holding.getCurrency() + " ";
+        String notes = "Auto-logged from Action centre. Instalment " + cur + plain(instalment)
+                + " less " + cur + plain(interest) + " interest on outstanding " + cur + plain(outstanding)
+                + " leaves " + cur + plain(principal) + " toward principal.";
+
+        // The REPAY carries the principal paydown only; interest is spent, not owed.
+        Transaction repay = new Transaction();
+        repay.setUser(user);
+        repay.setHolding(holding);
+        repay.setType(TransactionType.REPAY);
+        repay.setDate(dueDate);
+        repay.setAmount(principal);
+        repay.setPrincipalPortion(principal);
+        repay.setNotes(notes);
+        transactions.save(repay);
+
         EmiPayment payment = new EmiPayment();
         payment.setUser(user);
         payment.setHolding(holding);
         payment.setPeriod(dueDate);
         payment.setPaidOn(LocalDate.now());
-        payment.setAmount(amount);
+        payment.setAmount(instalment);
         payments.save(payment);
 
-        BigDecimal outstanding = holding.getCurrentValue() == null ? BigDecimal.ZERO : holding.getCurrentValue();
-        holding.setCurrentValue(outstanding.subtract(amount).max(BigDecimal.ZERO));
+        holding.setCurrentValue(outstanding.subtract(principal).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
         holdings.save(holding);
+    }
+
+    private static String plain(BigDecimal value) {
+        return value.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     /** The scheduled due dates worth showing: the current one plus recent unpaid ones. */
