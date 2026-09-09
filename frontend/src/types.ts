@@ -48,9 +48,17 @@ export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: strin
 export type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[] }
 export type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
 export type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
-export type HotPick = {
+export type TopMover = {
   subjectType: 'HOLDING' | 'WATCHLIST'; id: string; name: string; categoryName?: string; tickerSymbol?: string
   currentValue?: number; currency?: string; triggered: PeriodMovement[]
+}
+// Insights-owned — independent up/down % per lookback period; a period's direction is "off" when its field is absent.
+export type MovementThresholds = {
+  dailyUpPercent?: number; dailyDownPercent?: number
+  weeklyUpPercent?: number; weeklyDownPercent?: number
+  monthlyUpPercent?: number; monthlyDownPercent?: number
+  quarterlyUpPercent?: number; quarterlyDownPercent?: number
+  yearlyUpPercent?: number; yearlyDownPercent?: number
 }
 export type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; lastUpdated?: string; createdAt?: string }
 export type TimelineCategoryPoint = { categoryId: string; categoryName: string; kind: 'ASSET' | 'LIABILITY'; invested: number; current: number }

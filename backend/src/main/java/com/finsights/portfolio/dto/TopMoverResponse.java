@@ -3,8 +3,8 @@ package com.finsights.portfolio.dto;
 import java.math.BigDecimal;
 import java.util.List;
 
-/** A holding or watchlist item whose movement broke one of the user's configured thresholds. */
-public record HotPickResponse(
+/** A market-linked holding or watchlist item whose movement broke one of the user's configured up/down thresholds. */
+public record TopMoverResponse(
         String subjectType, // "HOLDING" | "WATCHLIST"
         String id,
         String name,

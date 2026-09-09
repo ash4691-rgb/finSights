@@ -303,27 +303,23 @@ th.sortable:hover{color:var(--text)}
 .action-col-icon{font-size:15px;line-height:1}
 .action-col-count{margin-left:auto;font-size:11px;color:var(--text-3);background:var(--surface-2);border:1px solid var(--border-soft);border-radius:999px;padding:1px 8px;font-variant-numeric:tabular-nums}
 .action-col-list{max-height:356px}
-.threshold-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:12px 0 8px;padding:14px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px}
-.threshold-row .field{min-width:110px}
-.hot-pick-list{display:grid;gap:8px;margin-bottom:8px;max-height:312px;overflow-y:auto;padding-right:4px}
-/* Collapsible sub-sections inside a panel (Movement thresholds, Watchlist) */
-.section-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;background:transparent;border:0;border-top:1px solid var(--border-soft);padding:14px 2px 4px;margin-top:10px;cursor:pointer;color:var(--text);font-size:12px;font-weight:700;text-align:left}
-.section-toggle:hover{color:var(--accent-soft-text)}
-.section-toggle .toggle-meta{color:var(--text-3);font-weight:400;font-size:11px}
-.watchlist-body{margin:4px 0 8px}
+.threshold-grid{display:flex;flex-direction:column;gap:6px;margin:12px 0}
+.threshold-grid-row{display:grid;grid-template-columns:1fr 84px 84px;gap:8px;align-items:center;font-size:12px;color:var(--text-2)}
+.threshold-grid-row input{width:100%;max-width:100%;background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:7px 8px;font-size:12px;outline:none}
+.threshold-grid-head{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px}
+.top-mover-list{display:grid;gap:8px;margin-bottom:8px;max-height:312px;overflow-y:auto;padding-right:4px}
 .watchlist-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
 .watchlist-count{font-size:12px;color:var(--text-3)}
-.inline-link{background:transparent;border:0;color:var(--accent);font-weight:700;font-size:inherit;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
-.hot-pick{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:10px 12px;text-align:left;color:var(--text-2);font-size:12px;width:100%}
-.hot-pick:not(.static):hover{border-color:var(--border-strong)}
-.hot-pick.static{cursor:default}
-.hot-pick-name{display:flex;flex-direction:column;gap:2px;flex:1;min-width:120px}
-.hot-pick-name small{color:var(--text-3);font-size:11px}
-.hot-pick-value{font-weight:700;color:var(--text);white-space:nowrap}
-.hot-pick-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.hot-badge{font-size:10px;font-weight:800;padding:3px 7px;border-radius:5px;white-space:nowrap}
-.hot-badge.positive{background:var(--success-bg);color:var(--success-text)}
-.hot-badge.negative{background:var(--warn-bg);color:var(--warn-text)}
+.top-mover{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:10px 12px;text-align:left;color:var(--text-2);font-size:12px;width:100%}
+.top-mover:not(.static):hover{border-color:var(--border-strong)}
+.top-mover.static{cursor:default}
+.top-mover-name{display:flex;flex-direction:column;gap:2px;flex:1;min-width:120px}
+.top-mover-name small{color:var(--text-3);font-size:11px}
+.top-mover-value{font-weight:700;color:var(--text);white-space:nowrap}
+.top-mover-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.mover-badge{font-size:10px;font-weight:800;padding:3px 7px;border-radius:5px;white-space:nowrap}
+.mover-badge.positive{background:var(--success-bg);color:var(--success-text)}
+.mover-badge.negative{background:var(--warn-bg);color:var(--warn-text)}
 .overview-section{margin-top:16px}
 .overview-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 18px;cursor:pointer;color:inherit;font:inherit;text-align:left}
 .overview-toggle:hover{border-color:var(--border-strong)}
