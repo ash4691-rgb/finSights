@@ -1295,7 +1295,7 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
     {status && status !== 'saving' && <span className="settings-status">{status === 'saved' ? 'Saved.' : status}</span>}
   </>
 
-  return <div className="settings-grid">
+  return <div className="settings-list">
     <article className="panel">
       <div className="panel-heading"><h3>User profile</h3><span>Who you are</span></div>
       <div className="settings-field"><label>Display name</label><input value={form.displayName} onChange={e => set('displayName', e.target.value)} /></div>

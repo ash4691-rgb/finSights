@@ -327,8 +327,8 @@ th.sortable:hover{color:var(--text)}
 .status.coming_soon{background:var(--purple-bg);color:var(--purple-text)}
 .status.planned{background:var(--planned-bg);color:var(--planned-text)}
 .status.connected{background:var(--success-bg);color:var(--success-text)}
-.settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.settings-grid .danger-zone{grid-column:1/-1}
+.settings-list{display:flex;flex-direction:column;gap:16px;max-width:820px}
+.settings-list>.panel{width:100%}
 .settings-field{display:grid;gap:6px;margin-bottom:14px;font-size:12px;color:var(--text-2)}
 .settings-field label{font-weight:700}
 .settings-field input,.settings-field select{background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px;max-width:340px}
@@ -337,7 +337,7 @@ th.sortable:hover{color:var(--text)}
 .danger-zone-inline{margin-top:18px;padding-top:16px;border-top:1px dashed var(--danger-border)}
 .danger-btn{border:1px solid var(--danger-border);background:var(--danger-btn-bg);color:var(--danger-btn-text);border-radius:8px;padding:10px 14px;font-weight:700;font-size:13px}
 .danger-btn:hover:not(:disabled){background:var(--danger-btn-bg-hover)}
-.settings-checks{grid-column:auto;margin-bottom:14px}
+.settings-checks{margin-bottom:14px}
 .inline-field{display:flex;align-items:center;gap:8px;max-width:140px}
 .inline-field input{max-width:100px}
 .inline-field span{color:var(--text-3);font-size:12px}
@@ -445,7 +445,7 @@ th.sortable:hover{color:var(--text)}
   main{padding:24px 16px}
   .hero{padding:22px;align-items:flex-start;gap:20px;flex-direction:column}
   .hero h2{font-size:32px}
-  .metric-grid,.insight-grid,.form-grid,.broker-grid,.instrument-grid,.settings-grid,.drawer-metrics,.drawer-facts,.field-pair{grid-template-columns:1fr}
+  .metric-grid,.insight-grid,.form-grid,.broker-grid,.instrument-grid,.drawer-metrics,.drawer-facts,.field-pair{grid-template-columns:1fr}
   .holdings-toolbar{flex-wrap:wrap}
   .bulk-bar{align-items:stretch;flex-direction:column}
   .panel{min-height:auto}
