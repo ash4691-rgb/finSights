@@ -86,6 +86,40 @@ export function TagInput({ tags, suggestions, onChange }: { tags: string[]; sugg
   </div>
 }
 
+// Free-text type-ahead over a fixed list of known values (e.g. brokers already
+// in use). Filters `suggestions` as you type; picking one fills the field, or
+// keep typing to use a new value that isn't in the list yet.
+export function SuggestInput({ value, suggestions, onChange, placeholder, required, maxLength }: {
+  value: string; suggestions: string[]; onChange: (value: string) => void; placeholder?: string; required?: boolean; maxLength?: number
+}) {
+  const [open, setOpen] = useState(false)
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const typed = value.trim().toLowerCase()
+  const matches = suggestions.filter(s => s.toLowerCase() !== typed && (!typed || s.toLowerCase().includes(typed))).slice(0, 8)
+  const showCreate = !!typed && !suggestions.some(s => s.toLowerCase() === typed)
+  const pick = (s: string) => { onChange(s); setOpen(false) }
+
+  return <div className="tag-input" ref={boxRef}>
+    <div className="tag-input-field">
+      <input required={required} maxLength={maxLength} value={value} placeholder={placeholder}
+        onFocus={() => setOpen(true)}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onKeyDown={e => { if (e.key === 'Escape') setOpen(false) }} />
+      {open && (matches.length > 0 || showCreate) && <ul className="tag-menu">
+        {matches.map(s => <li key={s}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => pick(s)}>{s}</button></li>)}
+        {showCreate && <li><button type="button" className="tag-menu-create" onMouseDown={e => e.preventDefault()} onClick={() => setOpen(false)}>Use “{value.trim()}”</button></li>}
+      </ul>}
+    </div>
+  </div>
+}
+
 // Ticker type-ahead backed by /api/market/search (Yahoo Finance). Free text is
 // still accepted; picking a row commits the exchange symbol (e.g. RELIANCE.NS).
 export function SymbolSearchInput({ value, onChange }: { value: string; onChange: (symbol: string) => void }) {
