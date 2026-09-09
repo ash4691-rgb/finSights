@@ -105,7 +105,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, reload, o
 
   const zone = { editing: layoutEditing, nonce: layoutNonce }
   return <>
-    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'actions', span: 12 }, { key: 'hotpicks', span: 12 }, { key: 'timeline', span: 12 }]} render={{
+    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'actions', span: 12 }, { key: 'hotpicks', span: 12 }, { key: 'watchlistSettings', span: 12 }, { key: 'timeline', span: 12 }]} render={{
     actions: <section className="panel data-quality">
       <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
       <LayoutZone zoneKey="insights/actions" {...zone} defaults={[{ key: 'pending', span: 6 }, { key: 'radar', span: 6 }]} render={{
@@ -137,7 +137,9 @@ export function InsightsView({ displayCurrency, dataVersion, settings, reload, o
       </div> : thresholdsSet === 0
         ? <p className="hint">No thresholds set yet — open <button className="inline-link" onClick={() => setThresholdsOpen(true)}>Movement thresholds</button> to choose how far a holding has to move before it lands here.</p>
         : <p className="hint">Nothing is outside your configured thresholds right now.</p>}
+    </section>,
 
+    watchlistSettings: <section className="panel">
       <button className="section-toggle" onClick={() => setThresholdsOpen(open => !open)}>
         <span>Movement thresholds</span>
         <span className="toggle-meta">{toggleLabel(thresholdsOpen)}</span>
