@@ -82,8 +82,8 @@ const assetTxnTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INTEREST', 'A
 const liabilityTxnTypes: TransactionType[] = ['REPAY', 'ADJUSTMENT', 'BUY']
 const currencies = ['INR', 'USD', 'EUR', 'GBP', 'SGD', 'AED']
 const nav: [Page, string, string][] = [
-  ['dashboard', '◫', 'Overview'], ['categories', '◈', 'Categories'], ['holdings', '▤', 'Holdings'],
-  ['transactions', '⇅', 'Transactions'], ['insights', '◔', 'Insights'], ['brokers', '⇄', 'External sources'], ['settings', '⚙', 'Settings'],
+  ['dashboard', '◫', 'Overview'], ['insights', '◔', 'Insights'], ['categories', '◈', 'Categories'],
+  ['holdings', '▤', 'Holdings'], ['transactions', '⇅', 'Transactions'], ['brokers', '⇄', 'External sources'], ['settings', '⚙', 'Settings'],
 ]
 const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '' })
 const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'QUARTERLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', quantity: '', investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), fixedRateEndDate: '', repaymentFrequency: 'MONTHLY' as RepaymentFrequency, emiAmount: '', emiDayOfMonth: '', loanTermMonths: '', repaymentDueDate: '', description: '' })
