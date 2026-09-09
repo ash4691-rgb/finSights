@@ -19,10 +19,12 @@ import org.springframework.stereotype.Service;
 public class ActionCentreService {
 
     private final EmiService emis;
+    private final InterestPayoutService interestPayouts;
     private final CurrentUserService currentUser;
 
-    public ActionCentreService(EmiService emis, CurrentUserService currentUser) {
+    public ActionCentreService(EmiService emis, InterestPayoutService interestPayouts, CurrentUserService currentUser) {
         this.emis = emis;
+        this.interestPayouts = interestPayouts;
         this.currentUser = currentUser;
     }
 
@@ -30,6 +32,7 @@ public class ActionCentreService {
         String baseCurrency = currentUser.currentUser().getBaseCurrency();
         LocalDate today = LocalDate.now();
         List<ActionItemResponse> items = new ArrayList<>(emis.dueItems());
+        items.addAll(interestPayouts.dueItems());
 
         for (HoldingResponse h : holdings) {
             if (h.valuationMethod() == ValuationMethod.FIXED_RATE && h.fixedRateEndDate() != null

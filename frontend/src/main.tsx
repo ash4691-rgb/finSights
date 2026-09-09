@@ -1113,17 +1113,20 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
       <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
       {data.actions.length ? <div className="warning-list">{data.actions.map((a, i) => {
         const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
+        const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
         return <div key={i} className={`warning ${a.severity.toLowerCase()}`}>
           <b>{a.severity}</b>
           <button className="warning-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
             <strong>{a.title}</strong><span>{a.detail}</span>
           </button>
-          {isEmi && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
+          {(isEmi || isInterest) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
             e.stopPropagation()
-            const dueDate = a.period ?? ''
-            try { await api(`/api/emis/${a.holdingId}/pay?dueDate=${dueDate}`, { method: 'POST' }); await reload() }
-            catch (err) { setError(err instanceof Error ? err.message : 'Could not record the payment') }
-          }}>Mark paid</button>}
+            const url = isEmi
+              ? `/api/emis/${a.holdingId}/pay?dueDate=${a.period}`
+              : `/api/interest-payouts/${a.holdingId}/confirm?dueDate=${a.period}`
+            try { await api(url, { method: 'POST' }); await reload() }
+            catch (err) { setError(err instanceof Error ? err.message : 'Could not record that') }
+          }}>{isEmi ? 'Mark paid' : 'Log interest'}</button>}
         </div>
       })}</div> : <p className="hint">Nothing needs your attention right now.</p>}
     </section>
@@ -1583,7 +1586,7 @@ function Homepage({ onGetStarted, onSignIn }: { onGetStarted: () => void; onSign
       <div>
         <p className="eyebrow">WHAT YOUR PORTFOLIO IS ASKING FOR</p>
         <h2>The numbers, read for you.</h2>
-        <p className="public-lede">Set movement thresholds — daily to yearly — for holdings you own and symbols you're just watching, and Hot picks surfaces the ones that broke them. The Action centre gathers what needs a decision — EMIs due, deposits that matured, missing values. Allocation drift, concentration risk, and rebalancing prompts are next.</p>
+        <p className="public-lede">Set movement thresholds — daily to yearly — for holdings you own and symbols you're just watching, and Hot picks surfaces the ones that broke them. The Action centre gathers what needs a decision — EMIs due, interest payouts to confirm, deposits that matured, missing values. Allocation drift, concentration risk, and rebalancing prompts are next.</p>
       </div>
     </section>
 
