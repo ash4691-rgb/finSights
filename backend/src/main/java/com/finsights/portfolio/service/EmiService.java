@@ -15,26 +15,32 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.Period;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Repayment tracking for liability holdings. A repayment is "due" from a few days
- * before its date until it is marked paid; marking it paid records an
- * {@link EmiPayment} and knocks the amount off the loan's outstanding value.
+ * Repayment tracking for liability holdings. An instalment is "due" from a few days
+ * before its date until it is settled; marking it paid records an {@link EmiPayment},
+ * logs a REPAY transaction for the principal portion, and knocks that off the loan's
+ * outstanding value.
+ *
+ * <p>The schedule is the grid {@code firstInstalment, +step, +2·step, …}. What's owed
+ * is every grid date not yet settled (by an {@link EmiPayment} or a REPAY transaction),
+ * up to a few days ahead — see {@link DueSchedule}.
  */
 @Service
 public class EmiService {
 
-    private static final int LOOKBACK_DAYS = 100;   // how far back an unpaid instalment still shows
     private static final int DUE_SOON_DAYS = 5;     // how early a not-yet-due instalment appears
-    private static final int MAX_OCCURRENCES = 12;
+    private static final int MAX_OCCURRENCES = 6;   // cap the backlog shown for one loan
 
     private final HoldingRepository holdings;
     private final EmiPaymentRepository payments;
@@ -52,9 +58,6 @@ public class EmiService {
     @Transactional(readOnly = true)
     public List<ActionItemResponse> dueItems() {
         String userId = currentUser.currentUser().getId();
-        Set<String> paid = payments.findByUser_Id(userId).stream()
-                .map(p -> p.getHolding().getId() + "|" + p.getPeriod())
-                .collect(Collectors.toSet());
         LocalDate today = LocalDate.now();
         List<ActionItemResponse> items = new ArrayList<>();
 
@@ -66,7 +69,6 @@ public class EmiService {
             String noun = freq == RepaymentFrequency.ONE_TIME ? "Repayment" : "Instalment";
 
             for (LocalDate due : occurrences(h, today)) {
-                if (paid.contains(h.getId() + "|" + due)) continue;
                 if (due.isAfter(today.plusDays(DUE_SOON_DAYS))) continue;
                 boolean overdue = due.isBefore(today);
                 items.add(new ActionItemResponse(
@@ -89,8 +91,9 @@ public class EmiService {
         if (holding.getRepaymentFrequency() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This holding has no repayment schedule");
         }
-        if (payments.findByHolding_IdAndPeriod(holdingId, dueDate).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "That repayment is already marked paid");
+        if (!occurrences(holding, LocalDate.now()).contains(dueDate)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "That instalment is already settled, or is not due yet");
         }
         BigDecimal instalment = instalmentAmount(holding);
         BigDecimal outstanding = holding.getCurrentValue() == null ? BigDecimal.ZERO : holding.getCurrentValue();
@@ -135,31 +138,48 @@ public class EmiService {
         return value.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
-    /** The scheduled due dates worth showing: the current one plus recent unpaid ones. */
+    /** Instalment dates still owed, earliest first, anchored past the last one settled. */
     private List<LocalDate> occurrences(Holding h, LocalDate today) {
         RepaymentFrequency freq = h.getRepaymentFrequency();
+        LocalDate horizon = today.plusDays(DUE_SOON_DAYS);
+
         if (freq == RepaymentFrequency.ONE_TIME) {
-            return h.getRepaymentDueDate() == null ? List.of() : List.of(h.getRepaymentDueDate());
+            LocalDate due = h.getRepaymentDueDate();
+            if (due == null || settledOneTime(h, due)) return List.of();
+            return List.of(due);
         }
-        LocalDate floor = today.minusDays(LOOKBACK_DAYS);
-        List<LocalDate> out = new ArrayList<>();
-        LocalDate due = latestOccurrence(freq, h.getEmiDayOfMonth(), today);
-        while (!due.isBefore(floor) && out.size() < MAX_OCCURRENCES) {
-            out.add(due);
-            due = due.minus(freq.step());
-        }
-        return out;
+
+        Period step = freq.step();
+        LocalDate firstDue = firstInstalment(h, freq);
+        return DueSchedule.unsettled(firstDue, step, settledPeriods(h, firstDue, step),
+                horizon, null, MAX_OCCURRENCES);
     }
 
-    /** The most recent scheduled date on or before "today + grace". */
-    private LocalDate latestOccurrence(RepaymentFrequency freq, Integer emiDay, LocalDate today) {
-        LocalDate grace = today.plusDays(DUE_SOON_DAYS);
-        if (freq == RepaymentFrequency.WEEKLY) {
-            return grace; // weekly instalments cluster around now; anchor to the grace edge
+    /** Grid dates already covered by a recorded payment or a REPAY transaction. */
+    private Set<LocalDate> settledPeriods(Holding h, LocalDate firstDue, Period step) {
+        Set<LocalDate> settled = new HashSet<>();
+        for (EmiPayment p : payments.findByHolding_Id(h.getId())) settled.add(p.getPeriod());
+        for (Transaction t : transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(h.getId())) {
+            if (t.getType() != TransactionType.REPAY) continue;
+            LocalDate grid = DueSchedule.snapToPeriod(firstDue, step, t.getDate());
+            if (grid != null) settled.add(grid);
         }
-        int day = emiDay == null ? 1 : Math.min(emiDay, 28);
-        LocalDate candidate = today.withDayOfMonth(Math.min(day, today.lengthOfMonth()));
-        while (candidate.isAfter(grace)) candidate = candidate.minus(freq.step());
+        return settled;
+    }
+
+    private boolean settledOneTime(Holding h, LocalDate due) {
+        if (payments.findByHolding_IdAndPeriod(h.getId(), due).isPresent()) return true;
+        return h.getCurrentValue() != null && h.getCurrentValue().signum() <= 0;
+    }
+
+    /** First scheduled instalment: the {@code emiDayOfMonth} on/after the day the loan was added (a week after, weekly). */
+    private LocalDate firstInstalment(Holding h, RepaymentFrequency freq) {
+        LocalDate created = h.getCreatedAt() == null ? LocalDate.now()
+                : h.getCreatedAt().atZone(ZoneId.systemDefault()).toLocalDate();
+        if (freq == RepaymentFrequency.WEEKLY) return created.plusWeeks(1);
+        int day = h.getEmiDayOfMonth() == null ? 1 : Math.min(Math.max(h.getEmiDayOfMonth(), 1), 28);
+        LocalDate candidate = created.withDayOfMonth(day);
+        if (!candidate.isAfter(created)) candidate = candidate.plus(freq.step());
         return candidate;
     }
 

@@ -11,6 +11,8 @@ public interface EmiPaymentRepository extends JpaRepository<EmiPayment, String> 
 
     List<EmiPayment> findByUser_Id(String userId);
 
+    List<EmiPayment> findByHolding_Id(String holdingId);
+
     Optional<EmiPayment> findByHolding_IdAndPeriod(String holdingId, LocalDate period);
 
     @Transactional

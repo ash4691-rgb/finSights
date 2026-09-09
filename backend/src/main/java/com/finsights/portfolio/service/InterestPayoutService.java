@@ -16,9 +16,12 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.Period;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,13 +32,16 @@ import org.springframework.web.server.ResponseStatusException;
  * (monthly / quarterly / half-yearly / yearly — not "at maturity", and not the
  * daily/weekly accrual buckets). Confirming one logs a cash INTEREST transaction
  * so the amount lands in realised P/L.
+ *
+ * <p>Due dates are the grid {@code start + step, start + 2·step, …}. The next one
+ * needing attention is the earliest grid date after the latest INTEREST already
+ * on the ledger (see {@link DueSchedule}).
  */
 @Service
 public class InterestPayoutService {
 
-    private static final int LOOKBACK_DAYS = 200;   // how far back an unconfirmed payout still shows
     private static final int DUE_SOON_DAYS = 5;     // how early a not-yet-due payout appears
-    private static final int MAX_OCCURRENCES = 8;
+    private static final int MAX_OCCURRENCES = 4;   // cap the backlog shown for one holding
 
     private final HoldingRepository holdings;
     private final TransactionRepository transactions;
@@ -60,11 +66,8 @@ public class InterestPayoutService {
             if (!paysPeriodicInterest(h)) continue;
             BigDecimal payout = payoutAmount(h);
             if (payout.signum() <= 0) continue;
-            List<Transaction> ledger = transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(h.getId());
 
-            for (LocalDate due : occurrences(h, today)) {
-                if (due.isAfter(today.plusDays(DUE_SOON_DAYS))) continue;
-                if (coveredByInterestTxn(ledger, h.getCompoundingFrequency(), due)) continue;
+            for (LocalDate due : dueDates(h, today)) {
                 boolean overdue = due.isBefore(today);
                 items.add(new ActionItemResponse(
                         overdue ? "INTEREST_OVERDUE" : "INTEREST_DUE",
@@ -87,9 +90,9 @@ public class InterestPayoutService {
         if (!paysPeriodicInterest(holding)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This holding has no interest-payout schedule");
         }
-        List<Transaction> ledger = transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(holdingId);
-        if (coveredByInterestTxn(ledger, holding.getCompoundingFrequency(), dueDate)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Interest for that period is already recorded");
+        if (!dueDates(holding, LocalDate.now()).contains(dueDate)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "That payout is already recorded, or is not due yet");
         }
         BigDecimal payout = payoutAmount(holding);
         String notes = "Auto-logged from Action centre. " + periodLabel(holding.getCompoundingFrequency())
@@ -97,6 +100,20 @@ public class InterestPayoutService {
                 + money(holding.getInvestedValue(), holding) + " principal.";
         transactionService.create(new TransactionRequest(
                 holdingId, TransactionType.INTEREST, dueDate, payout, null, true, notes));
+    }
+
+    /** Grid payout dates still owed, earliest first, anchored past the latest INTEREST on the ledger. */
+    private List<LocalDate> dueDates(Holding h, LocalDate today) {
+        Period step = stepFor(h.getCompoundingFrequency());
+        LocalDate firstDue = h.getFixedRateStartDate().plus(step);
+        List<Transaction> ledger = transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(h.getId());
+        Set<LocalDate> settled = ledger.stream()
+                .filter(t -> t.getType() == TransactionType.INTEREST)
+                .map(t -> DueSchedule.snapToPeriod(firstDue, step, t.getDate()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+        return DueSchedule.unsettled(firstDue, step, settled,
+                today.plusDays(DUE_SOON_DAYS), h.getFixedRateEndDate(), MAX_OCCURRENCES);
     }
 
     private boolean paysPeriodicInterest(Holding h) {
@@ -116,30 +133,6 @@ public class InterestPayoutService {
                 .divide(BigDecimal.valueOf(perYear), 2, RoundingMode.HALF_UP);
     }
 
-    /** Scheduled payout dates worth showing: recent unconfirmed ones plus the current one. */
-    private List<LocalDate> occurrences(Holding h, LocalDate today) {
-        Period step = stepFor(h.getCompoundingFrequency());
-        LocalDate horizon = today.plusDays(DUE_SOON_DAYS);
-        LocalDate floor = today.minusDays(LOOKBACK_DAYS);
-        LocalDate maturity = h.getFixedRateEndDate();
-        List<LocalDate> out = new ArrayList<>();
-        LocalDate due = h.getFixedRateStartDate().plus(step);   // first payout is one period in
-        int guard = 0;
-        while (!due.isAfter(horizon) && guard++ < 10_000) {
-            if (maturity != null && due.isAfter(maturity)) break;
-            if (!due.isBefore(floor)) out.add(due);
-            due = due.plus(step);
-        }
-        return out.size() > MAX_OCCURRENCES ? out.subList(out.size() - MAX_OCCURRENCES, out.size()) : out;
-    }
-
-    /** True when an INTEREST transaction already sits within half a period of this payout date. */
-    private boolean coveredByInterestTxn(List<Transaction> ledger, CompoundingFrequency freq, LocalDate due) {
-        long tolerance = toleranceDays(freq);
-        return ledger.stream().anyMatch(t -> t.getType() == TransactionType.INTEREST
-                && Math.abs(ChronoUnit.DAYS.between(t.getDate(), due)) <= tolerance);
-    }
-
     private static Period stepFor(CompoundingFrequency freq) {
         if (freq == null) return null;
         return switch (freq) {
@@ -148,16 +141,6 @@ public class InterestPayoutService {
             case HALF_YEARLY -> Period.ofMonths(6);
             case ANNUALLY -> Period.ofYears(1);
             case DAILY, WEEKLY, AT_MATURITY -> null;   // accrual buckets / single settlement — no payout reminder
-        };
-    }
-
-    private static long toleranceDays(CompoundingFrequency freq) {
-        return switch (freq) {
-            case MONTHLY -> 14;
-            case QUARTERLY -> 43;
-            case HALF_YEARLY -> 88;
-            case ANNUALLY -> 180;
-            default -> 0;
         };
     }
 
