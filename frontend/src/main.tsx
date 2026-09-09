@@ -1299,8 +1299,7 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
   </>
 
   return <div className="settings-list">
-    <article className="panel">
-      <div className="panel-heading"><h3>User profile</h3><span>Who you are</span></div>
+    <SettingsSection title="User profile" subtitle="Who you are" defaultOpen>
       <div className="settings-field"><label>Display name</label><input value={form.displayName} onChange={e => set('displayName', e.target.value)} /></div>
       <div className="settings-field"><label>Email</label><input value={settings.email} disabled title="Managed by your sign-in provider" /></div>
       <div className="settings-field"><label>Contact number</label><input value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91 98765 43210" /></div>
@@ -1310,10 +1309,9 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
       </div>
       <p className="hint">Your base currency follows your country: <b>{selectedCountry?.currency ?? settings.baseCurrency}</b>. Any page also has a "View in" dropdown for a one-off switch, using static reference rates.</p>
       {saveBar}
-    </article>
+    </SettingsSection>
 
-    <article className="panel">
-      <div className="panel-heading"><h3>User preferences</h3><span>How the app looks &amp; behaves</span></div>
+    <SettingsSection title="User preferences" subtitle="How the app looks & behaves">
       <div className="settings-field">
         <label>Appearance</label>
         <Switch checked={theme === 'light'} onChange={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} text={theme === 'dark' ? 'Dark' : 'Light'} icon={theme === 'dark' ? '🌙' : '☀'} />
@@ -1330,10 +1328,9 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
         <Switch checked={false} disabled text="Off — needs Google Sign-In" icon="🔒" title="2FA becomes available once Google Sign-In replaces demo mode" />
       </div>
       {saveBar}
-    </article>
+    </SettingsSection>
 
-    <article className="panel">
-      <div className="panel-heading"><h3>Notification preferences</h3><span>Channels &amp; limits</span></div>
+    <SettingsSection title="Notification preferences" subtitle="Channels & limits">
       <p className="hint">Alerts aren't sent yet — these preferences are saved now so they take effect as soon as alerting ships.</p>
       <div className="check-row settings-checks">
         <label><input type="checkbox" checked={form.notifyEmail} onChange={e => set('notifyEmail', e.target.checked)} /> Email</label>
@@ -1345,10 +1342,9 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
         <div className="inline-field"><input type="number" min="0" step="0.5" value={form.notifyThresholdPercent} onChange={e => set('notifyThresholdPercent', e.target.value)} /><span>%</span></div>
       </div>
       {saveBar}
-    </article>
+    </SettingsSection>
 
-    <article className="panel">
-      <div className="panel-heading"><h3>Account management</h3><span>Member since {since(settings.memberSince)}</span></div>
+    <SettingsSection title="Account management" subtitle={`Member since ${since(settings.memberSince)}`}>
       <div className="pulse-row"><span>Net worth</span><strong>{dashboard ? money(dashboard.netWorth) : '—'}</strong></div>
       <div className="pulse-row"><span>Holdings tracked</span><strong>{settings.holdingCount}</strong></div>
       <div className="pulse-row"><span>Brokers connected</span><strong>{brokersConnected}</strong></div>
@@ -1360,8 +1356,23 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
         <div className="settings-field"><input value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="DELETE" /></div>
         <button className="danger-btn" onClick={() => void deleteAccount()} disabled={confirmText !== 'DELETE'}>Delete everything</button>
       </div>
-    </article>
+    </SettingsSection>
   </div>
+}
+
+// One collapsible card on the Settings page. More sections will land here over time,
+// so each is independently expandable rather than a fixed grid.
+function SettingsSection({ title, subtitle, defaultOpen, children }: {
+  title: string; subtitle: string; defaultOpen?: boolean; children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false)
+  return <article className="panel settings-section">
+    <button type="button" className="settings-section-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+      <span className="settings-section-title"><h3>{title}</h3><span>{subtitle}</span></span>
+      <span className="settings-section-caret">{open ? '▴' : '▾'}</span>
+    </button>
+    {open && <div className="settings-section-body">{children}</div>}
+  </article>
 }
 
 function Switch({ checked, onChange, text, icon, disabled, title }: { checked: boolean; onChange?: () => void; text: string; icon?: string; disabled?: boolean; title?: string }) {

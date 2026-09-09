@@ -327,8 +327,16 @@ th.sortable:hover{color:var(--text)}
 .status.coming_soon{background:var(--purple-bg);color:var(--purple-text)}
 .status.planned{background:var(--planned-bg);color:var(--planned-text)}
 .status.connected{background:var(--success-bg);color:var(--success-text)}
-.settings-list{display:flex;flex-direction:column;gap:16px;max-width:820px}
+.settings-list{display:flex;flex-direction:column;gap:14px;max-width:820px}
 .settings-list>.panel{width:100%}
+.settings-section{padding:0;min-height:0;overflow:hidden}
+.settings-section-head{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;background:none;border:0;cursor:pointer;text-align:left;color:inherit;font:inherit}
+.settings-section-head:hover{background:var(--surface-2)}
+.settings-section-title{display:flex;flex-direction:column;gap:3px;min-width:0}
+.settings-section-title h3{margin:0;font-size:14px}
+.settings-section-title>span{font-size:11px;color:var(--text-3)}
+.settings-section-caret{flex-shrink:0;font-size:11px;color:var(--text-3)}
+.settings-section-body{padding:4px 20px 20px}
 .settings-field{display:grid;gap:6px;margin-bottom:14px;font-size:12px;color:var(--text-2)}
 .settings-field label{font-weight:700}
 .settings-field input,.settings-field select{background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px;max-width:340px}
