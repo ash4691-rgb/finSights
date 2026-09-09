@@ -116,21 +116,28 @@ h3{color:var(--text)}
 .layout-zone{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px;align-items:start;margin:16px 0}
 .layout-zone:first-child{margin-top:0}
 .layout-zone .layout-zone{margin:0}
-.layout-item{min-width:0}
+.layout-item{min-width:0;position:relative;grid-column:span var(--span,12)}
 .layout-item>section{margin-top:0}
-.layout-item.span-3{grid-column:span 3}
-.layout-item.span-4{grid-column:span 4}
-.layout-item.span-6{grid-column:span 6}
-.layout-item.span-12{grid-column:span 12}
 .layout-zone.editing{gap:22px}
 .layout-zone.editing>.layout-item{outline:1px dashed var(--border-strong);outline-offset:6px;border-radius:12px}
 .layout-zone.editing>.layout-item.drag-over{outline:2px solid var(--accent);background:var(--accent-soft)}
+.layout-zone.editing>.layout-item.resizing{outline:2px solid var(--accent)}
+.layout-zone.resizing{user-select:none}
 .layout-item-bar{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .layout-item-bar .drag-handle{cursor:grab;color:var(--text-3);font-size:14px;line-height:1;padding:4px}
 .layout-item-bar .drag-handle:hover{color:var(--text)}
 .layout-item-bar .drag-handle:active{cursor:grabbing}
-.layout-item-bar button{padding:4px 9px;font-size:11px;font-weight:700;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface-2);color:var(--text-2);cursor:pointer}
-.layout-item-bar button:hover{border-color:var(--accent);color:var(--text)}
+.layout-item-size{font-size:11px;font-weight:700;color:var(--text-3);font-variant-numeric:tabular-nums;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:6px;padding:2px 7px}
+/* Resize handles — edge (E/S) + corner (SE), shown only in edit mode. */
+.layout-resize{position:absolute;z-index:3;touch-action:none;opacity:0;transition:opacity .12s}
+.layout-zone.editing>.layout-item:hover>.layout-resize,.layout-zone.editing>.layout-item.resizing>.layout-resize{opacity:1}
+.layout-resize::after{content:"";position:absolute;background:var(--accent);border-radius:2px}
+.layout-resize-e{top:8px;bottom:8px;right:-9px;width:14px;cursor:ew-resize}
+.layout-resize-e::after{top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:26px}
+.layout-resize-s{left:8px;right:8px;bottom:-9px;height:14px;cursor:ns-resize}
+.layout-resize-s::after{top:50%;left:50%;transform:translate(-50%,-50%);height:3px;width:26px}
+.layout-resize-se{right:-10px;bottom:-10px;width:18px;height:18px;cursor:nwse-resize}
+.layout-resize-se::after{right:2px;bottom:2px;width:10px;height:10px;border-radius:0 0 3px 0;border-right:3px solid var(--accent);border-bottom:3px solid var(--accent);background:none}
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:20px;min-height:275px}
 .panel-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
 .panel-heading h3{font-size:14px;margin:0}
@@ -505,7 +512,8 @@ th.sortable:hover{color:var(--text)}
   .sync-note,.user>div:last-child,.sign-out-link{display:none}
   .user{justify-content:center;padding:16px 0}
   .metric-grid,.broker-grid,.instrument-grid{grid-template-columns:repeat(2,1fr)}
-  .layout-item.span-3,.layout-item.span-4{grid-column:span 6}
+  /* Halve the layout grid; wide items just span the whole 6 and stack. */
+  .layout-zone{grid-template-columns:repeat(6,minmax(0,1fr))}
   main{padding:30px 24px}
 }
 @media(max-width:670px){
@@ -515,7 +523,7 @@ th.sortable:hover{color:var(--text)}
   .hero h2{font-size:32px}
   .metric-grid,.insight-grid,.form-grid,.broker-grid,.instrument-grid,.drawer-metrics,.drawer-facts,.field-pair,.action-split{grid-template-columns:1fr}
   .layout-zone{grid-template-columns:1fr}
-  .layout-item[class*=span-]{grid-column:1/-1}
+  .layout-item{grid-column:1/-1;height:auto!important;overflow:visible!important}
   .warning{flex-wrap:wrap}
   .holdings-toolbar{flex-wrap:wrap}
   .bulk-bar{align-items:stretch;flex-direction:column}

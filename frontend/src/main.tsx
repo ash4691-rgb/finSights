@@ -104,17 +104,19 @@ function initialTheme(): Theme {
 // ---------------------------------------------------------------------------
 // Editable layout — per-page "Edit layout" mode. Each page is a set of zones
 // (a page zone = its stack of sections; a grid zone = a row of cards inside a
-// section). Within a zone the user can drag items to reorder them and cycle
-// each item's width through preset spans. Preferences live in localStorage,
-// keyed "page/zone" — never syncs to the backend (same as the theme toggle).
-// Nothing crosses from one zone to another.
+// section). Within a zone the user can drag items to reorder them, and — via
+// edge / corner handles — resize each item horizontally (width snaps to a
+// 12-column grid), vertically (free height, content scrolls), or diagonally.
+// Preferences live in localStorage keyed "page/zone" — never syncs to the
+// backend (same as the theme toggle). Nothing crosses from one zone to another.
 // ---------------------------------------------------------------------------
 const LAYOUT_KEY = 'finsights-layout-v1'
-const SPAN_STEPS = [3, 4, 6, 12] // quarter · third · half · full (12-col grid)
-const spanLabel = (span: number) => ({ 3: 'Quarter', 4: 'Third', 6: 'Half', 12: 'Full' } as Record<number, string>)[span] ?? 'Half'
-type ZonePref = { order: string[]; spans: Record<string, number> }
+const MIN_SPAN = 1, MAX_SPAN = 12, MIN_ITEM_HEIGHT = 96
+const clampSpan = (n: number) => Math.max(MIN_SPAN, Math.min(MAX_SPAN, Math.round(n)))
+type ResizeMode = 'e' | 's' | 'se'
+type ZonePref = { order: string[]; spans: Record<string, number>; heights?: Record<string, number> }
 type LayoutState = Record<string, ZonePref>
-type ZoneItem = { key: string; span: number }
+type ZoneItem = { key: string; span: number; height?: number }
 
 function readLayout(): LayoutState {
   try { const raw = localStorage.getItem(LAYOUT_KEY); return raw ? JSON.parse(raw) as LayoutState : {} }
@@ -133,13 +135,17 @@ function clearPageLayout(page: string) {
 // first, then any default keys the save didn't know about, appended in default
 // order. Keys no longer in `defaults` are dropped from the render list (but
 // left in storage, so a transient view — filtered brokers, say — doesn't wipe
-// them). Spans fall back to the default span.
+// them). Span falls back to the default span; height to unset (auto).
 function mergeZone(defaults: ZoneItem[], pref?: ZonePref): ZoneItem[] {
   const defaultByKey = new Map(defaults.map(d => [d.key, d]))
   const savedOrder = (pref?.order ?? []).filter(k => defaultByKey.has(k))
   const seen = new Set(savedOrder)
   const order = [...savedOrder, ...defaults.map(d => d.key).filter(k => !seen.has(k))]
-  return order.map(key => ({ key, span: pref?.spans?.[key] ?? defaultByKey.get(key)!.span }))
+  return order.map(key => ({
+    key,
+    span: clampSpan(pref?.spans?.[key] ?? defaultByKey.get(key)!.span),
+    height: pref?.heights?.[key],
+  }))
 }
 
 function useZoneLayout(zoneKey: string, defaults: ZoneItem[], nonce: number) {
@@ -148,16 +154,22 @@ function useZoneLayout(zoneKey: string, defaults: ZoneItem[], nonce: number) {
   const [items, setItems] = useState<ZoneItem[]>(() => mergeZone(defaults, readLayout()[zoneKey]))
   // Re-read from storage when the zone changes or a Reset bumps the nonce.
   useEffect(() => { setItems(mergeZone(defaultsRef.current, readLayout()[zoneKey])) }, [zoneKey, nonce])
-  // Re-merge if the default set itself changes (e.g. brokers loaded in).
+  // Re-merge if the default set itself changes (e.g. brokers loaded in) — keep
+  // the user's current order / spans / heights.
   const sig = defaults.map(d => `${d.key}:${d.span}`).join('|')
   useEffect(() => { setItems(current => mergeZone(defaultsRef.current, {
     order: current.map(i => i.key),
     spans: Object.fromEntries(current.map(i => [i.key, i.span])),
+    heights: Object.fromEntries(current.flatMap(i => i.height != null ? [[i.key, i.height]] : [])),
   })) }, [sig])
 
   const persist = (nextItems: ZoneItem[]) => {
     const all = readLayout()
-    all[zoneKey] = { order: nextItems.map(i => i.key), spans: Object.fromEntries(nextItems.map(i => [i.key, i.span])) }
+    all[zoneKey] = {
+      order: nextItems.map(i => i.key),
+      spans: Object.fromEntries(nextItems.map(i => [i.key, i.span])),
+      heights: Object.fromEntries(nextItems.flatMap(i => i.height != null ? [[i.key, i.height]] : [])),
+    }
     writeLayout(all)
   }
   const move = (fromKey: string, toKey: string) => setItems(current => {
@@ -168,37 +180,80 @@ function useZoneLayout(zoneKey: string, defaults: ZoneItem[], nonce: number) {
     next.splice(to, 0, next.splice(from, 1)[0])
     persist(next); return next
   })
-  const setSpan = (key: string, span: number) => setItems(current => {
-    const next = current.map(i => i.key === key ? { ...i, span } : i)
+  // patch.height === null clears the manual height (back to auto).
+  const resize = (key: string, patch: { span?: number; height?: number | null }) => setItems(current => {
+    const next = current.map(i => i.key !== key ? i : {
+      ...i,
+      span: patch.span != null ? clampSpan(patch.span) : i.span,
+      height: patch.height === null ? undefined : (patch.height != null ? Math.round(patch.height) : i.height),
+    })
     persist(next); return next
   })
-  return { items, move, setSpan }
+  return { items, move, resize }
+}
+
+type DragState = {
+  key: string; mode: ResizeMode
+  startX: number; startY: number; startSpan: number; startHeight: number
+  span: number; height: number
 }
 
 function LayoutZone({ zoneKey, editing, nonce, defaults, render, className }: {
   zoneKey: string; editing: boolean; nonce: number; defaults: ZoneItem[]
   render: Record<string, ReactNode>; className?: string
 }) {
-  const { items, move, setSpan } = useZoneLayout(zoneKey, defaults, nonce)
+  const { items, move, resize } = useZoneLayout(zoneKey, defaults, nonce)
+  const zoneRef = useRef<HTMLDivElement>(null)
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
-  const cycleSpan = (key: string, span: number) =>
-    setSpan(key, SPAN_STEPS[(SPAN_STEPS.indexOf(span) + 1) % SPAN_STEPS.length] ?? 6)
-  return <div className={`layout-zone${editing ? ' editing' : ''}${className ? ` ${className}` : ''}`}>
-    {items.filter(i => render[i.key] != null).map(({ key, span }) => (
-      <div key={key} className={`layout-item span-${span}${overKey === key ? ' drag-over' : ''}`}
-        onDragOver={e => { if (editing && dragKey) { e.preventDefault(); setOverKey(key) } }}
-        onDragLeave={() => setOverKey(cur => cur === key ? null : cur)}
-        onDrop={e => { if (editing && dragKey) { e.preventDefault(); move(dragKey, key); setDragKey(null); setOverKey(null) } }}>
+  const [rz, setRz] = useState<DragState | null>(null)
+
+  const beginResize = (e: React.PointerEvent, item: ZoneItem, mode: ResizeMode) => {
+    e.preventDefault(); e.stopPropagation()
+    const itemEl = (e.currentTarget as HTMLElement).parentElement as HTMLElement
+    const startHeight = itemEl.getBoundingClientRect().height
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch { /* older browsers */ }
+    setRz({ key: item.key, mode, startX: e.clientX, startY: e.clientY, startSpan: item.span, startHeight, span: item.span, height: startHeight })
+  }
+  const moveResize = (e: React.PointerEvent) => setRz(d => {
+    if (!d) return d
+    const colW = (zoneRef.current?.getBoundingClientRect().width ?? 1) / 12
+    const span = (d.mode === 'e' || d.mode === 'se') ? clampSpan(d.startSpan + (e.clientX - d.startX) / colW) : d.startSpan
+    const height = (d.mode === 's' || d.mode === 'se') ? Math.max(MIN_ITEM_HEIGHT, d.startHeight + (e.clientY - d.startY)) : d.height
+    return { ...d, span, height }
+  })
+  const endResize = () => setRz(d => {
+    if (d) resize(d.key, { span: d.span, height: d.mode === 'e' ? undefined : d.height })
+    return null
+  })
+
+  return <div ref={zoneRef} className={`layout-zone${editing ? ' editing' : ''}${rz ? ' resizing' : ''}${className ? ` ${className}` : ''}`}>
+    {items.filter(i => render[i.key] != null).map(item => {
+      const live = rz && rz.key === item.key ? rz : null
+      const span = live ? live.span : item.span
+      const height = live ? live.height : item.height
+      const style = { '--span': span, ...(height != null ? { height: `${height}px`, overflow: 'auto' } : null) } as React.CSSProperties
+      return <div key={item.key}
+        className={`layout-item${overKey === item.key ? ' drag-over' : ''}${live ? ' resizing' : ''}`}
+        style={style}
+        onDragOver={e => { if (editing && dragKey) { e.preventDefault(); setOverKey(item.key) } }}
+        onDragLeave={() => setOverKey(cur => cur === item.key ? null : cur)}
+        onDrop={e => { if (editing && dragKey) { e.preventDefault(); move(dragKey, item.key); setDragKey(null); setOverKey(null) } }}>
         {editing && <div className="layout-item-bar">
-          <span className="drag-handle" draggable onDragStart={() => setDragKey(key)}
+          <span className="drag-handle" draggable onDragStart={() => setDragKey(item.key)}
             onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
-          <button type="button" className="outline compact" onClick={() => cycleSpan(key, span)}
-            title="Cycle width">{spanLabel(span)} width</button>
+          <span className="layout-item-size">{span}/12{height != null ? ` · ${Math.round(height)}px` : ''}</span>
         </div>}
-        {render[key]}
+        {render[item.key]}
+        {editing && (['e', 's', 'se'] as ResizeMode[]).map(mode => (
+          <span key={mode} className={`layout-resize layout-resize-${mode}`}
+            onPointerDown={e => beginResize(e, { ...item, span, height }, mode)}
+            onPointerMove={moveResize} onPointerUp={endResize} onLostPointerCapture={endResize}
+            onDoubleClick={() => mode !== 'e' && resize(item.key, { height: null })}
+            title={mode === 'e' ? 'Drag to set width' : mode === 's' ? 'Drag to set height · double-click to reset' : 'Drag to resize · double-click to reset height'} />
+        ))}
       </div>
-    ))}
+    })}
   </div>
 }
 
@@ -1512,6 +1567,12 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
   })
   const [status, setStatus] = useState('')
   const [confirmText, setConfirmText] = useState('')
+  // Accordion — at most one section open at a time.
+  const [openSection, setOpenSection] = useState('User profile')
+  const sectionProps = (title: string) => ({
+    title, open: openSection === title,
+    onToggle: () => setOpenSection(current => current === title ? '' : title),
+  })
   const selectedCountry = countries.find(c => c.code === form.country)
   const set = <K extends keyof typeof form>(key: K, value: typeof form[K]) => setForm(current => ({ ...current, [key]: value }))
   const save = async () => {
@@ -1545,7 +1606,7 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
   </>
 
   return <div className="settings-list">
-    <SettingsSection title="User profile" subtitle="Who you are" defaultOpen>
+    <SettingsSection {...sectionProps('User profile')} subtitle="Who you are">
       <div className="settings-field"><label>Display name</label><input value={form.displayName} onChange={e => set('displayName', e.target.value)} /></div>
       <div className="settings-field"><label>Email</label><input value={settings.email} disabled title="Managed by your sign-in provider" /></div>
       <div className="settings-field"><label>Contact number</label><input value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91 98765 43210" /></div>
@@ -1557,7 +1618,7 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
       {saveBar}
     </SettingsSection>
 
-    <SettingsSection title="User preferences" subtitle="How the app looks & behaves">
+    <SettingsSection {...sectionProps('User preferences')} subtitle="How the app looks & behaves">
       <div className="settings-field">
         <label>Appearance</label>
         <Switch checked={theme === 'light'} onChange={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} text={theme === 'dark' ? 'Dark' : 'Light'} icon={theme === 'dark' ? '🌙' : '☀'} />
@@ -1576,7 +1637,7 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
       {saveBar}
     </SettingsSection>
 
-    <SettingsSection title="Notification preferences" subtitle="Channels & limits">
+    <SettingsSection {...sectionProps('Notification preferences')} subtitle="Channels & limits">
       <p className="hint">Alerts aren't sent yet — these preferences are saved now so they take effect as soon as alerting ships.</p>
       <div className="check-row settings-checks">
         <label><input type="checkbox" checked={form.notifyEmail} onChange={e => set('notifyEmail', e.target.checked)} /> Email</label>
@@ -1590,7 +1651,7 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
       {saveBar}
     </SettingsSection>
 
-    <SettingsSection title="Account management" subtitle={`Member since ${since(settings.memberSince)}`}>
+    <SettingsSection {...sectionProps('Account management')} subtitle={`Member since ${since(settings.memberSince)}`}>
       <div className="pulse-row"><span>Net worth</span><strong>{dashboard ? money(dashboard.netWorth) : '—'}</strong></div>
       <div className="pulse-row"><span>Holdings tracked</span><strong>{settings.holdingCount}</strong></div>
       <div className="pulse-row"><span>Brokers connected</span><strong>{brokersConnected}</strong></div>
@@ -1606,14 +1667,13 @@ function SettingsView({ settings, countries, dashboard, holdings, reload, theme,
   </div>
 }
 
-// One collapsible card on the Settings page. More sections will land here over time,
-// so each is independently expandable rather than a fixed grid.
-function SettingsSection({ title, subtitle, defaultOpen, children }: {
-  title: string; subtitle: string; defaultOpen?: boolean; children: React.ReactNode
+// One collapsible card on the Settings page. The page is an accordion — the
+// parent owns which single section is open and passes `open` / `onToggle`.
+function SettingsSection({ title, subtitle, open, onToggle, children }: {
+  title: string; subtitle: string; open: boolean; onToggle: () => void; children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen ?? false)
-  return <article className="panel settings-section">
-    <button type="button" className="settings-section-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+  return <article className={`panel settings-section${open ? ' open' : ''}`}>
+    <button type="button" className="settings-section-head" onClick={onToggle} aria-expanded={open}>
       <span className="settings-section-title"><h3>{title}</h3><span>{subtitle}</span></span>
       <span className="settings-section-toggle">{toggleLabel(open)}</span>
     </button>
