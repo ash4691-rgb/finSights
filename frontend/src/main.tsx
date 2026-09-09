@@ -60,7 +60,7 @@ type HotPick = {
 type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; lastUpdated?: string; createdAt?: string }
 type TimelineCategoryPoint = { categoryId: string; categoryName: string; kind: 'ASSET' | 'LIABILITY'; invested: number; current: number }
 type TimelineWeek = { weekOf: string; invested: number; current: number; liabilities: number; netWorth: number; categories: TimelineCategoryPoint[] }
-type PortfolioTimeline = { weeks: TimelineWeek[] }
+type PortfolioTimeline = { weeks: TimelineWeek[]; lastCapturedAt?: string; capturedToday: boolean }
 type BrokerGroup = { name: string; holdingCount: number; currentValue: number; investedValue: number; profitLoss: number; lastUpdated?: string; categories: string[]; currencies: string[] }
 type Source = { key: string; name: string; status: string; description: string; capabilities: string[]; docsUrl?: string }
 type Brokers = { brokers: BrokerGroup[]; sources: Source[] }
@@ -1033,11 +1033,18 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
   const [thresholdsOpen, setThresholdsOpen] = useState(false)
   const [watchlistOpen, setWatchlistOpen] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
-  const [overviewOpen, setOverviewOpen] = useState(false)
   const [timeline, setTimeline] = useState<PortfolioTimeline | null>(null)
+  const [capturing, setCapturing] = useState(false)
 
   useEffect(() => { api<Insights>(`/api/insights?currency=${displayCurrency}`).then(setData).catch(e => setError(e.message)) }, [displayCurrency, dataVersion])
-  useEffect(() => { api<PortfolioTimeline>(`/api/insights/timeline?currency=${displayCurrency}`).then(setTimeline).catch(() => setTimeline({ weeks: [] })) }, [displayCurrency, dataVersion])
+  const loadTimeline = () => api<PortfolioTimeline>(`/api/insights/timeline?currency=${displayCurrency}`).then(setTimeline).catch(() => setTimeline({ weeks: [], capturedToday: false }))
+  useEffect(() => { void loadTimeline() }, [displayCurrency, dataVersion])
+  const captureNow = async () => {
+    setCapturing(true)
+    try { setTimeline(await api<PortfolioTimeline>(`/api/insights/timeline/capture?currency=${displayCurrency}`, { method: 'POST' })) }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not capture a snapshot') }
+    finally { setCapturing(false) }
+  }
   const loadHotPicks = () => api<HotPick[]>(`/api/insights/hot-picks?currency=${displayCurrency}`).then(setHotPicks).catch(() => setHotPicks([]))
   const loadWatchlist = () => api<WatchlistEntry[]>('/api/watchlist').then(setWatchlist).catch(() => setWatchlist([]))
   useEffect(() => { void loadHotPicks() }, [displayCurrency, dataVersion])
@@ -1065,10 +1072,31 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
 
   if (error) return <p className="hint">{error}</p>
   if (!data) return <p className="hint">Loading insights…</p>
-  const total = data.byCategory.reduce((sum, item) => sum + item.value, 0)
   const thresholdsSet = Object.values(thresholds).filter(value => value.trim() !== '').length
 
   return <>
+    <section className="panel data-quality">
+      <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
+      {data.actions.length ? <div className={`warning-list${data.actions.length > 10 ? ' warning-list-scroll' : ''}`}>{data.actions.map((a, i) => {
+        const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
+        const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
+        return <div key={i} className={`warning ${a.severity.toLowerCase()}`}>
+          <b>{a.severity}</b>
+          <button className="warning-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
+            <strong>{a.title}</strong><span>{a.detail}</span>
+          </button>
+          {(isEmi || isInterest) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
+            e.stopPropagation()
+            const url = isEmi
+              ? `/api/emis/${a.holdingId}/pay?dueDate=${a.period}`
+              : `/api/interest-payouts/${a.holdingId}/confirm?dueDate=${a.period}`
+            try { await api(url, { method: 'POST' }); await reload() }
+            catch (err) { setError(err instanceof Error ? err.message : 'Could not record that') }
+          }}>{isEmi ? 'Mark paid' : 'Log interest'}</button>}
+        </div>
+      })}</div> : <p className="hint">Nothing needs your attention right now.</p>}
+    </section>
+
     <section className="panel">
       <div className="panel-heading"><h3>Hot picks</h3><span>Movement beyond your thresholds</span></div>
 
@@ -1120,59 +1148,24 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
       </div>}
     </section>
 
-    <section className="panel data-quality">
-      <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
-      {data.actions.length ? <div className="warning-list">{data.actions.map((a, i) => {
-        const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
-        const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
-        return <div key={i} className={`warning ${a.severity.toLowerCase()}`}>
-          <b>{a.severity}</b>
-          <button className="warning-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
-            <strong>{a.title}</strong><span>{a.detail}</span>
-          </button>
-          {(isEmi || isInterest) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
-            e.stopPropagation()
-            const url = isEmi
-              ? `/api/emis/${a.holdingId}/pay?dueDate=${a.period}`
-              : `/api/interest-payouts/${a.holdingId}/confirm?dueDate=${a.period}`
-            try { await api(url, { method: 'POST' }); await reload() }
-            catch (err) { setError(err instanceof Error ? err.message : 'Could not record that') }
-          }}>{isEmi ? 'Mark paid' : 'Log interest'}</button>}
-        </div>
-      })}</div> : <p className="hint">Nothing needs your attention right now.</p>}
-    </section>
-
     <section className="overview-section">
       <button className="overview-toggle" onClick={() => setTimelineOpen(current => !current)}>
         <h3>Portfolio timeline</h3><span>{toggleLabel(timelineOpen)}</span>
       </button>
       {timelineOpen && <div className="panel timeline-panel">
-        <p className="hint">Each category's invested and current value is captured once a week.</p>
+        <div className="timeline-head">
+          <p className="hint">Net worth week by week — each category's invested and current value is snapshotted every Monday.</p>
+          <button className="outline compact" onClick={() => void captureNow()}
+            disabled={capturing || (timeline?.capturedToday ?? false)}
+            title={timeline?.capturedToday ? 'Already captured today' : 'Record this week’s values now'}>
+            {capturing ? 'Capturing…' : timeline?.capturedToday ? 'Captured today' : 'Capture snapshot now'}
+          </button>
+        </div>
         {!timeline ? <p className="hint">Loading timeline…</p>
           : timeline.weeks.length === 0
             ? <p className="hint">No snapshots yet — this week's is being recorded now. Come back next week to see how things moved.</p>
-            : <TimelineTable weeks={timeline.weeks} />}
-      </div>}
-    </section>
-
-    <section className="overview-section">
-      <button className="overview-toggle" onClick={() => setOverviewOpen(current => !current)}>
-        <h3>Portfolio overview</h3><span>{toggleLabel(overviewOpen)}</span>
-      </button>
-      {overviewOpen && <div className="insight-grid">
-        <BreakdownCard title="By category" items={data.byCategory} total={total} />
-        <BreakdownCard title="By broker" items={data.byBroker} total={total} />
-        <BreakdownCard title="By tag" items={data.byTag} total={total} />
-        <BreakdownCard title="By currency" items={data.byCurrency} total={total} />
-        <BreakdownCard title="By liquidity" items={data.byLiquidity} total={total} />
-        <article className="panel">
-          <div className="panel-heading"><h3>Movers</h3><span>Top 5 each way</span></div>
-          <div className="mover-list">
-            {data.topGainers.map(m => <button key={m.id} className="mover" onClick={() => onOpen(m.id)}><span>{m.name}</span><b className="positive">+{money(m.profitLoss)} · {percent(m.profitLossPercentage)}</b></button>)}
-            {data.topLosers.map(m => <button key={m.id} className="mover" onClick={() => onOpen(m.id)}><span>{m.name}</span><b className="negative">{money(m.profitLoss)} · {percent(m.profitLossPercentage)}</b></button>)}
-            {!data.topGainers.length && !data.topLosers.length && <p className="hint">No profit or loss recorded yet.</p>}
-          </div>
-        </article>
+            : <><NetWorthChart weeks={timeline.weeks} /><TimelineTable weeks={timeline.weeks} /></>}
+        {timeline?.lastCapturedAt && <p className="hint timeline-foot">Last snapshot {ago(timeline.lastCapturedAt)}.</p>}
       </div>}
     </section>
 
@@ -1180,6 +1173,33 @@ function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen }
       onClose={() => { setAddingWatch(false); setEditingWatch(null) }}
       onSaved={() => { setAddingWatch(false); setEditingWatch(null); void loadWatchlist(); void loadHotPicks() }} />}
   </>
+}
+
+// A lightweight inline-SVG line chart of net worth across the snapshot weeks (oldest → newest).
+function NetWorthChart({ weeks }: { weeks: TimelineWeek[] }) {
+  if (weeks.length < 2) return null
+  const W = 680, H = 150, padX = 10, padTop = 12, padBot = 16
+  const values = weeks.map(w => w.netWorth)
+  const min = Math.min(...values), max = Math.max(...values)
+  const span = max - min || Math.abs(max) || 1
+  const x = (i: number) => padX + (i / (weeks.length - 1)) * (W - padX * 2)
+  const y = (v: number) => padTop + (1 - (v - min) / span) * (H - padTop - padBot)
+  const line = weeks.map((w, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(w.netWorth).toFixed(1)}`).join(' ')
+  const area = `${line} L ${x(weeks.length - 1).toFixed(1)} ${(H - padBot).toFixed(1)} L ${x(0).toFixed(1)} ${(H - padBot).toFixed(1)} Z`
+  const growth = weeks[weeks.length - 1].netWorth - weeks[0].netWorth
+  const zeroY = min < 0 && max > 0 ? y(0) : null
+  return <div className="networth-chart">
+    <div className="networth-caption">
+      <span>Net worth</span>
+      <strong className={growth >= 0 ? 'positive' : 'negative'}>{growth >= 0 ? '▲' : '▼'} {money(Math.abs(growth))} over {weeks.length} weeks</strong>
+    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="networth-svg" role="img" aria-label="Net worth over time">
+      {zeroY != null && <line x1={padX} x2={W - padX} y1={zeroY} y2={zeroY} className="networth-zero" vectorEffect="non-scaling-stroke" />}
+      <path d={area} className="networth-area" />
+      <path d={line} className="networth-line" vectorEffect="non-scaling-stroke" />
+    </svg>
+    <div className="networth-axis"><span>{since(weeks[0].weekOf)}</span><span>{since(weeks[weeks.length - 1].weekOf)}</span></div>
+  </div>
 }
 
 // Weekly portfolio history. Newest week first; each row expands to the per-category split.

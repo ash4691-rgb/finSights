@@ -10,6 +10,8 @@ public interface PortfolioSnapshotRepository extends JpaRepository<PortfolioSnap
 
     List<PortfolioSnapshot> findByUser_IdOrderByWeekOfAscCategoryNameAsc(String userId);
 
+    List<PortfolioSnapshot> findByUser_IdAndWeekOf(String userId, LocalDate weekOf);
+
     boolean existsByUser_IdAndWeekOf(String userId, LocalDate weekOf);
 
     @Transactional

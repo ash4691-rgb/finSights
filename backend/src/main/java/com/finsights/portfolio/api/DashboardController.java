@@ -21,7 +21,7 @@ public class DashboardController {
 
     @GetMapping
     DashboardResponse summary(@RequestParam(required = false) String currency) {
-        portfolioSnapshots.captureCurrentWeek();
+        portfolioSnapshots.captureCurrentUser(false);
         return dashboard.summary(currency);
     }
 }

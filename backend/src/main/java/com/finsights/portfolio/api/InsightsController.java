@@ -8,6 +8,7 @@ import com.finsights.portfolio.service.InsightsService;
 import com.finsights.portfolio.service.PortfolioSnapshotService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,7 +29,7 @@ public class InsightsController {
 
     @GetMapping
     InsightsResponse insights(@RequestParam(required = false) String currency) {
-        portfolioSnapshots.captureCurrentWeek();
+        portfolioSnapshots.captureCurrentUser(false);
         return insights.insights(currency);
     }
 
@@ -37,7 +38,14 @@ public class InsightsController {
 
     @GetMapping("/timeline")
     PortfolioTimelineResponse timeline(@RequestParam(required = false) String currency) {
-        portfolioSnapshots.captureCurrentWeek();
+        portfolioSnapshots.captureCurrentUser(false);
+        return portfolioSnapshots.timeline(currency);
+    }
+
+    /** Force a fresh capture for the current ISO week (the "Capture snapshot now" button). */
+    @PostMapping("/timeline/capture")
+    PortfolioTimelineResponse capture(@RequestParam(required = false) String currency) {
+        portfolioSnapshots.captureCurrentUser(true);
         return portfolioSnapshots.timeline(currency);
     }
 }

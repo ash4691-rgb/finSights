@@ -1,11 +1,16 @@
 package com.finsights.portfolio.dto;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
 /** Weekly portfolio history for the Insights timeline, oldest week first. */
-public record PortfolioTimelineResponse(List<Week> weeks) {
+public record PortfolioTimelineResponse(
+        List<Week> weeks,
+        Instant lastCapturedAt,
+        boolean capturedToday
+) {
 
     public record Week(
             LocalDate weekOf,
