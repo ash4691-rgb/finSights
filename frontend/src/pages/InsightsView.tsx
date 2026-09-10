@@ -4,7 +4,8 @@ import { api } from '../api'
 import { LayoutZone } from '../layout'
 import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput } from '../ui'
-import type { Insights, Settings, ActionItem, HotPick, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote } from '../types'
+import type { PageDataSource } from '../widgets'
+import type { Insights, Settings, Dashboard, Breakdown, ActionItem, HotPick, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote } from '../types'
 
 // ---------------------------------------------------------------------------
 
@@ -12,8 +13,8 @@ import type { Insights, Settings, ActionItem, HotPick, WatchlistEntry, Portfolio
 // appears on the Dashboard lives in the collapsed "Portfolio overview" section at the bottom.
 // This page's own job is Hot picks (holdings + watchlist symbols moving beyond a configured
 // threshold) and data-quality checks.
-export function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen, layoutEditing, layoutNonce }: {
-  displayCurrency: string; dataVersion: number; settings: Settings; reload: () => Promise<void>; onOpen: (id: string) => void
+export function InsightsView({ displayCurrency, dataVersion, settings, dashboard, reload, onOpen, layoutEditing, layoutNonce }: {
+  displayCurrency: string; dataVersion: number; settings: Settings; dashboard: Dashboard; reload: () => Promise<void>; onOpen: (id: string) => void
   layoutEditing: boolean; layoutNonce: number
 }) {
   const [data, setData] = useState<Insights | null>(null)
@@ -103,9 +104,45 @@ export function InsightsView({ displayCurrency, dataVersion, settings, reload, o
     </div>
   }
 
+  const insightsDataSource: PageDataSource = {
+    attributes: [
+      { key: 'category', label: 'Category', kind: 'dimension' },
+      { key: 'broker', label: 'Broker', kind: 'dimension' },
+      { key: 'tag', label: 'Tag', kind: 'dimension' },
+      { key: 'currency', label: 'Currency', kind: 'dimension' },
+      { key: 'liquidity', label: 'Liquidity', kind: 'dimension' },
+      { key: 'value', label: 'Current value', kind: 'measure' },
+      { key: 'invested', label: 'Invested', kind: 'measure' },
+      { key: 'profitLoss', label: 'P/L', kind: 'measure' },
+      { key: 'netWorth', label: 'Net worth', kind: 'measure' },
+      { key: 'totalAssets', label: 'Total assets', kind: 'measure' },
+      { key: 'totalLiabilities', label: 'Total liabilities', kind: 'measure' },
+      { key: 'totalProfitLoss', label: 'Portfolio P/L', kind: 'measure' },
+      { key: 'netWorth', label: 'Net worth', kind: 'series' },
+    ],
+    resolve(w) {
+      if (w.subType === 'counter') {
+        const totals: Record<string, number> = {
+          netWorth: dashboard.netWorth, totalAssets: dashboard.totalAssets,
+          totalLiabilities: dashboard.totalLiabilities, totalProfitLoss: dashboard.portfolioProfitLoss,
+        }
+        return { kind: 'scalar', value: totals[w.query.measure ?? 'netWorth'] ?? dashboard.netWorth }
+      }
+      if (w.subType === '2d-graph') {
+        return { kind: 'series', points: (timeline?.weeks ?? []).map(week => ({ t: week.weekOf, v: week.netWorth })) }
+      }
+      const byDimension: Record<string, Breakdown[]> = { category: data.byCategory, broker: data.byBroker, tag: data.byTag, currency: data.byCurrency, liquidity: data.byLiquidity }
+      const rows = byDimension[w.query.dimension ?? 'category'] ?? data.byCategory
+      const m = w.query.measure ?? 'value'
+      const val = (b: Breakdown) => m === 'invested' ? b.investedValue : m === 'profitLoss' ? b.profitLoss : b.value
+      return { kind: 'breakdown', rows: rows.map(r => ({ label: label(r.label), value: val(r) })) }
+    },
+  }
+
   const zone = { editing: layoutEditing, nonce: layoutNonce }
   return <>
-    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'actions', span: 12 }, { key: 'hotpicks', span: 12 }, { key: 'watchlistSettings', span: 12 }, { key: 'timeline', span: 12 }]} render={{
+    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'widgets', span: 12 }, { key: 'actions', span: 12 }, { key: 'hotpicks', span: 12 }, { key: 'watchlistSettings', span: 12 }, { key: 'timeline', span: 12 }]} render={{
+    widgets: <LayoutZone zoneKey="insights/widgets" {...zone} dataSource={insightsDataSource} />,
     actions: <section className="panel data-quality">
       <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
       <LayoutZone zoneKey="insights/actions" {...zone} defaults={[{ key: 'pending', span: 6 }, { key: 'radar', span: 6 }]} render={{
