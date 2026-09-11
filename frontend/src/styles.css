@@ -320,16 +320,7 @@ th.sortable:hover{color:var(--text)}
 .mover-badge{font-size:10px;font-weight:800;padding:3px 7px;border-radius:5px;white-space:nowrap}
 .mover-badge.positive{background:var(--success-bg);color:var(--success-text)}
 .mover-badge.negative{background:var(--warn-bg);color:var(--warn-text)}
-.overview-section{margin-top:16px}
-.overview-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 18px;cursor:pointer;color:inherit;font:inherit;text-align:left}
-.overview-toggle:hover{border-color:var(--border-strong)}
-.overview-toggle h3{font-size:14px;margin:0}
-.overview-toggle span{font-size:11px;color:var(--text-3)}
-.overview-section .insight-grid{margin-top:16px}
-.timeline-panel{margin-top:14px}
-.timeline-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
-.timeline-head .hint{margin:0;flex:1;min-width:200px}
-.timeline-foot{margin:10px 0 0;font-size:11px}
+.timeline-panel{margin-top:10px}
 .timeline-table th:not(:first-child),.timeline-table td:not(:first-child),.timeline-detail td:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
 .timeline-table th:first-child,.timeline-table td:first-child{text-align:left}
 /* Timeline caps at roughly ten weeks and scrolls, with the header pinned. */

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
 import { LayoutZone } from '../layout'
-import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
+import { money, percent, label, since, ago, numeric, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput } from '../ui'
 import type { Insights, Settings, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote } from '../types'
 
@@ -24,7 +24,6 @@ export function InsightsView({ displayCurrency, dataVersion, settings, reload, o
   const [savingThresholds, setSavingThresholds] = useState(false)
   const [addingWatch, setAddingWatch] = useState(false)
   const [editingWatch, setEditingWatch] = useState<WatchlistEntry | null>(null)
-  const [timelineOpen, setTimelineOpen] = useState(false)
   const [timeline, setTimeline] = useState<PortfolioTimeline | null>(null)
   const [capturing, setCapturing] = useState(false)
 
@@ -175,25 +174,34 @@ export function InsightsView({ displayCurrency, dataVersion, settings, reload, o
       }} />
     </section>,
 
-    timeline: <section className="overview-section">
-      <button className="overview-toggle" onClick={() => setTimelineOpen(current => !current)}>
-        <h3>Portfolio timeline</h3><span>{toggleLabel(timelineOpen)}</span>
-      </button>
-      {timelineOpen && <div className="panel timeline-panel">
-        <div className="timeline-head">
-          <p className="hint">Net worth week by week — each category's invested and current value is snapshotted every Monday.</p>
-          <button className="outline compact" onClick={() => void captureNow()}
-            disabled={capturing || (timeline?.capturedToday ?? false)}
-            title={timeline?.capturedToday ? 'Already captured today' : 'Record this week’s values now'}>
-            {capturing ? 'Capturing…' : timeline?.capturedToday ? 'Captured today' : 'Capture snapshot now'}
-          </button>
-        </div>
-        {!timeline ? <p className="hint">Loading timeline…</p>
-          : timeline.weeks.length === 0
-            ? <p className="hint">No snapshots yet — this week's is being recorded now. Come back next week to see how things moved.</p>
-            : <><NetWorthChart weeks={timeline.weeks} /><TimelineTable weeks={timeline.weeks} /></>}
-        {timeline?.lastCapturedAt && <p className="hint timeline-foot">Last snapshot {ago(timeline.lastCapturedAt)}.</p>}
-      </div>}
+    timeline: <section className="panel">
+      <div className="panel-heading">
+        <h3>Portfolio timeline</h3>
+        <button className="outline compact" onClick={() => void captureNow()}
+          disabled={capturing || (timeline?.capturedToday ?? false)}
+          title={timeline?.capturedToday ? 'Already captured today' : 'Record this week’s values now'}>
+          {capturing ? 'Capturing…' : timeline?.capturedToday ? 'Captured today' : 'Capture snapshot now'}
+        </button>
+      </div>
+      <p className="hint">Net worth week by week — each category's invested and current value is snapshotted every Monday.
+        {timeline?.lastCapturedAt && ` Last snapshot ${ago(timeline.lastCapturedAt)}.`}</p>
+      <LayoutZone zoneKey="insights/timeline" {...zone} defaults={[{ key: 'networth', span: 12 }, { key: 'history', span: 12 }]} render={{
+        networth: <div className="action-col">
+          <div className="action-col-head"><span className="action-col-icon">📈</span><h4>Net worth</h4></div>
+          {!timeline ? <p className="hint">Loading timeline…</p>
+            : timeline.weeks.length < 2
+              ? <p className="hint">Not enough history yet — check back after a couple of weekly snapshots.</p>
+              : <NetWorthChart weeks={timeline.weeks} />}
+        </div>,
+
+        history: <div className="action-col">
+          <div className="action-col-head"><span className="action-col-icon">📋</span><h4>Weekly history</h4><span className="action-col-count">{timeline?.weeks.length ?? 0}</span></div>
+          {!timeline ? <p className="hint">Loading timeline…</p>
+            : timeline.weeks.length === 0
+              ? <p className="hint">No snapshots yet — this week's is being recorded now. Come back next week to see how things moved.</p>
+              : <div className="timeline-panel"><TimelineTable weeks={timeline.weeks} /></div>}
+        </div>,
+      }} />
     </section>,
     }} />
     {(addingWatch || editingWatch) && <WatchlistModal item={editingWatch}
