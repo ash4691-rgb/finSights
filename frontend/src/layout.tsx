@@ -264,9 +264,9 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
             : <h4>{sectionTitle}</h4>)
         : <span />}
       {editing && <div className="widget-section-actions">
+        <button type="button" className="icon-btn add" title="Add widget" aria-label="Add widget" onClick={() => setAddingWidget(true)}>+</button>
         {sectionTitle != null && onRenameSection &&
           <button type="button" className="icon-btn edit" title="Rename panel" aria-label="Rename panel" onClick={startRename}>✎</button>}
-        <button type="button" className="icon-btn add" title="Add widget" aria-label="Add widget" onClick={() => setAddingWidget(true)}>+</button>
         {onDeleteSection &&
           <button type="button" className="icon-btn delete" title="Delete panel" aria-label="Delete panel" onClick={onDeleteSection}>🗑</button>}
       </div>}
@@ -287,16 +287,16 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
           {editing && <div className="layout-item-bar">
             <span className="drag-handle" draggable onDragStart={() => setDragKey(item.key)}
               onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
+            {isWidgetZone && widget && <div className="widget-actions">
+              <button type="button" className="icon-btn edit" title="Edit widget" aria-label="Edit widget" onClick={() => setEditingWidgetId(widget.id)}>✎</button>
+              {widget.deletable &&
+                <button type="button" className="icon-btn delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>🗑</button>}
+            </div>}
           </div>}
           {isWidgetZone
             ? widget && <article className="panel widget-panel">
                 <div className="panel-heading">
                   <h3>{widget.title}</h3>
-                  {editing && <div className="widget-actions">
-                    <button type="button" className="icon-btn edit" title="Edit widget" aria-label="Edit widget" onClick={() => setEditingWidgetId(widget.id)}>✎</button>
-                    {widget.deletable &&
-                      <button type="button" className="icon-btn delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>🗑</button>}
-                  </div>}
                 </div>
                 {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
               </article>
