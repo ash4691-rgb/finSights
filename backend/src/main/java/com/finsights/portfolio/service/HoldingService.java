@@ -419,6 +419,11 @@ public class HoldingService {
         ValuationMethod method = liability || source.valuationMethod() == null
                 ? ValuationMethod.MANUAL : source.valuationMethod();
 
+        if (!liability && !category.getAllowedValuationMethods().isEmpty() && !category.getAllowedValuationMethods().contains(method)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "\"" + category.getName() + "\" only allows: " + category.getAllowedValuationMethods().stream()
+                            .map(Enum::name).collect(Collectors.joining(", ")));
+        }
         if (!liability && method == ValuationMethod.FIXED_RATE
                 && (source.fixedAnnualRate() == null || source.compoundingFrequency() == null || source.fixedRateStartDate() == null)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
