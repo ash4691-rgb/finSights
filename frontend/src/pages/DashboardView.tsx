@@ -1,5 +1,6 @@
 import { LayoutZone } from '../layout'
 import { money, percent, label } from '../util'
+import type { PageDataSource } from '../widgets'
 import type { Dashboard, Holding, Breakdown } from '../types'
 
 export function DashboardView({ dashboard, holdings, onManage, layoutEditing, layoutNonce }: {
@@ -14,9 +15,41 @@ export function DashboardView({ dashboard, holdings, onManage, layoutEditing, la
     kpi('liabilities', 'Total liabilities', dashboard.totalLiabilities, 'Outstanding obligations'),
     kpi('pl', 'Portfolio P/L', dashboard.portfolioProfitLoss, `${dashboard.investedAssets ? percent((dashboard.portfolioProfitLoss / dashboard.investedAssets) * 100) : '0.0%'} on invested assets`),
   ])
+
+  const dashboardDataSource: PageDataSource = {
+    attributes: [
+      { key: 'category', label: 'Category', kind: 'dimension' },
+      { key: 'broker', label: 'Broker', kind: 'dimension' },
+      { key: 'tag', label: 'Tag', kind: 'dimension' },
+      { key: 'value', label: 'Current value', kind: 'measure' },
+      { key: 'invested', label: 'Invested', kind: 'measure' },
+      { key: 'profitLoss', label: 'P/L', kind: 'measure' },
+      { key: 'netWorth', label: 'Net worth', kind: 'measure' },
+      { key: 'totalAssets', label: 'Total assets', kind: 'measure' },
+      { key: 'totalLiabilities', label: 'Total liabilities', kind: 'measure' },
+      { key: 'totalProfitLoss', label: 'Portfolio P/L', kind: 'measure' },
+    ],
+    resolve(w) {
+      if (w.subType === '2d-graph') return { kind: 'series', series: [] }
+      if (w.subType === 'counter') {
+        const totals: Record<string, number> = {
+          netWorth: dashboard.netWorth, totalAssets: dashboard.totalAssets,
+          totalLiabilities: dashboard.totalLiabilities, totalProfitLoss: dashboard.portfolioProfitLoss,
+        }
+        return { kind: 'scalar', value: totals[w.query.measure ?? 'netWorth'] ?? dashboard.netWorth }
+      }
+      const byDimension: Record<string, Breakdown[]> = { category: dashboard.byCategory, broker: dashboard.byBroker, tag: dashboard.byTag }
+      const rows = byDimension[w.query.dimension ?? 'category'] ?? dashboard.byCategory
+      const m = w.query.measure ?? 'value'
+      const val = (b: Breakdown) => m === 'invested' ? b.investedValue : m === 'profitLoss' ? b.profitLoss : b.value
+      return { kind: 'breakdown', rows: rows.map(r => ({ label: label(r.label), value: val(r) })) }
+    },
+  }
+
   const zone = { editing: layoutEditing, nonce: layoutNonce }
-  return <LayoutZone zoneKey="dashboard/page" {...zone} defaults={[{ key: 'hero', span: 12 }, { key: 'kpis', span: 12 }, { key: 'breakdowns', span: 12 }]} render={{
+  return <LayoutZone zoneKey="dashboard/page" {...zone} defaults={[{ key: 'hero', span: 12 }, { key: 'widgets', span: 12 }, { key: 'kpis', span: 12 }, { key: 'breakdowns', span: 12 }]} render={{
     hero: <section className="hero"><div><p>Current portfolio value</p><h2>{money(dashboard.netWorth)}</h2><span className={dashboard.portfolioProfitLoss >= 0 ? 'positive' : 'negative'}>{dashboard.portfolioProfitLoss >= 0 ? '↑' : '↓'} {money(Math.abs(dashboard.portfolioProfitLoss))} total gain/loss</span></div><button className="outline" onClick={onManage}>Manage categories →</button></section>,
+    widgets: <LayoutZone zoneKey="dashboard/widgets" {...zone} dataSource={dashboardDataSource} />,
     kpis: <LayoutZone zoneKey="dashboard/kpis" {...zone}
       defaults={['netWorth', 'assets', 'liabilities', 'pl'].map(key => ({ key, span: 3 }))} render={kpis} />,
     breakdowns: <LayoutZone zoneKey="dashboard/breakdowns" {...zone}

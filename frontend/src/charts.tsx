@@ -80,54 +80,62 @@ function niceTicks(min: number, max: number, count = 4) {
   return ticks
 }
 const shortDate = (t: string) => new Date(t).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+const SERIES_COLORS = ['var(--accent)', 'var(--accent-2)', 'var(--positive)']
 
-// Interactive line chart with real axes + a hover crosshair/tooltip. Touch-safe (pointer events).
-export function TimeseriesChart({ points, caption }: { points: { t: string; v: number }[]; caption?: string }) {
+// Interactive line chart — up to 3 metrics, each its own colour — with real axes and a hover
+// crosshair/tooltip. The hover hit-area is the plotted rectangle only (an invisible <rect>), so
+// the interactive experience never spills into the axis-label margins. Touch-safe (pointer events).
+export function TimeseriesChart({ series, caption }: { series: { label: string; points: { t: string; v: number }[] }[]; caption?: string }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [hover, setHover] = useState<{ index: number; x: number; flip: boolean } | null>(null)
-  if (points.length < 2) return <p className="hint">Not enough data yet.</p>
+  const usable = series.filter(s => s.points.length >= 2)
+  if (!usable.length) return <p className="hint">Not enough data yet.</p>
 
   const W = 640, H = 220, padL = 56, padR = 12, padT = 14, padB = 28
-  const values = points.map(p => p.v)
-  const ticks = niceTicks(Math.min(...values), Math.max(...values))
+  const pointCount = usable[0].points.length
+  const allValues = usable.flatMap(s => s.points.map(p => p.v))
+  const ticks = niceTicks(Math.min(...allValues), Math.max(...allValues))
   const min = ticks[0], max = ticks[ticks.length - 1], span = max - min || 1
-  const x = (i: number) => padL + (i / (points.length - 1)) * (W - padL - padR)
+  const x = (i: number) => padL + (i / (pointCount - 1)) * (W - padL - padR)
   const y = (v: number) => padT + (1 - (v - min) / span) * (H - padT - padB)
-  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ')
+  const lineFor = (s: { points: { t: string; v: number }[] }) =>
+    s.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(p.v).toFixed(1)}`).join(' ')
 
-  const tickCount = Math.min(6, points.length)
-  const xTickIdx = [...new Set(Array.from({ length: tickCount }, (_, i) => Math.round(i * (points.length - 1) / (tickCount - 1))))]
+  const tickCount = Math.min(6, pointCount)
+  const xTickIdx = [...new Set(Array.from({ length: tickCount }, (_, i) => Math.round(i * (pointCount - 1) / (tickCount - 1))))]
 
-  const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
+  const onMove = (e: React.PointerEvent<SVGRectElement>) => {
     const rect = svgRef.current?.getBoundingClientRect()
     if (!rect) return
     const relX = ((e.clientX - rect.left) / rect.width) * W
     let nearest = 0, best = Infinity
-    points.forEach((_, i) => { const d = Math.abs(x(i) - relX); if (d < best) { best = d; nearest = i } })
-    const px = e.clientX - rect.left
-    setHover({ index: nearest, x: px, flip: px > rect.width - 120 })
+    usable[0].points.forEach((_, i) => { const d = Math.abs(x(i) - relX); if (d < best) { best = d; nearest = i } })
+    const px = (x(nearest) / W) * rect.width
+    setHover({ index: nearest, x: px, flip: px > rect.width - 130 })
   }
-
-  const hoveredPoint = hover ? points[hover.index] : null
 
   return <div className="timeseries-widget">
     {caption && <div className="timeseries-caption">{caption}</div>}
+    {usable.length > 1 && <div className="timeseries-legend">
+      {usable.map((s, i) => <span className="timeseries-legend-item" key={s.label}><i style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />{s.label}</span>)}
+    </div>}
     <div className="timeseries-plot">
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="timeseries-svg" role="img" aria-label="Value over time"
-        onPointerMove={onMove} onPointerLeave={() => setHover(null)} onPointerCancel={() => setHover(null)}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="timeseries-svg" role="img" aria-label="Value over time">
         {ticks.map(t => <g key={t}>
           <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} className="timeseries-gridline" />
           <text x={padL - 8} y={y(t)} className="timeseries-y-label" textAnchor="end" dominantBaseline="middle">{money(t)}</text>
         </g>)}
-        {xTickIdx.map(i => <text key={i} x={x(i)} y={H - 8} className="timeseries-x-label" textAnchor="middle">{shortDate(points[i].t)}</text>)}
-        <path d={line} className="timeseries-line" vectorEffect="non-scaling-stroke" />
-        {hover && <>
-          <line x1={x(hover.index)} x2={x(hover.index)} y1={padT} y2={H - padB} className="timeseries-crosshair" />
-          <circle cx={x(hover.index)} cy={y(points[hover.index].v)} r={4} className="timeseries-dot" />
-        </>}
+        {xTickIdx.map(i => <text key={i} x={x(i)} y={H - 8} className="timeseries-x-label" textAnchor="middle">{shortDate(usable[0].points[i].t)}</text>)}
+        {usable.map((s, i) => <path key={s.label} d={lineFor(s)} className="timeseries-line" style={{ stroke: SERIES_COLORS[i % SERIES_COLORS.length] }} vectorEffect="non-scaling-stroke" />)}
+        {hover && <line x1={x(hover.index)} x2={x(hover.index)} y1={padT} y2={H - padB} className="timeseries-crosshair" />}
+        {hover && usable.map((s, i) => <circle key={s.label} cx={x(hover.index)} cy={y(s.points[hover.index].v)} r={4} className="timeseries-dot" style={{ fill: SERIES_COLORS[i % SERIES_COLORS.length] }} />)}
+        {/* Confines the hover experience to the plotted rectangle — never the axis-label gutters. */}
+        <rect x={padL} y={padT} width={W - padL - padR} height={H - padT - padB} fill="transparent"
+          onPointerMove={onMove} onPointerLeave={() => setHover(null)} onPointerCancel={() => setHover(null)} />
       </svg>
-      {hoveredPoint && hover && <div className={`chart-tooltip${hover.flip ? ' flip' : ''}`} style={{ left: hover.x }}>
-        <strong>{shortDate(hoveredPoint.t)}</strong><span>{money(hoveredPoint.v)}</span>
+      {hover && <div className={`chart-tooltip${hover.flip ? ' flip' : ''}`} style={{ left: hover.x }}>
+        <strong>{shortDate(usable[0].points[hover.index].t)}</strong>
+        {usable.map((s, i) => <div className="chart-tooltip-row" key={s.label}><i style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }} />{s.label}: {money(s.points[hover.index].v)}</div>)}
       </div>}
     </div>
   </div>
