@@ -7,9 +7,18 @@ export type AttrKind = 'dimension' | 'measure' | 'series'
 export type Attr = { key: string; label: string; kind: AttrKind }
 export type WidgetData =
   | { kind: 'breakdown'; rows: { label: string; value: number }[] }
-  | { kind: 'series'; points: { t: string; v: number }[] }
+  | { kind: 'series'; series: { label: string; points: { t: string; v: number }[] }[] }
   | { kind: 'scalar'; value: number; delta?: number }
 export interface PageDataSource { attributes: Attr[]; resolve(w: Widget): WidgetData }
+
+export const MAX_SERIES = 3
+// query.series was a single string before multi-metric support — coerce old saved widgets too.
+export function seriesKeysOf(query: WidgetQuery): string[] {
+  const v = query.series as unknown
+  if (Array.isArray(v)) return v as string[]
+  if (typeof v === 'string' && v) return [v]
+  return []
+}
 
 export const WIDGET_TYPES: Record<WidgetSubType, { label: string; icon: string; needs: AttrKind[]; defaultSpan: number; defaultHeight: number }> = {
   counter: { label: 'Counter', icon: '#', needs: ['measure'], defaultSpan: 3, defaultHeight: 140 },
@@ -20,11 +29,11 @@ export const WIDGET_TYPES: Record<WidgetSubType, { label: string; icon: string; 
 
 export function WidgetView({ widget, dataSource }: { widget: Widget; dataSource: PageDataSource }) {
   const def = WIDGET_TYPES[widget.subType]
-  const missingKind = def.needs.find(kind => !widget.query[kind])
+  const missingKind = def.needs.find(kind => kind === 'series' ? seriesKeysOf(widget.query).length === 0 : !widget.query[kind])
   if (missingKind) return <p className="hint widget-placeholder">Pick a {missingKind}</p>
   const data = dataSource.resolve(widget)
   if (data.kind === 'scalar') return <Counter value={data.value} delta={data.delta} />
-  if (data.kind === 'series') return <TimeseriesChart points={data.points} />
+  if (data.kind === 'series') return <TimeseriesChart series={data.series} />
   return widget.subType === 'pie-chart'
     ? <PieChart rows={data.rows} />
     : <BarChart rows={data.rows} total={data.rows.reduce((sum, r) => sum + Math.abs(r.value), 0)} />
@@ -64,6 +73,27 @@ export function AttrPicker({ kind, attributes, value, onChange }: {
   </div>
 }
 
+// Checkbox multi-select for a 2d-graph's metrics — up to `max`, each rendered as its own line.
+export function SeriesPicker({ attributes, value, onChange, max = MAX_SERIES }: {
+  attributes: Attr[]; value: string[]; onChange: (keys: string[]) => void; max?: number
+}) {
+  const options = attributes.filter(a => a.kind === 'series')
+  const toggle = (key: string) => {
+    if (value.includes(key)) onChange(value.filter(k => k !== key))
+    else if (value.length < max) onChange([...value, key])
+  }
+  return <div className="series-picker">
+    {options.map(a => {
+      const checked = value.includes(a.key)
+      return <label key={a.key} className={`series-picker-option${checked ? ' checked' : ''}`}>
+        <input type="checkbox" checked={checked} disabled={!checked && value.length >= max} onChange={() => toggle(a.key)} />
+        {a.label}
+      </label>
+    })}
+    <p className="hint">Up to {max} metrics.</p>
+  </div>
+}
+
 // Two-step "Add widget" flow (Datadog style): pick a type, then title + one AttrPicker per
 // required attribute + a live preview. Reused for editing by passing `initial`.
 export function AddWidgetModal({ dataSource, initial, onAdd, onClose }: {
@@ -93,7 +123,9 @@ export function AddWidgetModal({ dataSource, initial, onAdd, onClose }: {
           <div className="form-grid">
             <Field label="Title" wide><input value={title} maxLength={64} placeholder={WIDGET_TYPES[subType].label} onChange={e => setTitle(e.target.value)} /></Field>
             {WIDGET_TYPES[subType].needs.map(kind => <Field label={kind[0].toUpperCase() + kind.slice(1)} wide key={kind}>
-              <AttrPicker kind={kind} attributes={dataSource.attributes} value={query[kind]} onChange={key => setQuery(current => ({ ...current, [kind]: key }))} />
+              {kind === 'series'
+                ? <SeriesPicker attributes={dataSource.attributes} value={seriesKeysOf(query)} onChange={keys => setQuery(current => ({ ...current, series: keys }))} />
+                : <AttrPicker kind={kind} attributes={dataSource.attributes} value={query[kind] as string | undefined} onChange={key => setQuery(current => ({ ...current, [kind]: key }))} />}
             </Field>)}
           </div>
           <div className="widget-preview">

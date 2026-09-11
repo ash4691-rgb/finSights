@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as React from 'react'
 import type { ReactNode } from 'react'
 import { PAGE_LAYOUT } from './layout-config'
-import type { Widget } from './layout-config'
+import type { SectionSeed, Widget } from './layout-config'
 import { WIDGET_TYPES, WidgetView, AddWidgetModal } from './widgets'
 import type { PageDataSource } from './widgets'
 import { saveLayout } from './layout-api'
@@ -22,7 +22,11 @@ export const LAYOUT_KEY = 'finsights-layout-v1'
 export const MIN_SPAN = 1, MAX_SPAN = 12, MIN_ITEM_HEIGHT = 96
 export const clampSpan = (n: number) => Math.max(MIN_SPAN, Math.min(MAX_SPAN, Math.round(n)))
 export type ResizeMode = 'e' | 's' | 'se'
-export type ZonePref = { order: string[]; spans: Record<string, number>; heights?: Record<string, number>; widgets?: Record<string, Widget> }
+export type SectionMeta = { title: string; deletable: boolean }
+export type ZonePref = {
+  order: string[]; spans: Record<string, number>; heights?: Record<string, number>
+  widgets?: Record<string, Widget>; sections?: Record<string, SectionMeta>
+}
 export type LayoutState = Record<string, ZonePref>
 export type ZoneItem = { key: string; span: number; height?: number }
 
@@ -183,16 +187,20 @@ export type DragState = {
   span: number; height: number
 }
 
-export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dataSource, className }: {
+export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dataSource, className, forceWidgetSeed }: {
   zoneKey: string; editing: boolean; nonce: number; defaults?: ZoneItem[]
   render?: Record<string, ReactNode>; dataSource?: PageDataSource; className?: string
+  forceWidgetSeed?: Omit<Widget, 'id'>[]
 }) {
   const page = zoneKey.split('/')[0] as keyof typeof PAGE_LAYOUT
   const config = PAGE_LAYOUT[page]?.[zoneKey]
+  if (config?.kind === 'sections') {
+    return <SectionedZone zoneKey={zoneKey} editing={editing} nonce={nonce} dataSource={dataSource} seed={config.seed} className={className} />
+  }
   const widgetConfig = config?.kind === 'widget' ? config : undefined
-  const isWidgetZone = !!widgetConfig
+  const isWidgetZone = !!widgetConfig || forceWidgetSeed != null
   const { items, widgets, move, resize, addWidget, removeWidget, updateWidget } =
-    useZoneLayout(zoneKey, defaults, nonce, widgetConfig?.seed)
+    useZoneLayout(zoneKey, defaults, nonce, widgetConfig?.seed ?? forceWidgetSeed)
   const zoneRef = useRef<HTMLDivElement>(null)
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [overKey, setOverKey] = useState<string | null>(null)
@@ -260,13 +268,102 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
         ))}
       </div>
     })}
-    {isWidgetZone && editing && <div className="layout-item widget-add-item" style={{ '--span': 3 } as React.CSSProperties}>
-      <button type="button" className="widget-add-tile" onClick={() => setAddingWidget(true)}>+ Add widget</button>
+    {isWidgetZone && editing && <div className="layout-item widget-add-item" style={{ '--span': 1 } as React.CSSProperties}>
+      <button type="button" className="widget-add-tile" title="Add widget" aria-label="Add widget" onClick={() => setAddingWidget(true)}>+</button>
     </div>}
     {isWidgetZone && dataSource && (addingWidget || editingWidget) && <AddWidgetModal
       dataSource={dataSource}
       initial={editingWidget}
       onAdd={w => { if (editingWidget) updateWidget(editingWidget.id, w); else addWidget(w); setAddingWidget(false); setEditingWidgetId(null) }}
       onClose={() => { setAddingWidget(false); setEditingWidgetId(null) }} />}
+  </div>
+}
+
+// A page's widget zone as multiple named, independently addable/removable sections — each its
+// own widget grid (LayoutZone in forceWidgetSeed mode). The section list itself (order + titles +
+// deletable flags) is persisted the same way as a plain ZonePref, at `zoneKey`; each section's
+// widgets live in their own nested zone keyed `${sectionId}/widgets`.
+function useSectionList(zoneKey: string, seed: SectionSeed[], nonce: number) {
+  const seedRef = useRef(seed)
+  seedRef.current = seed
+  const page = zoneKey.split('/')[0]
+
+  const load = (): { order: string[]; sections: Record<string, SectionMeta> } => {
+    const pref = readLayout()[zoneKey]
+    if (pref?.sections) return { order: pref.order, sections: pref.sections }
+    const sections: Record<string, SectionMeta> = {}
+    const order = seedRef.current.map((s, i) => {
+      const id = `${zoneKey}:section:${i}`
+      sections[id] = { title: s.title, deletable: s.deletable }
+      return id
+    })
+    return { order, sections }
+  }
+
+  const [state, setState] = useState(load)
+  useEffect(() => { setState(load()) }, [zoneKey, nonce])
+
+  const persist = (order: string[], sections: Record<string, SectionMeta>) => {
+    const all = readLayout()
+    all[zoneKey] = { order, spans: {}, sections }
+    writeLayout(all)
+    schedulePageSave(page)
+  }
+  const addSection = (title: string) => setState(({ order, sections }) => {
+    const id = `${zoneKey}:section:${crypto.randomUUID()}`
+    const nextSections = { ...sections, [id]: { title, deletable: true } }
+    const nextOrder = [...order, id]
+    persist(nextOrder, nextSections)
+    return { order: nextOrder, sections: nextSections }
+  })
+  const removeSection = (id: string) => setState(({ order, sections }) => {
+    const nextOrder = order.filter(k => k !== id)
+    const nextSections = { ...sections }
+    delete nextSections[id]
+    persist(nextOrder, nextSections)
+    const all = readLayout()
+    delete all[`${id}/widgets`]
+    writeLayout(all)
+    return { order: nextOrder, sections: nextSections }
+  })
+  return { order: state.order, sections: state.sections, addSection, removeSection }
+}
+
+function SectionedZone({ zoneKey, editing, nonce, dataSource, seed, className }: {
+  zoneKey: string; editing: boolean; nonce: number; dataSource?: PageDataSource; seed: SectionSeed[]; className?: string
+}) {
+  const { order, sections, addSection, removeSection } = useSectionList(zoneKey, seed, nonce)
+  const [addingSection, setAddingSection] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  // Seeded sections' starting widgets, keyed by the same deterministic id useSectionList seeds.
+  const seedWidgetsById = useMemo(() => new Map(seed.map((s, i) => [`${zoneKey}:section:${i}`, s.widgets])), [zoneKey, seed])
+
+  const confirmAdd = () => {
+    if (newTitle.trim()) addSection(newTitle.trim())
+    setNewTitle(''); setAddingSection(false)
+  }
+
+  return <div className={`widget-sections${className ? ` ${className}` : ''}`}>
+    {order.map(id => {
+      const section = sections[id]
+      if (!section) return null
+      return <div className="widget-section" key={id}>
+        <div className="widget-section-head">
+          <h4>{section.title}</h4>
+          {editing && section.deletable &&
+            <button type="button" className="widget-delete" title="Delete section" aria-label="Delete section" onClick={() => removeSection(id)}>×</button>}
+        </div>
+        <LayoutZone zoneKey={`${id}/widgets`} editing={editing} nonce={nonce} dataSource={dataSource} forceWidgetSeed={seedWidgetsById.get(id) ?? []} />
+      </div>
+    })}
+    {editing && (addingSection
+      ? <div className="widget-section-add-form">
+          <input autoFocus value={newTitle} maxLength={48} placeholder="Section title"
+            onChange={e => setNewTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') confirmAdd(); else if (e.key === 'Escape') { setNewTitle(''); setAddingSection(false) } }} />
+          <button type="button" className="primary compact" onClick={confirmAdd}>Add</button>
+          <button type="button" className="outline compact" onClick={() => { setNewTitle(''); setAddingSection(false) }}>Cancel</button>
+        </div>
+      : <button type="button" className="widget-section-add" onClick={() => setAddingSection(true)}>+ Add section</button>)}
   </div>
 }

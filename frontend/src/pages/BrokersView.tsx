@@ -24,6 +24,7 @@ export function BrokersView({ displayCurrency, dataVersion, layoutEditing, layou
       { key: 'holdingCount', label: 'Holdings', kind: 'measure' },
     ],
     resolve(w) {
+      if (w.subType === '2d-graph') return { kind: 'series', series: [] }
       const m = w.query.measure ?? 'currentValue'
       const val = (b: BrokerGroup) => Number((b as unknown as Record<string, number>)[m] ?? 0)
       if (w.subType === 'counter') return { kind: 'scalar', value: data.brokers.reduce((sum, b) => sum + val(b), 0) }
