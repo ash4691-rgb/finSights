@@ -124,9 +124,6 @@ h3{color:var(--text)}
 .layout-zone.editing>.layout-item.resizing{outline:2px solid var(--accent)}
 .layout-zone.resizing{user-select:none}
 .layout-item-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
-.layout-item-bar .drag-handle{cursor:grab;color:var(--text-3);font-size:14px;line-height:1;padding:4px}
-.layout-item-bar .drag-handle:hover{color:var(--text)}
-.layout-item-bar .drag-handle:active{cursor:grabbing}
 /* Resize handles — edge (E/S) + corner (SE), shown only in edit mode. */
 .layout-resize{position:absolute;z-index:3;touch-action:none;opacity:0;transition:opacity .12s}
 .layout-zone.editing>.layout-item:hover>.layout-resize,.layout-zone.editing>.layout-item.resizing>.layout-resize{opacity:1}
@@ -363,6 +360,9 @@ th.sortable:hover{color:var(--text)}
 .icon-btn.edit:hover,.icon-btn.edit:focus-visible{color:var(--accent-soft-text);background:var(--accent-soft)}
 .icon-btn.add:hover,.icon-btn.add:focus-visible{color:var(--positive);background:var(--success-bg)}
 .icon-btn.delete:hover,.icon-btn.delete:focus-visible{color:var(--negative);background:var(--error-bg)}
+.icon-btn.drag{cursor:grab;font-size:14px}
+.icon-btn.drag:hover,.icon-btn.drag:focus-visible{color:var(--accent-soft-text);background:var(--accent-soft)}
+.icon-btn.drag:active{cursor:grabbing}
 .widget-actions{display:flex;gap:2px;flex-shrink:0}
 .widget-sections{display:grid;gap:22px}
 .widget-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}

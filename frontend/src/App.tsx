@@ -150,7 +150,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
           {page === 'holdings' && <button className="tool-action" onClick={exportHoldingsCsv} disabled={!holdings.length}>↓ Export</button>}
           {canEditLayout && <>
             {layoutEditing && <LayoutMenu
-              onCreatePanel={() => { createPanel(page); setLayoutNonce(n => n + 1) }}
+              onCreatePanel={(title: string) => { createPanel(page, title); setLayoutNonce(n => n + 1) }}
               onSave={() => flushPageSave(page)}
               onReset={() => { clearPageLayout(page); setLayoutNonce(n => n + 1) }} />}
             <button className="tool-action" onClick={() => setLayoutEditing(e => !e)}>{layoutEditing ? '✓ Done' : '⤢ Edit layout'}</button>
