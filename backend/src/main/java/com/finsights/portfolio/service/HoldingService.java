@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +35,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class HoldingService {
+    private static final Logger log = LoggerFactory.getLogger(HoldingService.class);
+    // Match the `holdings` table's column precision (see Holding.java) — a value that doesn't
+    // fit can't be persisted, so it's rejected on input and never re-saved once computed.
+    private static final BigDecimal MAX_MONEY = new BigDecimal("999999999999999999.99");      // precision 20, scale 2
+    private static final BigDecimal MAX_QUANTITY = new BigDecimal("9999999999999999.99999999"); // precision 24, scale 8
+
     private final HoldingRepository holdings;
     private final CategoryRepository categories;
     private final CurrentUserService currentUser;
@@ -95,6 +103,13 @@ public class HoldingService {
             if (quote == null || quote.price() == null || quote.price().signum() <= 0) continue;
             BigDecimal unitPrice = convertToHoldingCurrency(quote.price(), quote.currency(), holding.getCurrency());
             BigDecimal newValue = unitPrice.multiply(holding.getQuantity()).setScale(2, RoundingMode.HALF_UP);
+            // A wildly oversized quantity (or a bad quote) can compute a value the `holdings`
+            // table's column can't hold — never crash the whole page load over one bad reprice;
+            // skip it and keep serving the holding's last known-good value instead.
+            if (!withinRange(newValue, MAX_MONEY)) {
+                log.warn("Skipping market reprice for holding {} — computed value out of range", holding.getId());
+                continue;
+            }
             BigDecimal oldValue = zeroIfNull(holding.getCurrentValue());
             holding.setCurrentValue(newValue);
             holding.setPriceUpdatedAt(now);
@@ -102,6 +117,16 @@ public class HoldingService {
             if (oldValue.compareTo(newValue) != 0) {
                 snapshots.record(SnapshotSubject.HOLDING, holding.getId(), holding.getUser(), newValue);
             }
+        }
+    }
+
+    private boolean withinRange(BigDecimal value, BigDecimal max) {
+        return value == null || value.abs().compareTo(max) <= 0;
+    }
+
+    private void requireWithinRange(BigDecimal value, BigDecimal max, String field) {
+        if (!withinRange(value, max)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, field + " is too large");
         }
     }
 
@@ -291,7 +316,9 @@ public class HoldingService {
             for (Transaction t : ledger) {
                 if (t.getType() == TransactionType.BUY) total = total.add(zeroIfNull(t.getAmount()));
             }
-            holding.setInvestedValue(total.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+            BigDecimal totalBorrowed = total.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            requireWithinRange(totalBorrowed, MAX_MONEY, "This holding's total borrowed amount");
+            holding.setInvestedValue(totalBorrowed);
             holding.setQuantity(null);
             holding.setAccruedIncome(BigDecimal.ZERO);
             holdings.save(holding);
@@ -348,10 +375,17 @@ public class HoldingService {
 
         BigDecimal costBasis = lots.stream().map(Lot::cost).reduce(BigDecimal.ZERO, BigDecimal::add).add(basisNudge);
         BigDecimal quantity = lots.stream().map(l -> l.units).reduce(BigDecimal.ZERO, BigDecimal::add);
-        holding.setInvestedValue(costBasis.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+        BigDecimal investedValue = costBasis.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal realisedValue = realised.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal accruedValue = accrued.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        requireWithinRange(investedValue, MAX_MONEY, "This holding's invested value");
+        requireWithinRange(quantity, MAX_QUANTITY, "This holding's quantity");
+        requireWithinRange(realisedValue, MAX_MONEY, "This holding's realised P/L");
+        requireWithinRange(accruedValue, MAX_MONEY, "This holding's accrued income");
+        holding.setInvestedValue(investedValue);
         holding.setQuantity(quantity.signum() > 0 ? quantity : null);
-        holding.setRealisedProfitLoss(realised.setScale(2, RoundingMode.HALF_UP));
-        holding.setAccruedIncome(accrued.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
+        holding.setRealisedProfitLoss(realisedValue);
+        holding.setAccruedIncome(accruedValue);
         holdings.save(holding);
     }
 
@@ -412,6 +446,10 @@ public class HoldingService {
     }
 
     private void copy(HoldingRequest source, Holding target) {
+        requireWithinRange(source.quantity(), MAX_QUANTITY, "Quantity");
+        requireWithinRange(source.investedValue(), MAX_MONEY, "Invested value");
+        requireWithinRange(source.currentValue(), MAX_MONEY, "Current value");
+
         Category category = categories.findByIdAndUser_Id(source.categoryId(), currentUser.currentUser().getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Category not found"));
         boolean liability = category.getKind() == HoldingKind.LIABILITY;
