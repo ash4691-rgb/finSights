@@ -277,31 +277,40 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
         const live = rz && rz.key === item.key ? rz : null
         const span = live ? live.span : item.span
         const height = live ? live.height : item.height
-        const style = { '--span': span, ...(height != null ? { height: `${height}px`, overflow: 'auto' } : null) } as React.CSSProperties
         const widget = widgets[item.key]
+        // The height/overflow clamp lives on an *inner* wrapper, not `.layout-item` itself — so the
+        // item's own box (the resize handles' containing block, hanging slightly outside its edge
+        // to stay grabbable) never gets clipped by its own content's overflow. Horizontal overflow
+        // is always hidden (a widget can never spill past its section); vertical only scrolls once
+        // a manual height is set.
+        const contentStyle = height != null
+          ? { height: `${height}px`, overflowY: 'auto' as const, overflowX: 'hidden' as const }
+          : undefined
         return <div key={item.key}
           className={`layout-item${overKey === item.key ? ' drag-over' : ''}${live ? ' resizing' : ''}`}
-          style={style}
+          style={{ '--span': span } as React.CSSProperties}
           onDragOver={e => { if (editing && dragKey) { e.preventDefault(); setOverKey(item.key) } }}
           onDragLeave={() => setOverKey(cur => cur === item.key ? null : cur)}
           onDrop={e => { if (editing && dragKey) { e.preventDefault(); move(dragKey, item.key); setDragKey(null); setOverKey(null) } }}>
-          {editing && <div className="layout-item-bar">
-            <span className="icon-btn drag" draggable onDragStart={() => setDragKey(item.key)}
-              onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
-            {isWidgetZone && widget && <div className="widget-actions">
-              <button type="button" className="icon-btn edit" title="Edit widget" aria-label="Edit widget" onClick={() => setEditingWidgetId(widget.id)}>✎</button>
-              {widget.deletable &&
-                <button type="button" className="icon-btn delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>🗑</button>}
+          <div className="layout-item-content" style={contentStyle}>
+            {editing && <div className="layout-item-bar">
+              <span className="icon-btn drag" draggable onDragStart={() => setDragKey(item.key)}
+                onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
+              {isWidgetZone && widget && <div className="widget-actions">
+                <button type="button" className="icon-btn edit" title="Edit widget" aria-label="Edit widget" onClick={() => setEditingWidgetId(widget.id)}>✎</button>
+                {widget.deletable &&
+                  <button type="button" className="icon-btn delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>🗑</button>}
+              </div>}
             </div>}
-          </div>}
-          {isWidgetZone
-            ? widget && <article className="panel widget-panel">
-                <div className="panel-heading">
-                  <h3>{widget.title}</h3>
-                </div>
-                {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
-              </article>
-            : render![item.key]}
+            {isWidgetZone
+              ? widget && <article className="panel widget-panel">
+                  <div className="panel-heading">
+                    <h3>{widget.title}</h3>
+                  </div>
+                  {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
+                </article>
+              : render![item.key]}
+          </div>
           {editing && (['e', 's', 'se'] as ResizeMode[]).map(mode => (
             <span key={mode} className={`layout-resize layout-resize-${mode}`}
               onPointerDown={e => beginResize(e, { ...item, span, height }, mode)}

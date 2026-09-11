@@ -117,7 +117,10 @@ h3{color:var(--text)}
 .layout-zone:first-child{margin-top:0}
 .layout-zone .layout-zone{margin:0}
 .layout-item{min-width:0;position:relative;grid-column:span var(--span,12)}
-.layout-item>section{margin-top:0}
+/* Height/overflow clamp lives here, not on .layout-item — so the item's own box (the resize
+   handles' containing block) is never clipped by its own content's overflow. */
+.layout-item-content{min-width:0}
+.layout-item-content>section{margin-top:0}
 .layout-zone.editing{gap:22px}
 .layout-zone.editing>.layout-item{outline:1px dashed var(--border-strong);outline-offset:6px;border-radius:12px}
 .layout-zone.editing>.layout-item.drag-over{outline:2px solid var(--accent);background:var(--accent-soft)}
@@ -350,8 +353,11 @@ th.sortable:hover{color:var(--text)}
 .timeline-detail td{padding:8px 12px;font-size:12px;border-top:1px solid var(--border-soft);color:var(--text-2)}
 .timeline-detail td:first-child{padding-left:26px}
 .pill-liability{margin-left:7px;font-style:normal;font-size:9px;font-weight:700;background:var(--liability-bg);color:var(--liability-text);padding:2px 6px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px}
-/* Widget panels — editable-layout zones of user-configurable charts (layout.tsx / widgets.tsx). */
-.widget-panel{min-height:auto;display:flex;flex-direction:column}
+/* Widget panels — editable-layout zones of user-configurable charts (layout.tsx / widgets.tsx).
+   overflow-x is always clipped so a widget's content can never spill past its own box (and so the
+   section) when narrowed while resizing; overflow-y stays free since vertical scroll is fine. */
+.widget-panel{min-height:auto;min-width:0;display:flex;flex-direction:column;overflow-x:hidden}
+.widget-panel .panel-heading h3{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .widget-placeholder{margin:auto}
 /* Icon-only actions (widget/panel edit-add-delete) — blend into the panel by default, pick up
    an action-specific colour only on hover/focus so they stay unobtrusive until you reach for them. */
@@ -385,16 +391,16 @@ th.sortable:hover{color:var(--text)}
 .counter-widget{margin:auto;text-align:center}
 .counter-widget strong{display:block;font-size:26px;letter-spacing:-.6px;color:var(--text)}
 .counter-widget span{display:block;margin-top:6px;font-size:12px}
-.pie-widget{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.pie-svg{width:140px;height:140px;flex-shrink:0}
-.pie-legend{display:grid;gap:6px;flex:1;min-width:120px}
+.pie-widget{display:flex;align-items:center;gap:18px;flex-wrap:wrap;min-width:0}
+.pie-svg{width:140px;max-width:100%;min-width:0;height:auto;aspect-ratio:1/1}
+.pie-legend{display:grid;gap:6px;flex:1;min-width:80px}
 .pie-legend-row{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2)}
 .pie-legend-row i{width:9px;height:9px;border-radius:2px;flex-shrink:0}
 .pie-legend-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pie-legend-row b{color:var(--text);font-size:11px}
-.bar-widget{display:grid;gap:10px}
-.bar-row{display:grid;grid-template-columns:100px 1fr auto;align-items:center;gap:10px;font-size:12px;color:var(--text-2)}
-.bar-row .bar-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-widget{display:grid;gap:10px;min-width:0}
+.bar-row{display:grid;grid-template-columns:minmax(0,100px) minmax(24px,1fr) auto;align-items:center;gap:10px;font-size:12px;color:var(--text-2)}
+.bar-row .bar-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar-track{height:8px;background:var(--surface-2);border-radius:8px;overflow:hidden;border:1px solid var(--border-soft)}
 .bar-track i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:inherit}
 .bar-row b{font-size:11px;white-space:nowrap;color:var(--text)}
@@ -584,7 +590,8 @@ th.sortable:hover{color:var(--text)}
   .hero h2{font-size:32px}
   .metric-grid,.insight-grid,.form-grid,.broker-grid,.instrument-grid,.drawer-metrics,.drawer-facts,.field-pair,.action-split,.widget-type-grid{grid-template-columns:1fr}
   .layout-zone{grid-template-columns:1fr}
-  .layout-item{grid-column:1/-1;height:auto!important;overflow:visible!important}
+  .layout-item{grid-column:1/-1}
+  .layout-item-content{height:auto!important;overflow:visible!important}
   .warning{flex-wrap:wrap}
   .holdings-toolbar{flex-wrap:wrap}
   .bulk-bar{align-items:stretch;flex-direction:column}
