@@ -1,24 +1,35 @@
 package com.finsights.portfolio.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.finsights.portfolio.domain.Category;
 import com.finsights.portfolio.domain.Holding;
+import com.finsights.portfolio.domain.HoldingKind;
 import com.finsights.portfolio.domain.Transaction;
 import com.finsights.portfolio.domain.TransactionType;
+import com.finsights.portfolio.domain.UserAccount;
+import com.finsights.portfolio.domain.ValuationMethod;
+import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.repository.CategoryRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class HoldingServiceTest {
@@ -130,5 +141,49 @@ class HoldingServiceTest {
         service.ensureOpeningTransaction(holding);
 
         verify(transactions, org.mockito.Mockito.never()).save(any(Transaction.class));
+    }
+
+    // Regression: a BUY with a wildly oversized quantity/amount used to compute an invested
+    // value the `holdings` table's NUMERIC(20,2) column can't hold, and the raw DB overflow
+    // exception on save took down every page that touches this holding.
+    @Test
+    void syncFromTransactionsRejectsAnOverflowingComputedInvestedValue() {
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
+                txn(TransactionType.BUY, "999999999999999999999999", "1")));
+
+        assertThatThrownBy(() -> service.syncFromTransactions(holding))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("too large");
+        verify(holdings, never()).save(any(Holding.class));
+    }
+
+    // Regression: the same oversized-value problem, but reached through the unattended
+    // market-price refresh that runs on every Holdings-page load (list()) rather than through
+    // a user-submitted request — this is what actually took prod down, since one bad holding's
+    // reprice-and-save failure propagated and failed the whole list for every holding.
+    @Test
+    void listSkipsAMarketRepriceThatWouldOverflowInsteadOfCrashingThePage() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        category.setName("Growth Equity");
+        holding.setCategory(category);
+        holding.setValuationMethod(ValuationMethod.MARKET_PRICE);
+        holding.setTickerSymbol("HUGE");
+        holding.setCurrency("INR");
+        holding.setQuantity(new BigDecimal("999999999999999999")); // fat-fingered — far past the column's max
+        holding.setCurrentValue(new BigDecimal("100.00"));
+        holding.setInvestedValue(new BigDecimal("100.00"));
+
+        UserAccount user = new UserAccount("demo@finsights.local", "Demo");
+        when(currentUser.currentUser()).thenReturn(user);
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of(holding));
+        when(transactions.findHoldingIdsWithTransactions(any())).thenReturn(new HashSet<>());
+        when(marketData.quotes(any())).thenReturn(Map.of("HUGE", new MarketQuoteResponse("HUGE", "Huge Co", new BigDecimal("500"), "INR", null)));
+        when(fx.convert(any(), any(), any())).thenReturn(new BigDecimal("500"));
+        when(valuations.currentValue(any())).thenReturn(new BigDecimal("100.00"));
+
+        assertThatCode(service::list).doesNotThrowAnyException();
+        assertThat(holding.getCurrentValue()).isEqualByComparingTo("100.00"); // last known-good value kept, not overwritten
+        verify(holdings, never()).save(holding);
     }
 }
