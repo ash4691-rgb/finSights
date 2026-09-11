@@ -6,6 +6,7 @@ import type { SectionSeed, Widget } from './layout-config'
 import { WIDGET_TYPES, WidgetView, AddWidgetModal } from './widgets'
 import type { PageDataSource } from './widgets'
 import { saveLayout } from './layout-api'
+import { Field } from './ui'
 
 // ---------------------------------------------------------------------------
 // Editable layout — per-page "Edit layout" mode. Each page is a set of zones
@@ -276,31 +277,40 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
         const live = rz && rz.key === item.key ? rz : null
         const span = live ? live.span : item.span
         const height = live ? live.height : item.height
-        const style = { '--span': span, ...(height != null ? { height: `${height}px`, overflow: 'auto' } : null) } as React.CSSProperties
         const widget = widgets[item.key]
+        // The height/overflow clamp lives on an *inner* wrapper, not `.layout-item` itself — so the
+        // item's own box (the resize handles' containing block, hanging slightly outside its edge
+        // to stay grabbable) never gets clipped by its own content's overflow. Horizontal overflow
+        // is always hidden (a widget can never spill past its section); vertical only scrolls once
+        // a manual height is set.
+        const contentStyle = height != null
+          ? { height: `${height}px`, overflowY: 'auto' as const, overflowX: 'hidden' as const }
+          : undefined
         return <div key={item.key}
           className={`layout-item${overKey === item.key ? ' drag-over' : ''}${live ? ' resizing' : ''}`}
-          style={style}
+          style={{ '--span': span } as React.CSSProperties}
           onDragOver={e => { if (editing && dragKey) { e.preventDefault(); setOverKey(item.key) } }}
           onDragLeave={() => setOverKey(cur => cur === item.key ? null : cur)}
           onDrop={e => { if (editing && dragKey) { e.preventDefault(); move(dragKey, item.key); setDragKey(null); setOverKey(null) } }}>
-          {editing && <div className="layout-item-bar">
-            <span className="drag-handle" draggable onDragStart={() => setDragKey(item.key)}
-              onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
-            {isWidgetZone && widget && <div className="widget-actions">
-              <button type="button" className="icon-btn edit" title="Edit widget" aria-label="Edit widget" onClick={() => setEditingWidgetId(widget.id)}>✎</button>
-              {widget.deletable &&
-                <button type="button" className="icon-btn delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>🗑</button>}
+          <div className="layout-item-content" style={contentStyle}>
+            {editing && <div className="layout-item-bar">
+              <span className="icon-btn drag" draggable onDragStart={() => setDragKey(item.key)}
+                onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
+              {isWidgetZone && widget && <div className="widget-actions">
+                <button type="button" className="icon-btn edit" title="Edit widget" aria-label="Edit widget" onClick={() => setEditingWidgetId(widget.id)}>✎</button>
+                {widget.deletable &&
+                  <button type="button" className="icon-btn delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>🗑</button>}
+              </div>}
             </div>}
-          </div>}
-          {isWidgetZone
-            ? widget && <article className="panel widget-panel">
-                <div className="panel-heading">
-                  <h3>{widget.title}</h3>
-                </div>
-                {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
-              </article>
-            : render![item.key]}
+            {isWidgetZone
+              ? widget && <article className="panel widget-panel">
+                  <div className="panel-heading">
+                    <h3>{widget.title}</h3>
+                  </div>
+                  {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
+                </article>
+              : render![item.key]}
+          </div>
           {editing && (['e', 's', 'se'] as ResizeMode[]).map(mode => (
             <span key={mode} className={`layout-resize layout-resize-${mode}`}
               onPointerDown={e => beginResize(e, { ...item, span, height }, mode)}
@@ -374,10 +384,10 @@ function useSectionList(zoneKey: string, seed: SectionSeed[], nonce: number) {
   return { order: state.order, sections: state.sections, removeSection, renameSection }
 }
 
-// Header-level "Create a panel" (page's Layout menu) — appends a fresh, deletable, empty panel.
-// A plain function (not a hook) so App.tsx can call it directly; pair with a layoutNonce bump so
-// the mounted SectionedZone re-reads storage, same mechanism Reset already uses.
-export function createPanel(page: string) {
+// Header-level "Create a panel" (page's Layout menu) — appends a fresh, deletable, empty panel
+// under the given name. A plain function (not a hook) so App.tsx can call it directly; pair with
+// a layoutNonce bump so the mounted SectionedZone re-reads storage, same mechanism Reset already uses.
+export function createPanel(page: string, title: string) {
   const zoneKey = sectionsZoneKeyFor(page)
   const config = zoneKey ? PAGE_LAYOUT[page as keyof typeof PAGE_LAYOUT]?.[zoneKey] : undefined
   if (!zoneKey || config?.kind !== 'sections') return
@@ -385,8 +395,8 @@ export function createPanel(page: string) {
   const existing = all[zoneKey]
   const current = existing?.sections ? { order: existing.order, sections: existing.sections } : seedSectionsPref(zoneKey, config.seed)
   const id = `${zoneKey}:section:${crypto.randomUUID()}`
-  const title = `Panel ${current.order.length + 1}`
-  all[zoneKey] = { order: [...current.order, id], spans: {}, sections: { ...current.sections, [id]: { title, deletable: true } } }
+  const name = title.trim() || `Panel ${current.order.length + 1}`
+  all[zoneKey] = { order: [...current.order, id], spans: {}, sections: { ...current.sections, [id]: { title: name, deletable: true } } }
   writeLayout(all)
   schedulePageSave(page)
 }
@@ -414,10 +424,12 @@ function SectionedZone({ zoneKey, editing, nonce, dataSource, seed, className }:
 
 // Page-header dropdown for edit-layout mode: create a panel, force-save, or reset the page.
 export function LayoutMenu({ onCreatePanel, onSave, onReset }: {
-  onCreatePanel: () => void; onSave: () => void | Promise<void>; onReset: () => void
+  onCreatePanel: (title: string) => void; onSave: () => void | Promise<void>; onReset: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [naming, setNaming] = useState(false)
+  const [name, setName] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
@@ -430,12 +442,34 @@ export function LayoutMenu({ onCreatePanel, onSave, onReset }: {
     setSaved(true)
     setTimeout(() => setSaved(false), 1800)
   }
+  const startCreate = () => { setOpen(false); setName(''); setNaming(true) }
+  const submitCreate = () => {
+    const title = name.trim()
+    if (!title) return
+    onCreatePanel(title)
+    setNaming(false)
+  }
   return <div className="menu" ref={ref}>
     <button type="button" className="tool-action" onClick={() => setOpen(o => !o)}>{saved ? '✓ Saved' : '☰ Layout'}</button>
     {open && <ul className="menu-dropdown">
-      <li><button type="button" onClick={() => { setOpen(false); onCreatePanel() }}>+ Create a panel</button></li>
+      <li><button type="button" onClick={startCreate}>+ Create a panel</button></li>
       <li><button type="button" onClick={() => void save()}>Save layout</button></li>
       <li><button type="button" onClick={() => { setOpen(false); onReset() }}>↺ Reset layout</button></li>
     </ul>}
+    {naming && <div className="modal-backdrop"><section className="modal narrow">
+      <div className="modal-header">
+        <div><p className="eyebrow">NEW PANEL</p><h2>Name this section</h2></div>
+        <button className="close" onClick={() => setNaming(false)}>×</button>
+      </div>
+      <Field label="Section name" wide>
+        <input autoFocus value={name} maxLength={48} placeholder="e.g. Retirement accounts"
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submitCreate(); else if (e.key === 'Escape') setNaming(false) }} />
+      </Field>
+      <div className="modal-actions">
+        <button type="button" className="outline" onClick={() => setNaming(false)}>Cancel</button>
+        <button type="button" className="primary" disabled={!name.trim()} onClick={submitCreate}>Create panel</button>
+      </div>
+    </section></div>}
   </div>
 }
