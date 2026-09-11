@@ -227,6 +227,10 @@ th.sortable:hover{color:var(--text)}
 .form-callout{display:flex;gap:9px;align-items:flex-start;margin:16px 0 0;padding:11px 13px;border:1px solid var(--accent);border-left-width:3px;border-radius:8px;background:var(--accent-soft);color:var(--text-2);font-size:12px;line-height:1.5}
 .form-callout b{color:var(--text)}
 .form-callout-dot{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-top:1px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;font-weight:800;font-style:italic}
+.form-callout.warn{border-color:var(--warn-text);background:var(--warn-bg)}
+.form-callout.warn .form-callout-dot{background:var(--warn-text)}
+.warn-holding-list{margin:6px 0 0;padding-left:18px}
+.warn-holding-list li{margin:2px 0}
 
 .tag-input{display:grid;gap:8px}
 .tag-input-field{position:relative}

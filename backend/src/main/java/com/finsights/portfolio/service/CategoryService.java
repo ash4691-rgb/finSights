@@ -71,6 +71,7 @@ public class CategoryService {
         category.setName(request.name().trim());
         category.setKind(request.kind());
         category.setDescription(clean(request.description()));
+        category.setAllowedValuationMethods(cleanAllowedMethods(request));
         category.setSortOrder((int) categories.countByUser_Id(currentUser.currentUser().getId()));
         Category saved = categories.save(category);
         return toResponse(saved, List.of(), BigDecimal.ZERO, BigDecimal.ZERO);
@@ -98,11 +99,29 @@ public class CategoryService {
 
     public CategoryResponse update(String id, CategoryRequest request) {
         Category category = findOwned(id);
+        java.util.Set<com.finsights.portfolio.domain.ValuationMethod> nextAllowed = cleanAllowedMethods(request);
+        if (!nextAllowed.isEmpty()) {
+            List<String> stranded = holdingRepository.findByCategory_Id(id).stream()
+                    .filter(h -> !nextAllowed.contains(h.getValuationMethod()))
+                    .map(com.finsights.portfolio.domain.Holding::getName)
+                    .toList();
+            if (!stranded.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Can't apply — these holdings use a valuation method outside the selection: " + String.join(", ", stranded));
+            }
+        }
         category.setName(request.name().trim());
         category.setKind(request.kind());
         category.setDescription(clean(request.description()));
+        category.setAllowedValuationMethods(nextAllowed);
         categories.save(category);
         return get(id, null);
+    }
+
+    /** Liabilities are always MANUAL — the restriction only means anything for asset categories. */
+    private java.util.Set<com.finsights.portfolio.domain.ValuationMethod> cleanAllowedMethods(CategoryRequest request) {
+        if (request.kind() == HoldingKind.LIABILITY || request.allowedValuationMethods() == null) return new java.util.LinkedHashSet<>();
+        return new java.util.LinkedHashSet<>(request.allowedValuationMethods());
     }
 
     @Transactional
@@ -134,7 +153,8 @@ public class CategoryService {
         BigDecimal weightage = pctOf(current, denominator);
         BigDecimal liquidAmount = sum(holdings, h -> Boolean.TRUE.equals(h.liquidWithinSevenDays()), HoldingResponse::currentValue);
         BigDecimal npaAmount = sum(holdings, h -> Boolean.TRUE.equals(h.blocked()), HoldingResponse::currentValue);
-        return new CategoryResponse(c.getId(), c.getName(), c.getKind(), c.getDescription(), invested, current, pnl, pnlPct, weightage,
+        return new CategoryResponse(c.getId(), c.getName(), c.getKind(), c.getDescription(), c.getAllowedValuationMethods(),
+                invested, current, pnl, pnlPct, weightage,
                 liquidAmount, pctOf(liquidAmount, current), npaAmount, pctOf(npaAmount, current),
                 holdings.size(), c.getCreatedAt(), c.getUpdatedAt());
     }

@@ -10,6 +10,9 @@ export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'i
 // liquid/NPA amounts are rollups computed from its mapped holdings — not stored on it.
 export type Category = {
   id: string; name: string; kind: HoldingKind; description?: string
+  // Valuation methods holdings filed under this category may use. Empty/absent means no
+  // restriction — every method is allowed (the default for categories that predate this field).
+  allowedValuationMethods?: ValuationMethod[]
   investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number
   weightagePercent: number; liquidAmount: number; liquidPercent: number; npaAmount: number; npaPercent: number
   holdingCount: number; createdAt?: string; updatedAt?: string

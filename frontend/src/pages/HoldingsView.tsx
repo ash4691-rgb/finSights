@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type * as React from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies } from '../util'
+import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel } from '../util'
 import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput } from '../ui'
 import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
@@ -117,12 +117,22 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
     : blankHoldingForm(startCategoryId))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
-  const isLiability = categories.find(c => c.id === form.categoryId)?.kind === 'LIABILITY'
+  const selectedCategory = categories.find(c => c.id === form.categoryId)
+  const isLiability = selectedCategory?.kind === 'LIABILITY'
   const isFixedRate = !isLiability && form.valuationMethod === 'FIXED_RATE'
   const isMarket = !isLiability && form.valuationMethod === 'MARKET_PRICE'
   const isOneTime = isLiability && form.repaymentFrequency === 'ONE_TIME'
   const isEdit = !!holding
   const set = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }))
+  const allowedMethods = selectedCategory?.allowedValuationMethods
+  const methodOptions = allowedMethods && allowedMethods.length ? selectableValuationMethods.filter(m => allowedMethods.includes(m)) : selectableValuationMethods
+
+  // The category can restrict which valuation methods its holdings may use — if the current
+  // pick falls outside that set (a category change, most often), snap to the first one allowed.
+  useEffect(() => {
+    if (isLiability || !methodOptions.length || methodOptions.includes(form.valuationMethod)) return
+    setForm(current => ({ ...current, valuationMethod: methodOptions[0] }))
+  }, [form.categoryId, methodOptions.join(','), isLiability]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Market-linked holdings take their name and currency from the ticker, not the user.
   useEffect(() => {
@@ -187,7 +197,12 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
             {categories.map(c => <option key={c.id} value={c.id}>{c.name} ({label(c.kind)})</option>)}
           </select>
         </Field>
-        {!isLiability && <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>}
+        {!isLiability && <Field label="Valuation method" required>
+          <select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}>
+            {methodOptions.map(m => <option key={m} value={m}>{valuationMethodLabel(m)}</option>)}
+          </select>
+          {methodOptions.length < selectableValuationMethods.length && <p className="hint">Restricted by {selectedCategory?.name}'s allowed valuation methods.</p>}
+        </Field>}
         {isMarket && <Field label="Ticker symbol" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
         {isEdit
           ? <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
