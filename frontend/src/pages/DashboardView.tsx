@@ -30,6 +30,7 @@ export function DashboardView({ dashboard, holdings, onManage, layoutEditing, la
       { key: 'totalProfitLoss', label: 'Portfolio P/L', kind: 'measure' },
     ],
     resolve(w) {
+      if (w.subType === '2d-graph') return { kind: 'series', series: [] }
       if (w.subType === 'counter') {
         const totals: Record<string, number> = {
           netWorth: dashboard.netWorth, totalAssets: dashboard.totalAssets,

@@ -4,6 +4,7 @@ import { api } from '../api'
 import { LayoutZone } from '../layout'
 import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput } from '../ui'
+import { seriesKeysOf } from '../widgets'
 import type { PageDataSource } from '../widgets'
 import type { Insights, Settings, Dashboard, Breakdown, ActionItem, HotPick, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote } from '../types'
 
@@ -119,6 +120,9 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
       { key: 'totalLiabilities', label: 'Total liabilities', kind: 'measure' },
       { key: 'totalProfitLoss', label: 'Portfolio P/L', kind: 'measure' },
       { key: 'netWorth', label: 'Net worth', kind: 'series' },
+      { key: 'invested', label: 'Invested', kind: 'series' },
+      { key: 'current', label: 'Current value', kind: 'series' },
+      { key: 'liabilities', label: 'Liabilities', kind: 'series' },
     ],
     resolve(w) {
       if (w.subType === 'counter') {
@@ -129,7 +133,15 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
         return { kind: 'scalar', value: totals[w.query.measure ?? 'netWorth'] ?? dashboard.netWorth }
       }
       if (w.subType === '2d-graph') {
-        return { kind: 'series', points: (timeline?.weeks ?? []).map(week => ({ t: week.weekOf, v: week.netWorth })) }
+        const weeks = timeline?.weeks ?? []
+        const fieldFor: Record<string, (week: TimelineWeek) => number> = {
+          netWorth: week => week.netWorth, invested: week => week.invested, current: week => week.current, liabilities: week => week.liabilities,
+        }
+        const labelFor: Record<string, string> = { netWorth: 'Net worth', invested: 'Invested', current: 'Current value', liabilities: 'Liabilities' }
+        return { kind: 'series', series: seriesKeysOf(w.query).map(key => ({
+          label: labelFor[key] ?? key,
+          points: weeks.map(week => ({ t: week.weekOf, v: (fieldFor[key] ?? fieldFor.netWorth)(week) })),
+        })) }
       }
       const byDimension: Record<string, Breakdown[]> = { category: data.byCategory, broker: data.byBroker, tag: data.byTag, currency: data.byCurrency, liquidity: data.byLiquidity }
       const rows = byDimension[w.query.dimension ?? 'category'] ?? data.byCategory
