@@ -81,6 +81,9 @@ function niceTicks(min: number, max: number, count = 4) {
 }
 const shortDate = (t: string) => new Date(t).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
 const SERIES_COLORS = ['var(--accent)', 'var(--accent-2)', 'var(--positive)']
+// Slop around the plotted rectangle so a point's dot (radius 4) at the very first/last index, or
+// at the value axis's min/max, sits fully inside the hover hit-area instead of half outside it.
+const HOVER_PAD = 8
 
 // Interactive line chart — up to 3 metrics, each its own colour — with real axes and a hover
 // crosshair/tooltip. The hover hit-area is the plotted rectangle only (an invisible <rect>), so
@@ -129,8 +132,10 @@ export function TimeseriesChart({ series, caption }: { series: { label: string; 
         {usable.map((s, i) => <path key={s.label} d={lineFor(s)} className="timeseries-line" style={{ stroke: SERIES_COLORS[i % SERIES_COLORS.length] }} vectorEffect="non-scaling-stroke" />)}
         {hover && <line x1={x(hover.index)} x2={x(hover.index)} y1={padT} y2={H - padB} className="timeseries-crosshair" />}
         {hover && usable.map((s, i) => <circle key={s.label} cx={x(hover.index)} cy={y(s.points[hover.index].v)} r={4} className="timeseries-dot" style={{ fill: SERIES_COLORS[i % SERIES_COLORS.length] }} />)}
-        {/* Confines the hover experience to the plotted rectangle — never the axis-label gutters. */}
-        <rect x={padL} y={padT} width={W - padL - padR} height={H - padT - padB} fill="transparent"
+        {/* Confines the hover experience to the plotted rectangle — never the axis-label gutters —
+            but padded a few px past the first/last point so their dots (radius 4) sit fully inside
+            the hit area instead of having half their visual circle outside it. */}
+        <rect x={padL - HOVER_PAD} y={padT - HOVER_PAD} width={W - padL - padR + HOVER_PAD * 2} height={H - padT - padB + HOVER_PAD * 2} fill="transparent"
           onPointerMove={onMove} onPointerLeave={() => setHover(null)} onPointerCancel={() => setHover(null)} />
       </svg>
       {hover && <div className={`chart-tooltip${hover.flip ? ' flip' : ''}`} style={{ left: hover.x }}>
