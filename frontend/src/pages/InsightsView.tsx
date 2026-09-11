@@ -3,14 +3,14 @@ import type { FormEvent } from 'react'
 import { api } from '../api'
 import { LayoutZone } from '../layout'
 import { money, percent, label, since, ago, numeric, periodLabels, periodFields, numberLocale } from '../util'
-import { Field, SymbolSearchInput } from '../ui'
+import { Field, SymbolSearchInput, InfoTip } from '../ui'
 import type { Insights, Settings, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote } from '../types'
 
 // ---------------------------------------------------------------------------
 
 // Insights is deliberately not a second Overview: the shared breakdown/movers data that also
 // appears on the Dashboard lives in the collapsed "Portfolio overview" section at the bottom.
-// This page's own job is Top movers (market-linked holdings + watchlist symbols moving beyond a
+// This page's own job is Hot Picks (market-linked holdings + watchlist symbols moving beyond a
 // configured up/down threshold) and data-quality checks.
 export function InsightsView({ displayCurrency, dataVersion, settings, reload, onOpen, layoutEditing, layoutNonce }: {
   displayCurrency: string; dataVersion: number; settings: Settings; reload: () => Promise<void>; onOpen: (id: string) => void
@@ -122,11 +122,11 @@ export function InsightsView({ displayCurrency, dataVersion, settings, reload, o
     </section>,
 
     topMovers: <section className="panel">
-      <div className="panel-heading"><h3>Top movers</h3><span>Market-linked movement beyond your thresholds</span></div>
+      <div className="panel-heading"><h3>🔥 Hot Picks</h3><span>Market-linked movement beyond your thresholds</span></div>
       <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'thresholds', span: 6 }, { key: 'watchlist', span: 6 }]} render={{
         movers: <div className="action-col">
           <div className="action-col-head"><span className="action-col-icon">🔥</span><h4>Movers</h4><span className="action-col-count">{topMovers?.length ?? 0}</span></div>
-          {topMovers === null ? <p className="hint">Loading top movers…</p> : topMovers.length ? <div className="top-mover-list">
+          {topMovers === null ? <p className="hint">Loading hot picks…</p> : topMovers.length ? <div className="top-mover-list">
             {topMovers.map(pick => <button key={`${pick.subjectType}-${pick.id}`} className={`top-mover${pick.subjectType === 'HOLDING' ? '' : ' static'}`}
                 onClick={() => pick.subjectType === 'HOLDING' && onOpen(pick.id)}>
               <div className="top-mover-name"><strong>{pick.name}</strong><small>{pick.categoryName || pick.tickerSymbol || 'Watchlist'}</small></div>
@@ -139,8 +139,10 @@ export function InsightsView({ displayCurrency, dataVersion, settings, reload, o
         </div>,
 
         thresholds: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">🎯</span><h4>Thresholds</h4><span className="action-col-count">{thresholdsSet}</span></div>
-          <p className="hint">Set an up % and/or a down % per period — either one can trigger a Movers entry, independently.</p>
+          <div className="action-col-head"><span className="action-col-icon">🎯</span><h4>Thresholds</h4>
+            <span className="action-col-info"><InfoTip text="Each lookback window checks the move since that many days ago against its own up % and down % — either one alone can put a holding or watchlist symbol into Movers. Leave both blank to turn a window off." /></span>
+          </div>
+          <p className="hint">Up % catches gains, down % catches drops — set either or both, independently, per window.</p>
           <div className="threshold-grid">
             <div className="threshold-grid-row threshold-grid-head"><span /><span>Up %</span><span>Down %</span></div>
             {periodFields.map(([key, text]) => <div className="threshold-grid-row" key={key}>
@@ -169,7 +171,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, reload, o
               <td>{since(item.lastUpdated)}</td>
               <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditingWatch(item)}>Edit</button><button className="danger-link" onClick={() => void removeWatch(item)}>Delete</button></td>
             </tr>)}</tbody>
-          </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Top movers too.</p>}
+          </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Hot Picks too.</p>}
         </div>,
       }} />
     </section>,
