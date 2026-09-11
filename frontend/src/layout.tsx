@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as React from 'react'
 import type { ReactNode } from 'react'
-import { PAGE_LAYOUT } from './layout-config'
+import { PAGE_LAYOUT, sectionsZoneKeyFor } from './layout-config'
 import type { SectionSeed, Widget } from './layout-config'
 import { WIDGET_TYPES, WidgetView, AddWidgetModal } from './widgets'
 import type { PageDataSource } from './widgets'
@@ -97,17 +97,25 @@ function seedWidgetPref(zoneKey: string, seed: Omit<Widget, 'id'>[]): ZonePref {
   return { order, spans, heights, widgets }
 }
 
+function pageSlice(page: string): LayoutState {
+  const all = readLayout()
+  const slice: LayoutState = {}
+  for (const key of Object.keys(all)) if (key.startsWith(`${page}/`)) slice[key] = all[key]
+  return slice
+}
+
 // Debounced (~600ms) per-page backend sync — fires at most once per page per burst of moves/
 // resizes/widget edits, mirroring what's now in that page's zones in localStorage.
 const saveTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 function schedulePageSave(page: string) {
   clearTimeout(saveTimers[page])
-  saveTimers[page] = setTimeout(() => {
-    const all = readLayout()
-    const slice: LayoutState = {}
-    for (const key of Object.keys(all)) if (key.startsWith(`${page}/`)) slice[key] = all[key]
-    void saveLayout(page, slice)
-  }, 600)
+  saveTimers[page] = setTimeout(() => { void saveLayout(page, pageSlice(page)) }, 600)
+}
+
+// "Save layout" menu action — skips the debounce so the user gets an immediate save + confirmation.
+export function flushPageSave(page: string): Promise<void> {
+  clearTimeout(saveTimers[page])
+  return saveLayout(page, pageSlice(page))
 }
 
 // `widgetSeed` marks a widget zone: item list + persisted `widgets` map are self-managed
@@ -187,10 +195,12 @@ export type DragState = {
   span: number; height: number
 }
 
-export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dataSource, className, forceWidgetSeed }: {
+export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dataSource, className, forceWidgetSeed,
+  sectionTitle, onRenameSection, onDeleteSection }: {
   zoneKey: string; editing: boolean; nonce: number; defaults?: ZoneItem[]
   render?: Record<string, ReactNode>; dataSource?: PageDataSource; className?: string
   forceWidgetSeed?: Omit<Widget, 'id'>[]
+  sectionTitle?: string; onRenameSection?: (title: string) => void; onDeleteSection?: () => void
 }) {
   const page = zoneKey.split('/')[0] as keyof typeof PAGE_LAYOUT
   const config = PAGE_LAYOUT[page]?.[zoneKey]
@@ -207,6 +217,20 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
   const [rz, setRz] = useState<DragState | null>(null)
   const [addingWidget, setAddingWidget] = useState(false)
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null)
+  const [renamingSection, setRenamingSection] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  // Guards against a double-commit when Enter triggers commitRename and the resulting unmount
+  // of the (still-focused) input then fires blur too.
+  const committingRef = useRef(false)
+  const startRename = () => { committingRef.current = false; setTitleDraft(sectionTitle ?? ''); setRenamingSection(true) }
+  const commitRename = () => {
+    if (committingRef.current) return
+    committingRef.current = true
+    setRenamingSection(false)
+    const next = titleDraft.trim()
+    if (next && next !== sectionTitle) onRenameSection?.(next)
+  }
+  const cancelRename = () => { committingRef.current = true; setRenamingSection(false) }
 
   const beginResize = (e: React.PointerEvent, item: ZoneItem, mode: ResizeMode) => {
     e.preventDefault(); e.stopPropagation()
@@ -230,53 +254,82 @@ export function LayoutZone({ zoneKey, editing, nonce, defaults = [], render, dat
   const visibleItems = isWidgetZone ? items : items.filter(i => render?.[i.key] != null)
   const editingWidget = editingWidgetId ? widgets[editingWidgetId] : undefined
 
-  return <div ref={zoneRef} className={`layout-zone${editing ? ' editing' : ''}${rz ? ' resizing' : ''}${className ? ` ${className}` : ''}`}>
-    {visibleItems.map(item => {
-      const live = rz && rz.key === item.key ? rz : null
-      const span = live ? live.span : item.span
-      const height = live ? live.height : item.height
-      const style = { '--span': span, ...(height != null ? { height: `${height}px`, overflow: 'auto' } : null) } as React.CSSProperties
-      const widget = widgets[item.key]
-      return <div key={item.key}
-        className={`layout-item${overKey === item.key ? ' drag-over' : ''}${live ? ' resizing' : ''}`}
-        style={style}
-        onDragOver={e => { if (editing && dragKey) { e.preventDefault(); setOverKey(item.key) } }}
-        onDragLeave={() => setOverKey(cur => cur === item.key ? null : cur)}
-        onDrop={e => { if (editing && dragKey) { e.preventDefault(); move(dragKey, item.key); setDragKey(null); setOverKey(null) } }}>
-        {editing && <div className="layout-item-bar">
-          <span className="drag-handle" draggable onDragStart={() => setDragKey(item.key)}
-            onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
-          {isWidgetZone && widget &&
-            <button type="button" className="layout-item-edit" onClick={() => setEditingWidgetId(widget.id)}>Edit</button>}
-        </div>}
-        {isWidgetZone
-          ? widget && <article className="panel widget-panel">
-              <div className="panel-heading">
-                <h3>{widget.title}</h3>
-                {editing && widget.deletable &&
-                  <button type="button" className="widget-delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>×</button>}
-              </div>
-              {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
-            </article>
-          : render![item.key]}
-        {editing && (['e', 's', 'se'] as ResizeMode[]).map(mode => (
-          <span key={mode} className={`layout-resize layout-resize-${mode}`}
-            onPointerDown={e => beginResize(e, { ...item, span, height }, mode)}
-            onPointerMove={moveResize} onPointerUp={endResize} onLostPointerCapture={endResize}
-            onDoubleClick={() => mode !== 'e' && resize(item.key, { height: null })}
-            title={mode === 'e' ? 'Drag to set width' : mode === 's' ? 'Drag to set height · double-click to reset' : 'Drag to resize · double-click to reset height'} />
-        ))}
-      </div>
-    })}
-    {isWidgetZone && editing && <div className="layout-item widget-add-item" style={{ '--span': 1 } as React.CSSProperties}>
-      <button type="button" className="widget-add-tile" title="Add widget" aria-label="Add widget" onClick={() => setAddingWidget(true)}>+</button>
+  return <>
+    {isWidgetZone && <div className="widget-section-head">
+      {sectionTitle != null
+        ? (renamingSection
+            ? <input className="widget-section-title-input" autoFocus value={titleDraft} maxLength={48}
+                onChange={e => setTitleDraft(e.target.value)} onBlur={commitRename}
+                onKeyDown={e => { if (e.key === 'Enter') commitRename(); else if (e.key === 'Escape') cancelRename() }} />
+            : <h4>{sectionTitle}</h4>)
+        : <span />}
+      {editing && <div className="widget-section-actions">
+        {sectionTitle != null && onRenameSection &&
+          <button type="button" className="icon-btn edit" title="Rename panel" aria-label="Rename panel" onClick={startRename}>✎</button>}
+        <button type="button" className="icon-btn add" title="Add widget" aria-label="Add widget" onClick={() => setAddingWidget(true)}>+</button>
+        {onDeleteSection &&
+          <button type="button" className="icon-btn delete" title="Delete panel" aria-label="Delete panel" onClick={onDeleteSection}>🗑</button>}
+      </div>}
     </div>}
+    <div ref={zoneRef} className={`layout-zone${editing ? ' editing' : ''}${rz ? ' resizing' : ''}${className ? ` ${className}` : ''}`}>
+      {visibleItems.map(item => {
+        const live = rz && rz.key === item.key ? rz : null
+        const span = live ? live.span : item.span
+        const height = live ? live.height : item.height
+        const style = { '--span': span, ...(height != null ? { height: `${height}px`, overflow: 'auto' } : null) } as React.CSSProperties
+        const widget = widgets[item.key]
+        return <div key={item.key}
+          className={`layout-item${overKey === item.key ? ' drag-over' : ''}${live ? ' resizing' : ''}`}
+          style={style}
+          onDragOver={e => { if (editing && dragKey) { e.preventDefault(); setOverKey(item.key) } }}
+          onDragLeave={() => setOverKey(cur => cur === item.key ? null : cur)}
+          onDrop={e => { if (editing && dragKey) { e.preventDefault(); move(dragKey, item.key); setDragKey(null); setOverKey(null) } }}>
+          {editing && <div className="layout-item-bar">
+            <span className="drag-handle" draggable onDragStart={() => setDragKey(item.key)}
+              onDragEnd={() => { setDragKey(null); setOverKey(null) }} title="Drag to reorder">⠿</span>
+          </div>}
+          {isWidgetZone
+            ? widget && <article className="panel widget-panel">
+                <div className="panel-heading">
+                  <h3>{widget.title}</h3>
+                  {editing && <div className="widget-actions">
+                    <button type="button" className="icon-btn edit" title="Edit widget" aria-label="Edit widget" onClick={() => setEditingWidgetId(widget.id)}>✎</button>
+                    {widget.deletable &&
+                      <button type="button" className="icon-btn delete" title="Delete widget" aria-label="Delete widget" onClick={() => removeWidget(widget.id)}>🗑</button>}
+                  </div>}
+                </div>
+                {dataSource && <WidgetView widget={widget} dataSource={dataSource} />}
+              </article>
+            : render![item.key]}
+          {editing && (['e', 's', 'se'] as ResizeMode[]).map(mode => (
+            <span key={mode} className={`layout-resize layout-resize-${mode}`}
+              onPointerDown={e => beginResize(e, { ...item, span, height }, mode)}
+              onPointerMove={moveResize} onPointerUp={endResize} onLostPointerCapture={endResize}
+              onDoubleClick={() => mode !== 'e' && resize(item.key, { height: null })}
+              title={mode === 'e' ? 'Drag to set width' : mode === 's' ? 'Drag to set height · double-click to reset' : 'Drag to resize · double-click to reset height'} />
+          ))}
+        </div>
+      })}
+    </div>
     {isWidgetZone && dataSource && (addingWidget || editingWidget) && <AddWidgetModal
       dataSource={dataSource}
       initial={editingWidget}
       onAdd={w => { if (editingWidget) updateWidget(editingWidget.id, w); else addWidget(w); setAddingWidget(false); setEditingWidgetId(null) }}
       onClose={() => { setAddingWidget(false); setEditingWidgetId(null) }} />}
-  </div>
+  </>
+}
+
+// Deterministic id for the nth seeded section of a zone, or a fresh one for a user-created panel.
+const seedSectionId = (zoneKey: string, i: number) => `${zoneKey}:section:${i}`
+
+function seedSectionsPref(zoneKey: string, seed: SectionSeed[]): { order: string[]; sections: Record<string, SectionMeta> } {
+  const sections: Record<string, SectionMeta> = {}
+  const order = seed.map((s, i) => {
+    const id = seedSectionId(zoneKey, i)
+    sections[id] = { title: s.title, deletable: s.deletable }
+    return id
+  })
+  return { order, sections }
 }
 
 // A page's widget zone as multiple named, independently addable/removable sections — each its
@@ -291,13 +344,7 @@ function useSectionList(zoneKey: string, seed: SectionSeed[], nonce: number) {
   const load = (): { order: string[]; sections: Record<string, SectionMeta> } => {
     const pref = readLayout()[zoneKey]
     if (pref?.sections) return { order: pref.order, sections: pref.sections }
-    const sections: Record<string, SectionMeta> = {}
-    const order = seedRef.current.map((s, i) => {
-      const id = `${zoneKey}:section:${i}`
-      sections[id] = { title: s.title, deletable: s.deletable }
-      return id
-    })
-    return { order, sections }
+    return seedSectionsPref(zoneKey, seedRef.current)
   }
 
   const [state, setState] = useState(load)
@@ -309,13 +356,6 @@ function useSectionList(zoneKey: string, seed: SectionSeed[], nonce: number) {
     writeLayout(all)
     schedulePageSave(page)
   }
-  const addSection = (title: string) => setState(({ order, sections }) => {
-    const id = `${zoneKey}:section:${crypto.randomUUID()}`
-    const nextSections = { ...sections, [id]: { title, deletable: true } }
-    const nextOrder = [...order, id]
-    persist(nextOrder, nextSections)
-    return { order: nextOrder, sections: nextSections }
-  })
   const removeSection = (id: string) => setState(({ order, sections }) => {
     const nextOrder = order.filter(k => k !== id)
     const nextSections = { ...sections }
@@ -326,44 +366,76 @@ function useSectionList(zoneKey: string, seed: SectionSeed[], nonce: number) {
     writeLayout(all)
     return { order: nextOrder, sections: nextSections }
   })
-  return { order: state.order, sections: state.sections, addSection, removeSection }
+  const renameSection = (id: string, title: string) => setState(({ order, sections }) => {
+    const nextSections = { ...sections, [id]: { ...sections[id], title } }
+    persist(order, nextSections)
+    return { order, sections: nextSections }
+  })
+  return { order: state.order, sections: state.sections, removeSection, renameSection }
+}
+
+// Header-level "Create a panel" (page's Layout menu) — appends a fresh, deletable, empty panel.
+// A plain function (not a hook) so App.tsx can call it directly; pair with a layoutNonce bump so
+// the mounted SectionedZone re-reads storage, same mechanism Reset already uses.
+export function createPanel(page: string) {
+  const zoneKey = sectionsZoneKeyFor(page)
+  const config = zoneKey ? PAGE_LAYOUT[page as keyof typeof PAGE_LAYOUT]?.[zoneKey] : undefined
+  if (!zoneKey || config?.kind !== 'sections') return
+  const all = readLayout()
+  const existing = all[zoneKey]
+  const current = existing?.sections ? { order: existing.order, sections: existing.sections } : seedSectionsPref(zoneKey, config.seed)
+  const id = `${zoneKey}:section:${crypto.randomUUID()}`
+  const title = `Panel ${current.order.length + 1}`
+  all[zoneKey] = { order: [...current.order, id], spans: {}, sections: { ...current.sections, [id]: { title, deletable: true } } }
+  writeLayout(all)
+  schedulePageSave(page)
 }
 
 function SectionedZone({ zoneKey, editing, nonce, dataSource, seed, className }: {
   zoneKey: string; editing: boolean; nonce: number; dataSource?: PageDataSource; seed: SectionSeed[]; className?: string
 }) {
-  const { order, sections, addSection, removeSection } = useSectionList(zoneKey, seed, nonce)
-  const [addingSection, setAddingSection] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
+  const { order, sections, removeSection, renameSection } = useSectionList(zoneKey, seed, nonce)
   // Seeded sections' starting widgets, keyed by the same deterministic id useSectionList seeds.
-  const seedWidgetsById = useMemo(() => new Map(seed.map((s, i) => [`${zoneKey}:section:${i}`, s.widgets])), [zoneKey, seed])
-
-  const confirmAdd = () => {
-    if (newTitle.trim()) addSection(newTitle.trim())
-    setNewTitle(''); setAddingSection(false)
-  }
+  const seedWidgetsById = useMemo(() => new Map(seed.map((s, i) => [seedSectionId(zoneKey, i), s.widgets])), [zoneKey, seed])
 
   return <div className={`widget-sections${className ? ` ${className}` : ''}`}>
     {order.map(id => {
       const section = sections[id]
       if (!section) return null
       return <div className="widget-section" key={id}>
-        <div className="widget-section-head">
-          <h4>{section.title}</h4>
-          {editing && section.deletable &&
-            <button type="button" className="widget-delete" title="Delete section" aria-label="Delete section" onClick={() => removeSection(id)}>×</button>}
-        </div>
-        <LayoutZone zoneKey={`${id}/widgets`} editing={editing} nonce={nonce} dataSource={dataSource} forceWidgetSeed={seedWidgetsById.get(id) ?? []} />
+        <LayoutZone zoneKey={`${id}/widgets`} editing={editing} nonce={nonce} dataSource={dataSource}
+          forceWidgetSeed={seedWidgetsById.get(id) ?? []} sectionTitle={section.title}
+          onRenameSection={title => renameSection(id, title)}
+          onDeleteSection={section.deletable ? () => removeSection(id) : undefined} />
       </div>
     })}
-    {editing && (addingSection
-      ? <div className="widget-section-add-form">
-          <input autoFocus value={newTitle} maxLength={48} placeholder="Section title"
-            onChange={e => setNewTitle(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') confirmAdd(); else if (e.key === 'Escape') { setNewTitle(''); setAddingSection(false) } }} />
-          <button type="button" className="primary compact" onClick={confirmAdd}>Add</button>
-          <button type="button" className="outline compact" onClick={() => { setNewTitle(''); setAddingSection(false) }}>Cancel</button>
-        </div>
-      : <button type="button" className="widget-section-add" onClick={() => setAddingSection(true)}>+ Add section</button>)}
+  </div>
+}
+
+// Page-header dropdown for edit-layout mode: create a panel, force-save, or reset the page.
+export function LayoutMenu({ onCreatePanel, onSave, onReset }: {
+  onCreatePanel: () => void; onSave: () => void | Promise<void>; onReset: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+  const save = async () => {
+    setOpen(false)
+    await onSave()
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1800)
+  }
+  return <div className="menu" ref={ref}>
+    <button type="button" className="tool-action" onClick={() => setOpen(o => !o)}>{saved ? '✓ Saved' : '☰ Layout'}</button>
+    {open && <ul className="menu-dropdown">
+      <li><button type="button" onClick={() => { setOpen(false); onCreatePanel() }}>+ Create a panel</button></li>
+      <li><button type="button" onClick={() => void save()}>Save layout</button></li>
+      <li><button type="button" onClick={() => { setOpen(false); onReset() }}>↺ Reset layout</button></li>
+    </ul>}
   </div>
 }

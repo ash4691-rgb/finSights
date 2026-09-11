@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, API_URL } from './api'
 import { applyLocale, currencies, nav, downloadCsv, label, rate, THEME_KEY, initialTheme } from './util'
-import { clearPageLayout, hydrateLayouts } from './layout'
+import { clearPageLayout, createPanel, flushPageSave, hydrateLayouts, LayoutMenu } from './layout'
 import { fetchLayouts } from './layout-api'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
@@ -149,7 +149,10 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
           {page === 'categories' && <button className="tool-action" onClick={exportCategoriesCsv} disabled={!categories.length}>↓ Export</button>}
           {page === 'holdings' && <button className="tool-action" onClick={exportHoldingsCsv} disabled={!holdings.length}>↓ Export</button>}
           {canEditLayout && <>
-            {layoutEditing && <button className="tool-action" onClick={() => { clearPageLayout(page); setLayoutNonce(n => n + 1) }}>↺ Reset layout</button>}
+            {layoutEditing && <LayoutMenu
+              onCreatePanel={() => { createPanel(page); setLayoutNonce(n => n + 1) }}
+              onSave={() => flushPageSave(page)}
+              onReset={() => { clearPageLayout(page); setLayoutNonce(n => n + 1) }} />}
             <button className="tool-action" onClick={() => setLayoutEditing(e => !e)}>{layoutEditing ? '✓ Done' : '⤢ Edit layout'}</button>
           </>}
         </div>
