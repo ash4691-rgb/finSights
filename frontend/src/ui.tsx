@@ -11,7 +11,7 @@ export function Switch({ checked, onChange, text, icon, disabled, title }: { che
   </label>
 }
 
-export function Field({ label: title, children, required, wide }: { label: string; children: React.ReactNode; required?: boolean; wide?: boolean }) { return <label className={wide ? 'field wide' : 'field'}><span>{title}{required && <b> *</b>}</span>{children}</label> }
+export function Field({ label: title, children, required, wide }: { label: React.ReactNode; children: React.ReactNode; required?: boolean; wide?: boolean }) { return <label className={wide ? 'field wide' : 'field'}><span>{title}{required && <b> *</b>}</span>{children}</label> }
 
 // A small ⓘ dot that shows `text` in a floating tooltip on hover/focus. Positioned with
 // position:fixed off the icon's rect so it never gets clipped by a table's overflow.

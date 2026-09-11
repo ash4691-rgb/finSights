@@ -64,7 +64,7 @@ export function TransactionsView({ holdings, displayCurrency, dataVersion, reloa
 
   return <>
     <section className="holdings-toolbar">
-      <select className="filter-select" value={holdingId} onChange={e => setHoldingId(e.target.value)}><option value="">All holdings</option>{holdings.map(h => <option key={h.id} value={h.id}>{h.name} @ {h.broker || 'unassigned'}</option>)}</select>
+      <HoldingPicker className="holding-filter" holdings={holdings} value={holdingId} onChange={setHoldingId} allowClear />
       <select className="filter-select" value={type} onChange={e => setType(e.target.value)}><option value="">All types</option>{transactionTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select>
       <select className="filter-select" value={broker} onChange={e => setBroker(e.target.value)}><option value="">All brokers</option>{brokers.map(b => <option key={b} value={b}>{b}</option>)}</select>
       <input className="filter-select date-filter" type="date" value={from} onChange={e => setFrom(e.target.value)} title="From date" />
@@ -103,7 +103,7 @@ export function TransactionsView({ holdings, displayCurrency, dataVersion, reloa
 export const txnTypeHint: Partial<Record<TransactionType, string>> = {
   BUY: 'Adds a lot — increases invested amount and quantity.',
   SELL: 'Matches lots oldest-first (FIFO) to book realised P/L; cuts invested and quantity.',
-  SPLIT: 'Multiplies quantity by the number entered (e.g. 2 for a 2-for-1). Leave amount blank.',
+  SPLIT: 'Multiplies quantity by the number entered (e.g. 2 for a 2-for-1). No amount for a split.',
   INTEREST: 'Coupon or dividend — adds to current value only. No change to quantity or invested.',
   ADJUSTMENT: 'Nudges invested amount and/or quantity by the values entered.',
   REPAY: 'A loan repayment — interest for the period is settled first, the rest cuts the outstanding balance.',
@@ -130,22 +130,24 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
   })
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('')
-    const payload = { holdingId: form.holdingId, type: form.type, date: form.date, amount: numeric(form.amount), quantity: form.quantity ? numeric(form.quantity) : null, interestPaid: form.type === 'INTEREST' ? form.interestPaid : null, notes: form.notes || null }
+    const payload = { holdingId: form.holdingId, type: form.type, date: form.date, amount: form.type === 'SPLIT' ? 0 : numeric(form.amount), quantity: form.quantity ? numeric(form.quantity) : null, interestPaid: form.type === 'INTEREST' ? form.interestPaid : null, notes: form.notes || null }
     try {
       await api(transaction ? `/api/transactions/${transaction.id}` : '/api/transactions', { method: transaction ? 'PUT' : 'POST', body: JSON.stringify(payload) })
       onSaved()
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save transaction') } finally { setSaving(false) }
   }
   const showQuantity = ['BUY', 'SELL', 'SPLIT', 'ADJUSTMENT'].includes(form.type)
+  const typeHint = form.type === 'INTEREST'
+    ? (form.interestPaid ? 'Cash received — adds to realised P/L.' : 'Accrues onto current value. No change to quantity or invested.')
+    : (txnTypeHint[form.type] ?? '')
   return <div className="modal-backdrop"><section className="modal"><div className="modal-header"><div><p className="eyebrow">{transaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}</p><h2>{transaction ? label(transaction.type) : 'Log a transaction'}</h2></div><button className="close" onClick={onClose}>×</button></div>
     <form onSubmit={submit}><div className="form-grid">
       <Field label="Holding" required wide><HoldingPicker holdings={holdings} value={form.holdingId} onChange={id => set('holdingId', id)} /></Field>
-      <Field label="Type" required><select required value={form.type} onChange={e => set('type', e.target.value)}>{allowedTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
+      <Field label={<>Type <InfoTip text={typeHint} /></>} required><select required value={form.type} onChange={e => set('type', e.target.value)}>{allowedTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
-      <Field label={form.type === 'SELL' ? 'Proceeds' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'}><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>
+      {form.type !== 'SPLIT' && <Field label={form.type === 'SELL' ? 'Sale proceeds (total)' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'}><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>}
       {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'}><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
       {form.type === 'INTEREST' && <div className="check-row"><label><input type="checkbox" checked={form.interestPaid} onChange={e => set('interestPaid', e.target.checked)} /> Received in cash <InfoTip text="On: the income is booked as realised P/L. Off: it accrues onto the holding's current value." /></label></div>}
-      <p className="txn-hint">{form.type === 'INTEREST' ? (form.interestPaid ? 'Cash received — adds to realised P/L.' : 'Accrues onto current value. No change to quantity or invested.') : txnTypeHint[form.type]}</p>
       <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
     </div>
     {error && <p className="form-error">{error}</p>}
@@ -155,7 +157,11 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
 }
 
 // Client-side type-ahead over the loaded holdings — the plain dropdown gets unusable past a few dozen.
-export function HoldingPicker({ holdings, value, onChange }: { holdings: Holding[]; value: string; onChange: (id: string) => void }) {
+// `allowClear` adds an explicit "clear back to no selection" affordance (a dropdown row plus an
+// inline × once something is picked) — used by the Transactions filter's "All holdings" state.
+export function HoldingPicker({ holdings, value, onChange, allowClear, clearLabel = 'All holdings', className }: {
+  holdings: Holding[]; value: string; onChange: (id: string) => void; allowClear?: boolean; clearLabel?: string; className?: string
+}) {
   const selected = holdings.find(h => h.id === value)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -167,13 +173,15 @@ export function HoldingPicker({ holdings, value, onChange }: { holdings: Holding
   }, [])
   const q = query.trim().toLowerCase()
   const matches = holdings.filter(h => !q || `${h.name} ${h.broker ?? ''} ${h.categoryName}`.toLowerCase().includes(q)).slice(0, 25)
-  return <div className="tag-input" ref={boxRef}>
+  return <div className={`tag-input${className ? ` ${className}` : ''}`} ref={boxRef}>
     <div className="tag-input-field">
       <input value={open ? query : (selected ? `${selected.name} · ${selected.broker || 'unassigned'}` : '')}
-        placeholder="Search holdings by name or broker…"
+        placeholder={allowClear && !selected ? clearLabel : 'Search holdings by name or broker…'}
         onFocus={() => { setQuery(''); setOpen(true) }}
         onChange={e => { setQuery(e.target.value); setOpen(true) }} />
-      {open && matches.length > 0 && <ul className="tag-menu">
+      {allowClear && value && !open && <button type="button" className="tag-input-clear" title={clearLabel} aria-label={clearLabel} onMouseDown={e => e.preventDefault()} onClick={() => onChange('')}>×</button>}
+      {open && (matches.length > 0 || allowClear) && <ul className="tag-menu">
+        {allowClear && <li><button type="button" className="tag-menu-create" onMouseDown={e => e.preventDefault()} onClick={() => { onChange(''); setOpen(false); setQuery('') }}>{clearLabel}</button></li>}
         {matches.map(h => <li key={h.id}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { onChange(h.id); setOpen(false); setQuery('') }}>
           <b>{h.name}</b> <span>{h.broker || 'unassigned'} · {h.categoryName}</span>
         </button></li>)}
