@@ -50,3 +50,10 @@ export const PAGE_LAYOUT: Record<'dashboard' | 'insights' | 'brokers', Record<st
     // existing zones (brokers/page, brokers/grid) stay implicit / plain as today
   },
 }
+
+// Each page currently has at most one 'sections' zone — the one the page-level "Layout" menu's
+// "Create a panel" / "Save layout" / "Reset layout" actions operate on.
+export function sectionsZoneKeyFor(page: string): string | undefined {
+  const zones = PAGE_LAYOUT[page as keyof typeof PAGE_LAYOUT]
+  return zones && Object.entries(zones).find(([, cfg]) => cfg.kind === 'sections')?.[0]
+}

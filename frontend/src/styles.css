@@ -360,20 +360,24 @@ th.sortable:hover{color:var(--text)}
 /* Widget panels — editable-layout zones of user-configurable charts (layout.tsx / widgets.tsx). */
 .widget-panel{min-height:auto;display:flex;flex-direction:column}
 .widget-placeholder{margin:auto}
-.layout-item-edit{margin-left:auto;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--text-2);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer}
-.layout-item-edit:hover{border-color:var(--accent);color:var(--accent-soft-text);background:var(--accent-soft)}
-.widget-delete{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border:1px solid var(--border-soft);background:var(--surface-2);color:var(--text-3);border-radius:50%;font-size:14px;line-height:1;padding:0;cursor:pointer}
-.widget-delete:hover{border-color:var(--negative);color:var(--negative);background:var(--error-bg)}
-.widget-add-item{min-height:0;align-self:start;display:flex;align-items:center}
-.widget-add-tile{width:36px;height:36px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border-strong);border-radius:50%;background:var(--surface-2);color:var(--text-3);font-weight:700;font-size:18px;line-height:1;padding:0}
-.widget-add-tile:hover{border-color:var(--accent);color:var(--accent-soft-text);background:var(--accent-soft)}
+/* Icon-only actions (widget/panel edit-add-delete) — blend into the panel by default, pick up
+   an action-specific colour only on hover/focus so they stay unobtrusive until you reach for them. */
+.icon-btn{border:0;background:transparent;color:var(--text-3);width:24px;height:24px;flex-shrink:0;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;line-height:1;padding:0;cursor:pointer}
+.icon-btn:hover,.icon-btn:focus-visible{background:var(--surface-2)}
+.icon-btn.edit:hover,.icon-btn.edit:focus-visible{color:var(--accent-soft-text);background:var(--accent-soft)}
+.icon-btn.add:hover,.icon-btn.add:focus-visible{color:var(--positive);background:var(--success-bg)}
+.icon-btn.delete:hover,.icon-btn.delete:focus-visible{color:var(--negative);background:var(--error-bg)}
+.widget-actions{display:flex;gap:2px;flex-shrink:0}
 .widget-sections{display:grid;gap:22px}
 .widget-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
 .widget-section-head h4{margin:0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3)}
-.widget-section-add{align-self:start;border:1px dashed var(--border-strong);background:var(--surface-2);color:var(--text-3);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer}
-.widget-section-add:hover{border-color:var(--accent);color:var(--accent-soft-text);background:var(--accent-soft)}
-.widget-section-add-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.widget-section-add-form input{flex:1;min-width:140px;max-width:240px;background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:8px 10px;font-size:12px}
+.widget-section-title-input{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text);background:var(--surface-input);border:1px solid var(--accent);border-radius:6px;padding:3px 7px;max-width:220px}
+.widget-section-actions{display:flex;gap:2px;flex-shrink:0}
+/* Page-header "Layout" dropdown (create a panel / save / reset). */
+.menu{position:relative;display:inline-block}
+.menu-dropdown{position:absolute;top:calc(100% + 6px);right:0;z-index:30;min-width:170px;margin:0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--border-strong);border-radius:10px;box-shadow:var(--shadow-modal)}
+.menu-dropdown li button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--text-2);padding:8px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
+.menu-dropdown li button:hover{background:var(--surface-2);color:var(--text)}
 .series-picker{display:grid;gap:8px}
 .series-picker-option{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);cursor:pointer}
 .series-picker-option.checked{color:var(--text)}
