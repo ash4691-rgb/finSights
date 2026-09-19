@@ -28,6 +28,7 @@ public class MovementService {
         PERIOD_DAYS.put("WEEKLY", 7);
         PERIOD_DAYS.put("MONTHLY", 30);
         PERIOD_DAYS.put("QUARTERLY", 90);
+        PERIOD_DAYS.put("HALF_YEARLY", 182);
         PERIOD_DAYS.put("YEARLY", 365);
     }
 

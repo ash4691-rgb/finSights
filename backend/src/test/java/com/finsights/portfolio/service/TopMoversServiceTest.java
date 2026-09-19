@@ -33,7 +33,10 @@ class TopMoversServiceTest {
 
     // Only the DAILY period is configured.
     private static final MovementThresholdResponse DAILY_5_PERCENT = new MovementThresholdResponse(
-            new BigDecimal("5"), null, null, null, null);
+            new BigDecimal("5"), null, null, null, null, null);
+    // Only the HALF_YEARLY period is configured.
+    private static final MovementThresholdResponse HALF_YEARLY_5_PERCENT = new MovementThresholdResponse(
+            null, null, null, null, new BigDecimal("5"), null);
 
     @BeforeEach
     void setUp() {
@@ -54,6 +57,20 @@ class TopMoversServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).triggered()).extracting("period").containsExactly("DAILY");
+    }
+
+    @Test
+    void halfYearlyThresholdIsWiredThroughAndTriggersOnItsOwn182DayWindow() {
+        when(thresholds.get()).thenReturn(HALF_YEARLY_5_PERCENT);
+        HoldingResponse holding = holding("h-1", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
+        when(holdings.list()).thenReturn(List.of(holding));
+        when(movements.holdingMovement(holding, 182)).thenReturn(new BigDecimal("6")); // above the 5% threshold
+        when(fx.convert(any(), any(), any())).thenReturn(holding.currentValue());
+
+        List<TopMoverResponse> result = service.topMovers("INR");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).triggered()).extracting("period").containsExactly("HALF_YEARLY");
     }
 
     @Test

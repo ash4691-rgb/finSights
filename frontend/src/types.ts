@@ -56,7 +56,7 @@ export type Transaction = {
 export type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
 export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string; key: string }
 export type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[] }
-export type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
+export type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
 export type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
 export type TopMover = {
   subjectType: 'HOLDING' | 'WATCHLIST'; id: string; name: string; categoryName?: string; tickerSymbol?: string
@@ -66,7 +66,7 @@ export type TopMover = {
 // A period is "off" when its field is absent.
 export type MovementThresholds = {
   dailyPercent?: number; weeklyPercent?: number; monthlyPercent?: number
-  quarterlyPercent?: number; yearlyPercent?: number
+  quarterlyPercent?: number; halfYearlyPercent?: number; yearlyPercent?: number
 }
 export type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; currency?: string; lastUpdated?: string; createdAt?: string }
 export type TimelineCategoryPoint = { categoryId: string; categoryName: string; kind: 'ASSET' | 'LIABILITY'; invested: number; current: number }

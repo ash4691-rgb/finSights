@@ -62,7 +62,7 @@ class MovementThresholdServiceTest {
         when(currentUser.currentUser()).thenReturn(user);
         when(repository.findByUser(user)).thenReturn(Optional.empty());
         when(repository.save(any(MovementThreshold.class))).thenAnswer(inv -> inv.getArgument(0));
-        MovementThresholdRequest request = new MovementThresholdRequest(new BigDecimal("5"), null, null, null, null);
+        MovementThresholdRequest request = new MovementThresholdRequest(new BigDecimal("5"), null, null, null, null, null);
 
         MovementThresholdResponse response = service.save(request);
 
@@ -70,10 +70,22 @@ class MovementThresholdServiceTest {
     }
 
     @Test
+    void saveAndGetRoundTripTheHalfYearlyThreshold() {
+        when(currentUser.currentUser()).thenReturn(user);
+        when(repository.findByUser(user)).thenReturn(Optional.empty());
+        when(repository.save(any(MovementThreshold.class))).thenAnswer(inv -> inv.getArgument(0));
+        MovementThresholdRequest request = new MovementThresholdRequest(null, null, null, null, new BigDecimal("8"), null);
+
+        MovementThresholdResponse response = service.save(request);
+
+        assertThat(response.halfYearlyPercent()).isEqualByComparingTo("8");
+    }
+
+    @Test
     void saveRejectsNegativeThresholds() {
         when(currentUser.currentUser()).thenReturn(user);
         when(repository.findByUser(user)).thenReturn(Optional.empty());
-        MovementThresholdRequest request = new MovementThresholdRequest(new BigDecimal("-1"), null, null, null, null);
+        MovementThresholdRequest request = new MovementThresholdRequest(new BigDecimal("-1"), null, null, null, null, null);
 
         try {
             service.save(request);

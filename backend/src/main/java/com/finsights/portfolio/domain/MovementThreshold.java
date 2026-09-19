@@ -22,6 +22,7 @@ public class MovementThreshold {
     @Column(precision = 6, scale = 2) private BigDecimal weeklyPercent;
     @Column(precision = 6, scale = 2) private BigDecimal monthlyPercent;
     @Column(precision = 6, scale = 2) private BigDecimal quarterlyPercent;
+    @Column(precision = 6, scale = 2) private BigDecimal halfYearlyPercent;
     @Column(precision = 6, scale = 2) private BigDecimal yearlyPercent;
     private Instant updatedAt = Instant.now();
 
@@ -39,6 +40,8 @@ public class MovementThreshold {
     public void setMonthlyPercent(BigDecimal value) { this.monthlyPercent = value; }
     public BigDecimal getQuarterlyPercent() { return quarterlyPercent; }
     public void setQuarterlyPercent(BigDecimal value) { this.quarterlyPercent = value; }
+    public BigDecimal getHalfYearlyPercent() { return halfYearlyPercent; }
+    public void setHalfYearlyPercent(BigDecimal value) { this.halfYearlyPercent = value; }
     public BigDecimal getYearlyPercent() { return yearlyPercent; }
     public void setYearlyPercent(BigDecimal value) { this.yearlyPercent = value; }
     public Instant getUpdatedAt() { return updatedAt; }
