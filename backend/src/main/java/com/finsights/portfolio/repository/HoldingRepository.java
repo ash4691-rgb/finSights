@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface HoldingRepository extends JpaRepository<Holding, String> {
     List<Holding> findByUser_IdOrderBySortOrderAscUpdatedAtDesc(String userId);
+    List<Holding> findByCategory_Id(String categoryId);
     Optional<Holding> findByIdAndUser_Id(String id, String userId);
     Optional<Holding> findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(String userId, String name, String broker);
     long countByUser_Id(String userId);

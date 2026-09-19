@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import { money, percent, label, blankCategoryForm } from '../util'
+import { money, percent, label, blankCategoryForm, selectableValuationMethods, valuationMethodLabel } from '../util'
 import { Field, InfoTip } from '../ui'
 import type { Category, Holding, HoldingKind } from '../types'
 
@@ -126,10 +126,20 @@ export function CategoryDrawer({ category, holdings, onClose, onEdit, onAddHoldi
   </section></div>
 }
 
-export function CategoryModal({ category, onClose, onSaved }: { category: Category | null; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState(() => category ? { name: category.name, kind: category.kind, description: category.description || '' } : blankCategoryForm())
+export function CategoryModal({ category, holdings, onClose, onSaved }: { category: Category | null; holdings: Holding[]; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState(() => category
+    ? { name: category.name, kind: category.kind, description: category.description || '', allowedValuationMethods: category.allowedValuationMethods ?? [] }
+    : blankCategoryForm())
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
+
+  // Holdings already filed under this category whose current valuation method would fall
+  // outside the selection being saved — saving the restriction now would strand them.
+  const nonCompliant = useMemo(() => {
+    if (!category || form.kind !== 'ASSET' || !form.allowedValuationMethods.length) return []
+    return holdings.filter(h => h.categoryId === category.id && !form.allowedValuationMethods.includes(h.valuationMethod))
+  }, [category, holdings, form.kind, form.allowedValuationMethods])
+
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('')
     try {
@@ -142,10 +152,26 @@ export function CategoryModal({ category, onClose, onSaved }: { category: Catego
       <div className="form-grid">
         <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Growth Equity, Emergency Fund" /></Field>
         <Field label="Type" required wide><select value={form.kind} onChange={e => set('kind', e.target.value)}><option value="ASSET">Asset</option><option value="LIABILITY">Liability</option></select></Field>
+        {form.kind === 'ASSET' && <Field label="Allowed valuation methods" wide>
+          <div className="check-row">
+            {selectableValuationMethods.map(m => <label key={m}>
+              <input type="checkbox" checked={form.allowedValuationMethods.includes(m)}
+                onChange={e => setForm(current => ({ ...current, allowedValuationMethods: e.target.checked
+                  ? [...current.allowedValuationMethods, m]
+                  : current.allowedValuationMethods.filter(x => x !== m) }))} /> {valuationMethodLabel(m)}
+            </label>)}
+          </div>
+          <p className="hint">Leave all unchecked to allow every method. Checked methods are enforced on holdings filed under this category.</p>
+        </Field>}
         <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={1024} /></Field>
       </div>
+      {nonCompliant.length > 0 && <div className="form-callout warn"><span className="form-callout-dot">!</span>
+        <span><b>These changes won't be saved</b> — {nonCompliant.length} holding{nonCompliant.length === 1 ? '' : 's'} in this category {nonCompliant.length === 1 ? 'uses' : 'use'} a valuation method outside your selection:
+          <ul className="warn-holding-list">{nonCompliant.map(h => <li key={h.id}><span title={`Not compliant — currently ${valuationMethodLabel(h.valuationMethod)}`}>⚠</span> {h.name} <small>({valuationMethodLabel(h.valuationMethod)})</small></li>)}</ul>
+          Update or move these holdings first, or widen your selection.</span>
+      </div>}
       {error && <p className="form-error">{error}</p>}
-      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : category ? 'Save changes' : 'Add category'}</button></div>
+      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || nonCompliant.length > 0}>{saving ? 'Saving…' : category ? 'Save changes' : 'Add category'}</button></div>
     </form>
   </section></div>
 }

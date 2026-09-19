@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, API_URL } from './api'
 import { applyLocale, currencies, nav, downloadCsv, label, rate, THEME_KEY, initialTheme } from './util'
-import { clearPageLayout } from './layout'
+import { clearPageLayout, createPanel, flushPageSave, hydrateLayouts, LayoutMenu } from './layout'
+import { fetchLayouts } from './layout-api'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
@@ -58,17 +59,19 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (isFirstLoad) { setLoading(true); setError('') }
     try {
       const cur = currency ?? displayCurrency
-      const [me, nextSettings, fx, nextCountries, nextDashboard, nextCategories, nextHoldings] = await Promise.all([
+      const [me, nextSettings, fx, nextCountries, nextDashboard, nextCategories, nextHoldings, nextLayouts] = await Promise.all([
         api<User>('/api/auth/me'), api<Settings>('/api/settings'), api<FxRates>('/api/fx-rates'), api<Country[]>('/api/countries'),
         api<Dashboard>(`/api/dashboard?currency=${cur}`), api<Category[]>(`/api/categories?currency=${cur}`),
-        api<Holding[]>(`/api/holdings?currency=${cur}`),
+        api<Holding[]>(`/api/holdings?currency=${cur}`), fetchLayouts(),
       ])
 
       applyLocale(cur, nextSettings.numberFormat)
+      hydrateLayouts(nextLayouts)
       setUser(me); setSettings(nextSettings); setFxCurrencies(Object.keys(fx.ratesToBase).sort())
       setFxRatesToBase(fx.ratesToBase); setCountries(nextCountries)
       setDashboard(nextDashboard); setCategories(nextCategories); setHoldings(nextHoldings); setDisplayCurrency(cur)
       setDataVersion(v => v + 1)
+      setLayoutNonce(n => n + 1)
       if (isFirstLoad) {
         bootstrapped.current = true
         if (!currency && nextSettings.baseCurrency && nextSettings.baseCurrency !== cur) {
@@ -146,7 +149,10 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
           {page === 'categories' && <button className="tool-action" onClick={exportCategoriesCsv} disabled={!categories.length}>↓ Export</button>}
           {page === 'holdings' && <button className="tool-action" onClick={exportHoldingsCsv} disabled={!holdings.length}>↓ Export</button>}
           {canEditLayout && <>
-            {layoutEditing && <button className="tool-action" onClick={() => { clearPageLayout(page); setLayoutNonce(n => n + 1) }}>↺ Reset layout</button>}
+            {layoutEditing && <LayoutMenu
+              onCreatePanel={(title: string) => { createPanel(page, title); setLayoutNonce(n => n + 1) }}
+              onSave={() => flushPageSave(page)}
+              onReset={() => { clearPageLayout(page); setLayoutNonce(n => n + 1) }} />}
             <button className="tool-action" onClick={() => setLayoutEditing(e => !e)}>{layoutEditing ? '✓ Done' : '⤢ Edit layout'}</button>
           </>}
         </div>
@@ -156,12 +162,12 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       {page === 'categories' && <CategoriesView categories={categories} onOpen={setCategoryDetail} onEdit={setEditingCategory} onAdd={() => setCreatingCategory(true)} reload={load} />}
       {page === 'holdings' && <HoldingsView holdings={holdings} categories={categories} reload={load} onEdit={setEditingHolding} onAdd={() => setCreatingHolding(true)} onOpen={setHoldingDetail} />}
       {page === 'transactions' && <TransactionsView holdings={holdings} displayCurrency={displayCurrency} dataVersion={dataVersion} reload={load} />}
-      {page === 'insights' && settings && <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
+      {page === 'insights' && settings && dashboard && <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
       {page === 'settings' && settings && <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme} />}
     </main>
-    {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
-    {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null); void load() }} />}
+    {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
+    {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null); void load() }} onGoToTransactions={() => setPage('transactions')} />}
     {categoryDetail && <CategoryDrawer category={categoryDetail} holdings={holdings.filter(h => h.categoryId === categoryDetail.id)} onClose={() => setCategoryDetail(null)} onEdit={c => { setCategoryDetail(null); setEditingCategory(c) }} onAddHolding={c => { setCategoryDetail(null); setCreatingHoldingFor(c) }} onOpenHolding={h => { setCategoryDetail(null); setHoldingDetail(h) }} reload={load} />}
     {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import type * as React from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies } from '../util'
-import { Field, InfoTip, TagInput, SymbolSearchInput } from '../ui'
+import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel } from '../util'
+import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput } from '../ui'
 import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
@@ -108,20 +108,32 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
-export function HoldingModal({ holding, category, categories, holdings, onClose, onSaved }: {
+export function HoldingModal({ holding, category, categories, holdings, onClose, onSaved, onGoToTransactions }: {
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; onClose: () => void; onSaved: () => void
+  onGoToTransactions?: () => void
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
     ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
     : blankHoldingForm(startCategoryId))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
-  const isLiability = categories.find(c => c.id === form.categoryId)?.kind === 'LIABILITY'
+  const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
+  const selectedCategory = categories.find(c => c.id === form.categoryId)
+  const isLiability = selectedCategory?.kind === 'LIABILITY'
   const isFixedRate = !isLiability && form.valuationMethod === 'FIXED_RATE'
   const isMarket = !isLiability && form.valuationMethod === 'MARKET_PRICE'
   const isOneTime = isLiability && form.repaymentFrequency === 'ONE_TIME'
   const isEdit = !!holding
   const set = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }))
+  const allowedMethods = selectedCategory?.allowedValuationMethods
+  const methodOptions = allowedMethods && allowedMethods.length ? selectableValuationMethods.filter(m => allowedMethods.includes(m)) : selectableValuationMethods
+
+  // The category can restrict which valuation methods its holdings may use — if the current
+  // pick falls outside that set (a category change, most often), snap to the first one allowed.
+  useEffect(() => {
+    if (isLiability || !methodOptions.length || methodOptions.includes(form.valuationMethod)) return
+    setForm(current => ({ ...current, valuationMethod: methodOptions[0] }))
+  }, [form.categoryId, methodOptions.join(','), isLiability]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Market-linked holdings take their name and currency from the ticker, not the user.
   useEffect(() => {
@@ -186,13 +198,18 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
             {categories.map(c => <option key={c.id} value={c.id}>{c.name} ({label(c.kind)})</option>)}
           </select>
         </Field>
-        {!isLiability && <Field label="Valuation method" required><select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}><option value="MANUAL">Manual value</option><option value="MARKET_PRICE">Market price</option><option value="FIXED_RATE">Fixed-rate compounding</option></select></Field>}
+        {!isLiability && <Field label="Valuation method" required>
+          <select value={form.valuationMethod} onChange={e => set('valuationMethod', e.target.value)}>
+            {methodOptions.map(m => <option key={m} value={m}>{valuationMethodLabel(m)}</option>)}
+          </select>
+          {methodOptions.length < selectableValuationMethods.length && <p className="hint">Restricted by {selectedCategory?.name}'s allowed valuation methods.</p>}
+        </Field>}
         {isMarket && <Field label="Ticker symbol" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
         {isEdit
           ? <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
           : <div className="field-pair">
               <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries'} /></Field>
-              <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><input required maxLength={96} value={form.broker} onChange={e => set('broker', e.target.value)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>
+              <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><SuggestInput required maxLength={96} value={form.broker} suggestions={brokerSuggestions} onChange={v => set('broker', v)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>
             </div>}
         <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
         {!isLiability && !isEdit && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
@@ -236,10 +253,10 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
         </Field>
       </div>
       {isEdit && !isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
-        <span><b>Broker</b> is fixed for the life of a holding, and <b>invested value</b> &amp; <b>quantity</b> are calculated from its transactions — add or edit transactions to change them.</span>
+        <span><b>Broker</b> is fixed for the life of a holding, and <b>invested value</b> &amp; <b>quantity</b> are calculated from its transactions — add or edit <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>transactions</button> to change them.</span>
       </p>}
       {isEdit && isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
-        <span><b>Lender</b> and <b>total amount</b> are fixed once a loan exists. Update the <b>outstanding amount</b> here, or mark instalments paid from the Action centre.</span>
+        <span><b>Lender</b> and <b>total amount</b> are fixed once a loan exists — the total is logged from <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>Transactions</button>. Update the <b>outstanding amount</b> here, or mark instalments paid from the Action centre.</span>
       </p>}
       {duplicate && <p className="form-error">A holding named "{form.name.trim()}" at "{form.broker.trim()}" already exists — one holding maps to one broker.</p>}
       {error && <p className="form-error">{error}</p>}

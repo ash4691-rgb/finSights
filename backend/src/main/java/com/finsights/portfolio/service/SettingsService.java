@@ -11,6 +11,7 @@ import com.finsights.portfolio.repository.TagSuggestionRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import com.finsights.portfolio.repository.UserAccountRepository;
 import com.finsights.portfolio.repository.WatchlistRepository;
+import com.finsights.portfolio.repository.DashboardLayoutRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -34,13 +35,15 @@ public class SettingsService {
     private final ActionDismissalService actionDismissals;
     private final TagSuggestionRepository tagSuggestions;
     private final com.finsights.portfolio.repository.EmiPaymentRepository emiPayments;
+    private final DashboardLayoutRepository dashboardLayouts;
 
     public SettingsService(UserAccountRepository users, HoldingRepository holdings, CategoryRepository categories,
                            TransactionRepository transactions, HoldingService holdingService, CurrentUserService currentUser,
                            CountryCurrencyService countries, WatchlistRepository watchlist, PriceSnapshotService snapshots,
                            PortfolioSnapshotService portfolioSnapshots, ActionDismissalService actionDismissals,
                            TagSuggestionRepository tagSuggestions,
-                           com.finsights.portfolio.repository.EmiPaymentRepository emiPayments) {
+                           com.finsights.portfolio.repository.EmiPaymentRepository emiPayments,
+                           DashboardLayoutRepository dashboardLayouts) {
         this.users = users;
         this.holdings = holdings;
         this.categories = categories;
@@ -54,6 +57,7 @@ public class SettingsService {
         this.countries = countries;
         this.tagSuggestions = tagSuggestions;
         this.emiPayments = emiPayments;
+        this.dashboardLayouts = dashboardLayouts;
     }
 
     public SettingsResponse current() {
@@ -123,6 +127,7 @@ public class SettingsService {
         holdings.deleteByUser_Id(user.getId());
         categories.deleteByUser_Id(user.getId());
         watchlist.deleteByUser_Id(user.getId());
+        dashboardLayouts.deleteByUser_Id(user.getId());
         snapshots.deleteForUser(user.getId());
         portfolioSnapshots.deleteForUser(user.getId());
         actionDismissals.deleteForUser(user.getId());

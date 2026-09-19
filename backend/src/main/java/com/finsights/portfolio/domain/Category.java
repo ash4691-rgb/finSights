@@ -2,6 +2,8 @@ package com.finsights.portfolio.domain;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * A user-defined bucket ("Retirement", "Emergency Fund", "Growth Equity"…) that holdings are
@@ -22,6 +24,12 @@ public class Category {
     /** Short one-liner shown in the ⓘ hover on the Categories table. */
     @Column(length = 1024)
     private String description;
+    /** Valuation methods holdings filed under this category may use. Empty means no restriction
+     *  (every method is allowed) — the default for categories created before this field existed. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "category_valuation_methods", joinColumns = @JoinColumn(name = "category_id"))
+    @Enumerated(EnumType.STRING) @Column(name = "valuation_method")
+    private Set<ValuationMethod> allowedValuationMethods = new LinkedHashSet<>();
     /** Manual drag-to-reorder position within the Categories table; new categories append to the end. */
     @Column(nullable = false)
     private int sortOrder = 0;
@@ -43,6 +51,8 @@ public class Category {
     public void setKind(HoldingKind kind) { this.kind = kind; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public Set<ValuationMethod> getAllowedValuationMethods() { return allowedValuationMethods; }
+    public void setAllowedValuationMethods(Set<ValuationMethod> allowedValuationMethods) { this.allowedValuationMethods = allowedValuationMethods; }
     public int getSortOrder() { return sortOrder; }
     public void setSortOrder(int sortOrder) { this.sortOrder = sortOrder; }
     public Instant getCreatedAt() { return createdAt; }

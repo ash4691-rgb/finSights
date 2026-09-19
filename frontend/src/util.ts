@@ -17,7 +17,10 @@ export const nav: [Page, string, string][] = [
   ['dashboard', '◫', 'Overview'], ['insights', '◔', 'Insights'], ['categories', '◈', 'Categories'],
   ['holdings', '▤', 'Holdings'], ['transactions', '⇅', 'Transactions'], ['brokers', '⇄', 'External sources'], ['settings', '⚙', 'Settings'],
 ]
-export const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '' })
+// The methods a holding form actually offers — BROKER_SYNC isn't selectable yet.
+export const selectableValuationMethods: ValuationMethod[] = ['MANUAL', 'MARKET_PRICE', 'FIXED_RATE']
+export const valuationMethodLabel = (m: ValuationMethod) => m === 'MANUAL' ? 'Manual value' : m === 'MARKET_PRICE' ? 'Market price' : 'Fixed-rate compounding'
+export const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '', allowedValuationMethods: [] as ValuationMethod[] })
 export const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'QUARTERLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', quantity: '', investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), fixedRateEndDate: '', repaymentFrequency: 'MONTHLY' as RepaymentFrequency, emiAmount: '', emiDayOfMonth: '', loanTermMonths: '', repaymentDueDate: '', description: '' })
 
 export let baseCurrency = 'INR'
