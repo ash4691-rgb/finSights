@@ -18,6 +18,10 @@ public class WatchlistItem {
     private String name;
     @Column(length = 24)
     private String tickerSymbol;
+    /** The tracked symbol's own currency (e.g. a US stock is USD) — distinct from any page-level
+     * display-currency conversion applied when listing. Nullable for rows that predate this field. */
+    @Column(length = 8)
+    private String currency;
     @Column(length = 1024)
     private String notes;
     private Instant createdAt = Instant.now();
@@ -34,6 +38,8 @@ public class WatchlistItem {
     public void setName(String name) { this.name = name; }
     public String getTickerSymbol() { return tickerSymbol; }
     public void setTickerSymbol(String tickerSymbol) { this.tickerSymbol = tickerSymbol; }
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
     public Instant getCreatedAt() { return createdAt; }

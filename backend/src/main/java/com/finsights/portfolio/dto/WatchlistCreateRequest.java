@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 public record WatchlistCreateRequest(
         @NotBlank @Size(min = 1, max = 128, message = "Name must be 1–128 characters") String name,
         @Size(max = 24, message = "Ticker symbol must be 24 characters or fewer") String tickerSymbol,
+        @Size(max = 8, message = "Currency must be 8 characters or fewer") String currency,
         @Size(max = 1024, message = "Notes must be 1024 characters or fewer") String notes,
         @NotNull BigDecimal price
 ) { }
