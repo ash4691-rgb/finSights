@@ -63,7 +63,11 @@ public class TopMoversService {
         for (WatchlistResponse w : watchlist.list()) {
             List<PeriodMovement> triggered = evaluate(thresholdByPeriod, days -> movements.watchlistMovement(w, days));
             if (!triggered.isEmpty()) {
-                results.add(new TopMoverResponse("WATCHLIST", w.id(), w.name(), null, w.tickerSymbol(), w.currentValue(), null, triggered));
+                boolean canConvert = w.currentValue() != null && w.currency() != null;
+                BigDecimal shown = displayCurrency == null || displayCurrency.isBlank() || !canConvert
+                        ? w.currentValue() : fx.convert(w.currentValue(), w.currency(), displayCurrency);
+                String currency = displayCurrency == null || displayCurrency.isBlank() ? w.currency() : displayCurrency.trim().toUpperCase();
+                results.add(new TopMoverResponse("WATCHLIST", w.id(), w.name(), null, w.tickerSymbol(), shown, currency, triggered));
             }
         }
         return results;

@@ -18,7 +18,7 @@ public class WatchlistController {
     public WatchlistController(WatchlistService watchlist) { this.watchlist = watchlist; }
 
     @GetMapping
-    List<WatchlistResponse> list() { return watchlist.list(); }
+    List<WatchlistResponse> list(@RequestParam(required = false) String currency) { return watchlist.list(currency); }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

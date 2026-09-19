@@ -41,10 +41,10 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     finally { setCapturing(false) }
   }
   const loadTopMovers = () => api<TopMover[]>(`/api/insights/top-movers?currency=${displayCurrency}`).then(setTopMovers).catch(() => setTopMovers([]))
-  const loadWatchlist = () => api<WatchlistEntry[]>('/api/watchlist').then(setWatchlist).catch(() => setWatchlist([]))
+  const loadWatchlist = () => api<WatchlistEntry[]>(`/api/watchlist?currency=${displayCurrency}`).then(setWatchlist).catch(() => setWatchlist([]))
   const loadThresholds = () => api<MovementThresholds>('/api/insights/thresholds').then(t => setThresholds(thresholdForm(t))).catch(() => { /* leave defaults */ })
   useEffect(() => { void loadTopMovers() }, [displayCurrency, dataVersion])
-  useEffect(() => { void loadWatchlist() }, [dataVersion])
+  useEffect(() => { void loadWatchlist() }, [displayCurrency, dataVersion])
   useEffect(() => { void loadThresholds() }, [dataVersion])
 
   const saveThresholds = async () => {
@@ -220,7 +220,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
               <tbody>{watchlist.map(item => <tr key={item.id}>
                 <td><div className="name-cell"><strong title={item.name}>{item.name}</strong>{item.notes && <InfoTip text={item.notes} />}</div></td>
                 <td>{item.tickerSymbol || '—'}</td>
-                <td>{item.currentValue != null ? item.currentValue.toLocaleString(numberLocale) : '—'}</td>
+                <td>{item.currentValue == null ? '—' : item.currency ? money(item.currentValue, item.currency) : item.currentValue.toLocaleString(numberLocale)}</td>
                 <td>{since(item.lastUpdated)}</td>
                 <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditingWatch(item)}>Edit</button><button className="danger-link" onClick={() => void removeWatch(item)}>Delete</button></td>
               </tr>)}</tbody>
@@ -349,18 +349,18 @@ export const numOrNull = (value: string) => value === '' ? null : Number(value)
 export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntry | null; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState(() => ({
     name: item?.name ?? '', tickerSymbol: item?.tickerSymbol ?? '', notes: item?.notes ?? '',
-    price: item?.currentValue != null ? String(item.currentValue) : '',
+    price: item?.currentValue != null ? String(item.currentValue) : '', currency: item?.currency ?? '',
   }))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
-  // Name and price always come from the ticker's live quote — a market-linked entry, not free text.
+  // Name, price, and currency always come from the ticker's live quote — a market-linked entry, not free text.
   useEffect(() => {
     const symbol = form.tickerSymbol.trim()
     if (!symbol) return
     const timer = setTimeout(() => {
       api<MarketQuote>(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`)
         .then(q => setForm(current => current.tickerSymbol.trim().toUpperCase() !== symbol.toUpperCase() ? current
-          : { ...current, name: q.name || current.name, price: q.price ? String(q.price) : current.price }))
+          : { ...current, name: q.name || current.name, price: q.price ? String(q.price) : current.price, currency: q.currency || current.currency }))
         .catch(() => { /* leave fields as-is */ })
     }, 400)
     return () => clearTimeout(timer)
@@ -370,14 +370,14 @@ export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntr
     try {
       if (item) {
         await api(`/api/watchlist/${item.id}`, { method: 'PUT', body: JSON.stringify({
-          name: form.name, tickerSymbol: form.tickerSymbol || null, notes: form.notes || null,
+          name: form.name, tickerSymbol: form.tickerSymbol || null, currency: form.currency || null, notes: form.notes || null,
         }) })
-        if (form.price !== '' && Number(form.price) !== item.currentValue) {
+        if (form.price !== '') {
           await api(`/api/watchlist/${item.id}/price`, { method: 'POST', body: JSON.stringify({ price: Number(form.price) }) })
         }
       } else {
         await api('/api/watchlist', { method: 'POST', body: JSON.stringify({
-          name: form.name, tickerSymbol: form.tickerSymbol || null, notes: form.notes || null, price: Number(form.price),
+          name: form.name, tickerSymbol: form.tickerSymbol || null, currency: form.currency || null, notes: form.notes || null, price: Number(form.price),
         }) })
       }
       onSaved()
@@ -391,11 +391,14 @@ export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntr
       <div className="form-grid">
         <Field label="Ticker" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>
         <Field label="Name" wide><input disabled maxLength={128} value={form.name} placeholder="Filled from the ticker" /></Field>
-        <Field label="Current price"><input disabled type="number" value={form.price} placeholder="Filled from the ticker" /></Field>
+        <div className="field-pair">
+          <Field label="Current price"><input disabled type="number" value={form.price} placeholder="Filled from the ticker" /></Field>
+          <Field label="Currency"><input disabled value={form.currency} placeholder="Filled from the ticker" /></Field>
+        </div>
         <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
       </div>
       {error && <p className="form-error">{error}</p>}
-      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.tickerSymbol.trim() || !form.name.trim() || !form.price.trim()}>{saving ? 'Saving…' : item ? 'Save changes' : 'Add to watchlist'}</button></div>
+      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.tickerSymbol.trim() || !form.name.trim() || !form.price.trim() || !form.currency.trim()}>{saving ? 'Saving…' : item ? 'Save changes' : 'Add to watchlist'}</button></div>
     </form>
   </section></div>
 }

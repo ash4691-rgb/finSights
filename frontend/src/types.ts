@@ -61,7 +61,7 @@ export type MovementThresholds = {
   dailyPercent?: number; weeklyPercent?: number; monthlyPercent?: number
   quarterlyPercent?: number; yearlyPercent?: number
 }
-export type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; lastUpdated?: string; createdAt?: string }
+export type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; currency?: string; lastUpdated?: string; createdAt?: string }
 export type TimelineCategoryPoint = { categoryId: string; categoryName: string; kind: 'ASSET' | 'LIABILITY'; invested: number; current: number }
 export type TimelineWeek = { weekOf: string; invested: number; current: number; liabilities: number; netWorth: number; categories: TimelineCategoryPoint[] }
 export type PortfolioTimeline = { weeks: TimelineWeek[]; lastCapturedAt?: string; capturedToday: boolean }

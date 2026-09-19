@@ -119,9 +119,10 @@ class TopMoversServiceTest {
     void watchlistItemsAreAlwaysEligibleRegardlessOfHoldingFilters() {
         when(thresholds.get()).thenReturn(DAILY_5_PERCENT);
         when(holdings.list()).thenReturn(List.of());
-        WatchlistResponse item = new WatchlistResponse("w-1", "Nifty 50", "NIFTY", null, new BigDecimal("25000"), Instant.now(), Instant.now());
+        WatchlistResponse item = new WatchlistResponse("w-1", "Nifty 50", "NIFTY", null, new BigDecimal("25000"), "INR", Instant.now(), Instant.now());
         when(watchlist.list()).thenReturn(List.of(item));
         when(movements.watchlistMovement(item, 1)).thenReturn(new BigDecimal("7"));
+        when(fx.convert(any(), any(), any())).thenReturn(item.currentValue());
 
         List<TopMoverResponse> result = service.topMovers("INR");
 
