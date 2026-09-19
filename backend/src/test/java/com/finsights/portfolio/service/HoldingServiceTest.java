@@ -259,6 +259,8 @@ class HoldingServiceTest {
         service.list();
 
         verify(marketData, never()).history(any(), any());
+    }
+
     private void stubForUpdate(Category category) {
         UserAccount user = new UserAccount("demo@finsights.local", "Demo");
         holding.setUser(user);
