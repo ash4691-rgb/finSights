@@ -55,13 +55,11 @@ export type TopMover = {
   subjectType: 'HOLDING' | 'WATCHLIST'; id: string; name: string; categoryName?: string; tickerSymbol?: string
   currentValue?: number; currency?: string; triggered: PeriodMovement[]
 }
-// Insights-owned — independent up/down % per lookback period; a period's direction is "off" when its field is absent.
+// Insights-owned — a single % per lookback period; a move past it either way, up or down, counts.
+// A period is "off" when its field is absent.
 export type MovementThresholds = {
-  dailyUpPercent?: number; dailyDownPercent?: number
-  weeklyUpPercent?: number; weeklyDownPercent?: number
-  monthlyUpPercent?: number; monthlyDownPercent?: number
-  quarterlyUpPercent?: number; quarterlyDownPercent?: number
-  yearlyUpPercent?: number; yearlyDownPercent?: number
+  dailyPercent?: number; weeklyPercent?: number; monthlyPercent?: number
+  quarterlyPercent?: number; yearlyPercent?: number
 }
 export type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; lastUpdated?: string; createdAt?: string }
 export type TimelineCategoryPoint = { categoryId: string; categoryName: string; kind: 'ASSET' | 'LIABILITY'; invested: number; current: number }

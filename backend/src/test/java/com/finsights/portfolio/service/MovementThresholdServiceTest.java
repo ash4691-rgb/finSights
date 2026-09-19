@@ -33,15 +33,15 @@ class MovementThresholdServiceTest {
     }
 
     @Test
-    void getFallsBackToLegacyUpOnlySettingsWhenNoRowExistsYet() {
+    void getFallsBackToLegacySettingsWhenNoRowExistsYet() {
         user.setDailyThresholdPercent(new BigDecimal("5.00"));
         when(currentUser.currentUser()).thenReturn(user);
         when(repository.findByUser(user)).thenReturn(Optional.empty());
 
         MovementThresholdResponse response = service.get();
 
-        assertThat(response.dailyUpPercent()).isEqualByComparingTo("5.00");
-        assertThat(response.dailyDownPercent()).isNull();
+        assertThat(response.dailyPercent()).isEqualByComparingTo("5.00");
+        assertThat(response.weeklyPercent()).isNull();
     }
 
     @Test
@@ -49,37 +49,31 @@ class MovementThresholdServiceTest {
         when(currentUser.currentUser()).thenReturn(user);
         MovementThreshold row = new MovementThreshold();
         row.setUser(user);
-        row.setDailyUpPercent(new BigDecimal("6.00"));
-        row.setDailyDownPercent(new BigDecimal("12.00"));
+        row.setDailyPercent(new BigDecimal("6.00"));
         when(repository.findByUser(user)).thenReturn(Optional.of(row));
 
         MovementThresholdResponse response = service.get();
 
-        assertThat(response.dailyUpPercent()).isEqualByComparingTo("6.00");
-        assertThat(response.dailyDownPercent()).isEqualByComparingTo("12.00");
+        assertThat(response.dailyPercent()).isEqualByComparingTo("6.00");
     }
 
     @Test
-    void saveCreatesARowOnFirstUseAndPersistsBothDirections() {
+    void saveCreatesARowOnFirstUse() {
         when(currentUser.currentUser()).thenReturn(user);
         when(repository.findByUser(user)).thenReturn(Optional.empty());
         when(repository.save(any(MovementThreshold.class))).thenAnswer(inv -> inv.getArgument(0));
-        MovementThresholdRequest request = new MovementThresholdRequest(
-                new BigDecimal("5"), new BigDecimal("10"),
-                null, null, null, null, null, null, null, null);
+        MovementThresholdRequest request = new MovementThresholdRequest(new BigDecimal("5"), null, null, null, null);
 
         MovementThresholdResponse response = service.save(request);
 
-        assertThat(response.dailyUpPercent()).isEqualByComparingTo("5");
-        assertThat(response.dailyDownPercent()).isEqualByComparingTo("10");
+        assertThat(response.dailyPercent()).isEqualByComparingTo("5");
     }
 
     @Test
     void saveRejectsNegativeThresholds() {
         when(currentUser.currentUser()).thenReturn(user);
         when(repository.findByUser(user)).thenReturn(Optional.empty());
-        MovementThresholdRequest request = new MovementThresholdRequest(
-                new BigDecimal("-1"), null, null, null, null, null, null, null, null, null);
+        MovementThresholdRequest request = new MovementThresholdRequest(new BigDecimal("-1"), null, null, null, null);
 
         try {
             service.save(request);
