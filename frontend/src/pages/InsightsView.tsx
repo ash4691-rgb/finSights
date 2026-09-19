@@ -2,8 +2,8 @@ import { Fragment, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
 import { LayoutZone } from '../layout'
-import { money, percent, label, since, ago, numeric, periodLabels, periodFields, numberLocale } from '../util'
-import { Field, SymbolSearchInput, InfoTip } from '../ui'
+import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
+import { Field, SymbolSearchInput } from '../ui'
 import { seriesKeysOf } from '../widgets'
 import type { PageDataSource } from '../widgets'
 import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote } from '../types'
@@ -13,7 +13,7 @@ import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, Mo
 // Insights is deliberately not a second Overview: the shared breakdown/movers data that also
 // appears on the Dashboard lives in the collapsed "Portfolio overview" section at the bottom.
 // This page's own job is Hot Picks (market-linked holdings + watchlist symbols moving beyond a
-// configured up/down threshold) and data-quality checks.
+// configured threshold) and data-quality checks.
 export function InsightsView({ displayCurrency, dataVersion, settings, dashboard, reload, onOpen, layoutEditing, layoutNonce }: {
   displayCurrency: string; dataVersion: number; settings: Settings; dashboard: Dashboard; reload: () => Promise<void>; onOpen: (id: string) => void
   layoutEditing: boolean; layoutNonce: number
@@ -26,6 +26,8 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   const [savingThresholds, setSavingThresholds] = useState(false)
   const [addingWatch, setAddingWatch] = useState(false)
   const [editingWatch, setEditingWatch] = useState<WatchlistEntry | null>(null)
+  const [thresholdsOpen, setThresholdsOpen] = useState(false)
+  const [watchlistOpen, setWatchlistOpen] = useState(false)
   const [timeline, setTimeline] = useState<PortfolioTimeline | null>(null)
   const [capturing, setCapturing] = useState(false)
 
@@ -49,11 +51,9 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     setSavingThresholds(true)
     try {
       await api('/api/insights/thresholds', { method: 'PUT', body: JSON.stringify({
-        dailyUpPercent: numOrNull(thresholds.DAILY.up), dailyDownPercent: numOrNull(thresholds.DAILY.down),
-        weeklyUpPercent: numOrNull(thresholds.WEEKLY.up), weeklyDownPercent: numOrNull(thresholds.WEEKLY.down),
-        monthlyUpPercent: numOrNull(thresholds.MONTHLY.up), monthlyDownPercent: numOrNull(thresholds.MONTHLY.down),
-        quarterlyUpPercent: numOrNull(thresholds.QUARTERLY.up), quarterlyDownPercent: numOrNull(thresholds.QUARTERLY.down),
-        yearlyUpPercent: numOrNull(thresholds.YEARLY.up), yearlyDownPercent: numOrNull(thresholds.YEARLY.down),
+        dailyPercent: numOrNull(thresholds.DAILY), weeklyPercent: numOrNull(thresholds.WEEKLY),
+        monthlyPercent: numOrNull(thresholds.MONTHLY), quarterlyPercent: numOrNull(thresholds.QUARTERLY),
+        yearlyPercent: numOrNull(thresholds.YEARLY),
       }) })
       await loadTopMovers()
     } finally { setSavingThresholds(false) }
@@ -65,7 +65,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
   if (error) return <p className="hint">{error}</p>
   if (!data) return <p className="hint">Loading insights…</p>
-  const thresholdsSet = Object.values(thresholds).filter(pair => pair.up.trim() !== '' || pair.down.trim() !== '').length
+  const thresholdsSet = Object.values(thresholds).filter(value => value.trim() !== '').length
 
   const isPendingAction = (kind: string) =>
     kind === 'EMI_DUE' || kind === 'EMI_OVERDUE' || kind === 'INTEREST_DUE' || kind === 'INTEREST_OVERDUE'
@@ -183,44 +183,49 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
               <div className="top-mover-badges">{pick.triggered.map(t => <span key={t.period} className={`mover-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>{periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}%</span>)}</div>
             </button>)}
           </div> : thresholdsSet === 0
-            ? <p className="hint">No thresholds set yet — set an up or down % in the Thresholds panel to choose how far a market-linked holding has to move before it lands here.</p>
+            ? <p className="hint">No thresholds set yet — open <button className="inline-link" onClick={() => setThresholdsOpen(true)}>Thresholds</button> to choose how far a market-linked holding has to move before it lands here.</p>
             : <p className="hint">Nothing is outside your configured thresholds right now.</p>}
         </div>,
 
         thresholds: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">🎯</span><h4>Thresholds</h4>
-            <span className="action-col-info"><InfoTip text="Each lookback window checks the move since that many days ago against its own up % and down % — either one alone can put a holding or watchlist symbol into Movers. Leave both blank to turn a window off." /></span>
-          </div>
-          <p className="hint">Up % catches gains, down % catches drops — set either or both, independently, per window.</p>
-          <div className="threshold-grid">
-            <div className="threshold-grid-row threshold-grid-head"><span /><span>Up %</span><span>Down %</span></div>
-            {periodFields.map(([key, text]) => <div className="threshold-grid-row" key={key}>
-              <span>{text}</span>
-              <input type="number" min="0" step="0.1" placeholder="e.g. 5" value={thresholds[key].up}
-                onChange={e => setThresholds(current => ({ ...current, [key]: { ...current[key], up: e.target.value } }))} />
-              <input type="number" min="0" step="0.1" placeholder="e.g. 10" value={thresholds[key].down}
-                onChange={e => setThresholds(current => ({ ...current, [key]: { ...current[key], down: e.target.value } }))} />
-            </div>)}
-          </div>
-          <button className="primary compact" onClick={() => void saveThresholds()} disabled={savingThresholds}>{savingThresholds ? 'Saving…' : 'Save thresholds'}</button>
+          <button className="action-col-head action-col-toggle" onClick={() => setThresholdsOpen(open => !open)} aria-expanded={thresholdsOpen}>
+            <span className="action-col-icon">🎯</span><h4>Thresholds</h4><span className="action-col-count">{thresholdsSet}</span>
+            <span className="action-col-caret">{toggleLabel(thresholdsOpen)}</span>
+          </button>
+          {thresholdsOpen && <>
+            <p className="hint">A single % per window — a move past it, up or down, puts a holding or watchlist symbol into Movers. Leave a window blank to turn it off.</p>
+            <div className="threshold-list">
+              {periodFields.map(([key, text]) => <div className="threshold-list-row" key={key}>
+                <span>{text}</span>
+                <input type="number" min="0" step="0.1" placeholder="e.g. 5" value={thresholds[key]}
+                  onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))} />
+              </div>)}
+            </div>
+            <button className="primary compact" onClick={() => void saveThresholds()} disabled={savingThresholds}>{savingThresholds ? 'Saving…' : 'Save thresholds'}</button>
+          </>}
         </div>,
 
         watchlist: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">👁</span><h4>Watchlist</h4><span className="action-col-count">{watchlist.length}</span></div>
-          <div className="watchlist-actions">
-            <span className="watchlist-count">{watchlist.length ? `${watchlist.length} symbol${watchlist.length === 1 ? '' : 's'} tracked` : 'No symbols yet'}</span>
-            <button className="outline compact" onClick={() => setAddingWatch(true)}>+ Add to watchlist</button>
-          </div>
-          {watchlist.length ? <div className="table-panel"><table>
-            <thead><tr><th>Name</th><th>Ticker</th><th>Price</th><th>Last updated</th><th /></tr></thead>
-            <tbody>{watchlist.map(item => <tr key={item.id}>
-              <td><strong>{item.name}</strong>{item.notes && <small className="owner">{item.notes}</small>}</td>
-              <td>{item.tickerSymbol || '—'}</td>
-              <td>{item.currentValue != null ? item.currentValue.toLocaleString(numberLocale) : '—'}</td>
-              <td>{since(item.lastUpdated)}</td>
-              <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditingWatch(item)}>Edit</button><button className="danger-link" onClick={() => void removeWatch(item)}>Delete</button></td>
-            </tr>)}</tbody>
-          </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Hot Picks too.</p>}
+          <button className="action-col-head action-col-toggle" onClick={() => setWatchlistOpen(open => !open)} aria-expanded={watchlistOpen}>
+            <span className="action-col-icon">👁</span><h4>Watchlist</h4><span className="action-col-count">{watchlist.length}</span>
+            <span className="action-col-caret">{toggleLabel(watchlistOpen)}</span>
+          </button>
+          {watchlistOpen && <>
+            <div className="watchlist-actions">
+              <span className="watchlist-count">{watchlist.length ? `${watchlist.length} symbol${watchlist.length === 1 ? '' : 's'} tracked` : 'No symbols yet'}</span>
+              <button className="outline compact" onClick={() => setAddingWatch(true)}>+ Add to watchlist</button>
+            </div>
+            {watchlist.length ? <div className="table-panel"><table>
+              <thead><tr><th>Name</th><th>Ticker</th><th>Price</th><th>Last updated</th><th /></tr></thead>
+              <tbody>{watchlist.map(item => <tr key={item.id}>
+                <td><strong>{item.name}</strong>{item.notes && <small className="owner">{item.notes}</small>}</td>
+                <td>{item.tickerSymbol || '—'}</td>
+                <td>{item.currentValue != null ? item.currentValue.toLocaleString(numberLocale) : '—'}</td>
+                <td>{since(item.lastUpdated)}</td>
+                <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditingWatch(item)}>Edit</button><button className="danger-link" onClick={() => void removeWatch(item)}>Delete</button></td>
+              </tr>)}</tbody>
+            </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Hot Picks too.</p>}
+          </>}
         </div>,
       }} />
     </section>,
@@ -329,16 +334,14 @@ export function TimelineTable({ weeks }: { weeks: TimelineWeek[] }) {
   </table></div>
 }
 
-export type ThresholdPair = { up: string; down: string }
-export function thresholdForm(thresholds: MovementThresholds | null): Record<PeriodKey, ThresholdPair> {
-  const pair = (up?: number, down?: number): ThresholdPair =>
-    ({ up: up != null ? String(up) : '', down: down != null ? String(down) : '' })
+export function thresholdForm(thresholds: MovementThresholds | null): Record<PeriodKey, string> {
+  const value = (v?: number) => v != null ? String(v) : ''
   return {
-    DAILY: pair(thresholds?.dailyUpPercent, thresholds?.dailyDownPercent),
-    WEEKLY: pair(thresholds?.weeklyUpPercent, thresholds?.weeklyDownPercent),
-    MONTHLY: pair(thresholds?.monthlyUpPercent, thresholds?.monthlyDownPercent),
-    QUARTERLY: pair(thresholds?.quarterlyUpPercent, thresholds?.quarterlyDownPercent),
-    YEARLY: pair(thresholds?.yearlyUpPercent, thresholds?.yearlyDownPercent),
+    DAILY: value(thresholds?.dailyPercent),
+    WEEKLY: value(thresholds?.weeklyPercent),
+    MONTHLY: value(thresholds?.monthlyPercent),
+    QUARTERLY: value(thresholds?.quarterlyPercent),
+    YEARLY: value(thresholds?.yearlyPercent),
   }
 }
 export const numOrNull = (value: string) => value === '' ? null : Number(value)

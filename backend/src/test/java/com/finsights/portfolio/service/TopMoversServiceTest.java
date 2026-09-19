@@ -30,11 +30,9 @@ class TopMoversServiceTest {
     @Mock FxRateService fx;
     private TopMoversService service;
 
-    // Only the DAILY period is configured; up and down thresholds differ so the two directions
-    // can be told apart in assertions.
-    private static final MovementThresholdResponse ASYMMETRIC = new MovementThresholdResponse(
-            new BigDecimal("5"), new BigDecimal("20"),
-            null, null, null, null, null, null, null, null);
+    // Only the DAILY period is configured.
+    private static final MovementThresholdResponse DAILY_5_PERCENT = new MovementThresholdResponse(
+            new BigDecimal("5"), null, null, null, null);
 
     @BeforeEach
     void setUp() {
@@ -43,11 +41,11 @@ class TopMoversServiceTest {
     }
 
     @Test
-    void uptrendIsCheckedAgainstTheUpThresholdOnly() {
-        when(thresholds.get()).thenReturn(ASYMMETRIC);
+    void uptrendPastTheThresholdTriggers() {
+        when(thresholds.get()).thenReturn(DAILY_5_PERCENT);
         HoldingResponse holding = holding("h-1", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
         when(holdings.list()).thenReturn(List.of(holding));
-        when(movements.holdingMovement(holding, 1)).thenReturn(new BigDecimal("6")); // above the 5% up threshold
+        when(movements.holdingMovement(holding, 1)).thenReturn(new BigDecimal("6")); // above the 5% threshold
         when(fx.convert(any(), any(), any())).thenReturn(holding.currentValue());
 
         List<TopMoverResponse> result = service.topMovers("INR");
@@ -57,24 +55,11 @@ class TopMoversServiceTest {
     }
 
     @Test
-    void downtrendBelowTheDownThresholdDoesNotTrigger() {
-        when(thresholds.get()).thenReturn(ASYMMETRIC);
+    void downtrendPastTheThresholdAlsoTriggers() {
+        when(thresholds.get()).thenReturn(DAILY_5_PERCENT);
         HoldingResponse holding = holding("h-1", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
         when(holdings.list()).thenReturn(List.of(holding));
-        // -10% would trip the (unused) up threshold of 5%, but the down threshold is 20% — no trigger.
-        when(movements.holdingMovement(holding, 1)).thenReturn(new BigDecimal("-10"));
-
-        List<TopMoverResponse> result = service.topMovers("INR");
-
-        assertThat(result).isEmpty();
-    }
-
-    @Test
-    void downtrendPastTheDownThresholdTriggers() {
-        when(thresholds.get()).thenReturn(ASYMMETRIC);
-        HoldingResponse holding = holding("h-1", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
-        when(holdings.list()).thenReturn(List.of(holding));
-        when(movements.holdingMovement(holding, 1)).thenReturn(new BigDecimal("-25"));
+        when(movements.holdingMovement(holding, 1)).thenReturn(new BigDecimal("-6")); // same threshold, either direction
         when(fx.convert(any(), any(), any())).thenReturn(holding.currentValue());
 
         List<TopMoverResponse> result = service.topMovers("INR");
@@ -83,8 +68,20 @@ class TopMoversServiceTest {
     }
 
     @Test
+    void movementBelowTheThresholdDoesNotTrigger() {
+        when(thresholds.get()).thenReturn(DAILY_5_PERCENT);
+        HoldingResponse holding = holding("h-1", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
+        when(holdings.list()).thenReturn(List.of(holding));
+        when(movements.holdingMovement(holding, 1)).thenReturn(new BigDecimal("-3"));
+
+        List<TopMoverResponse> result = service.topMovers("INR");
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
     void nonMarketLinkedHoldingsAreExcludedWithoutEvenCheckingMovement() {
-        when(thresholds.get()).thenReturn(ASYMMETRIC);
+        when(thresholds.get()).thenReturn(DAILY_5_PERCENT);
         HoldingResponse manual = holding("h-1", ValuationMethod.MANUAL, HoldingKind.ASSET);
         HoldingResponse fixedRate = holding("h-2", ValuationMethod.FIXED_RATE, HoldingKind.ASSET);
         when(holdings.list()).thenReturn(List.of(manual, fixedRate));
@@ -96,7 +93,7 @@ class TopMoversServiceTest {
 
     @Test
     void liabilitiesAreExcluded() {
-        when(thresholds.get()).thenReturn(ASYMMETRIC);
+        when(thresholds.get()).thenReturn(DAILY_5_PERCENT);
         HoldingResponse liability = holding("h-1", ValuationMethod.MARKET_PRICE, HoldingKind.LIABILITY);
         when(holdings.list()).thenReturn(List.of(liability));
 
@@ -107,7 +104,7 @@ class TopMoversServiceTest {
 
     @Test
     void brokerSyncHoldingsCountAsMarketLinked() {
-        when(thresholds.get()).thenReturn(ASYMMETRIC);
+        when(thresholds.get()).thenReturn(DAILY_5_PERCENT);
         HoldingResponse holding = holding("h-1", ValuationMethod.BROKER_SYNC, HoldingKind.ASSET);
         when(holdings.list()).thenReturn(List.of(holding));
         when(movements.holdingMovement(holding, 1)).thenReturn(new BigDecimal("8"));
@@ -120,7 +117,7 @@ class TopMoversServiceTest {
 
     @Test
     void watchlistItemsAreAlwaysEligibleRegardlessOfHoldingFilters() {
-        when(thresholds.get()).thenReturn(ASYMMETRIC);
+        when(thresholds.get()).thenReturn(DAILY_5_PERCENT);
         when(holdings.list()).thenReturn(List.of());
         WatchlistResponse item = new WatchlistResponse("w-1", "Nifty 50", "NIFTY", null, new BigDecimal("25000"), Instant.now(), Instant.now());
         when(watchlist.list()).thenReturn(List.of(item));

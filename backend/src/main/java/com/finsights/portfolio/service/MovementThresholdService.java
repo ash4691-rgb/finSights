@@ -11,10 +11,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Up and down movement thresholds per lookback period, owned outright by Top movers. A user with
- * no row here yet reads their legacy up-only values (Platform's per-period Settings fields on
- * {@link UserAccount}) so existing configuration isn't lost; the first save here switches them
- * over to this table for good and gives Settings' fields no further say in Top movers.
+ * A single movement threshold per lookback period, owned outright by Hot Picks — a move past it in
+ * either direction, up or down, counts. A user with no row here yet reads their legacy values
+ * (Platform's per-period Settings fields on {@link UserAccount}) so existing configuration isn't
+ * lost; the first save here switches them over to this table for good and gives Settings' fields
+ * no further say in Hot Picks.
  */
 @Service
 public class MovementThresholdService {
@@ -29,11 +30,8 @@ public class MovementThresholdService {
     public MovementThresholdResponse get() {
         UserAccount user = currentUser.currentUser();
         return repository.findByUser(user).map(this::toResponse).orElseGet(() -> new MovementThresholdResponse(
-                user.getDailyThresholdPercent(), null,
-                user.getWeeklyThresholdPercent(), null,
-                user.getMonthlyThresholdPercent(), null,
-                user.getQuarterlyThresholdPercent(), null,
-                user.getYearlyThresholdPercent(), null));
+                user.getDailyThresholdPercent(), user.getWeeklyThresholdPercent(), user.getMonthlyThresholdPercent(),
+                user.getQuarterlyThresholdPercent(), user.getYearlyThresholdPercent()));
     }
 
     public MovementThresholdResponse save(MovementThresholdRequest request) {
@@ -43,16 +41,11 @@ public class MovementThresholdService {
             created.setUser(user);
             return created;
         });
-        row.setDailyUpPercent(nonNegative(request.dailyUpPercent(), "dailyUpPercent"));
-        row.setDailyDownPercent(nonNegative(request.dailyDownPercent(), "dailyDownPercent"));
-        row.setWeeklyUpPercent(nonNegative(request.weeklyUpPercent(), "weeklyUpPercent"));
-        row.setWeeklyDownPercent(nonNegative(request.weeklyDownPercent(), "weeklyDownPercent"));
-        row.setMonthlyUpPercent(nonNegative(request.monthlyUpPercent(), "monthlyUpPercent"));
-        row.setMonthlyDownPercent(nonNegative(request.monthlyDownPercent(), "monthlyDownPercent"));
-        row.setQuarterlyUpPercent(nonNegative(request.quarterlyUpPercent(), "quarterlyUpPercent"));
-        row.setQuarterlyDownPercent(nonNegative(request.quarterlyDownPercent(), "quarterlyDownPercent"));
-        row.setYearlyUpPercent(nonNegative(request.yearlyUpPercent(), "yearlyUpPercent"));
-        row.setYearlyDownPercent(nonNegative(request.yearlyDownPercent(), "yearlyDownPercent"));
+        row.setDailyPercent(nonNegative(request.dailyPercent(), "dailyPercent"));
+        row.setWeeklyPercent(nonNegative(request.weeklyPercent(), "weeklyPercent"));
+        row.setMonthlyPercent(nonNegative(request.monthlyPercent(), "monthlyPercent"));
+        row.setQuarterlyPercent(nonNegative(request.quarterlyPercent(), "quarterlyPercent"));
+        row.setYearlyPercent(nonNegative(request.yearlyPercent(), "yearlyPercent"));
         return toResponse(repository.save(row));
     }
 
@@ -65,10 +58,7 @@ public class MovementThresholdService {
 
     private MovementThresholdResponse toResponse(MovementThreshold row) {
         return new MovementThresholdResponse(
-                row.getDailyUpPercent(), row.getDailyDownPercent(),
-                row.getWeeklyUpPercent(), row.getWeeklyDownPercent(),
-                row.getMonthlyUpPercent(), row.getMonthlyDownPercent(),
-                row.getQuarterlyUpPercent(), row.getQuarterlyDownPercent(),
-                row.getYearlyUpPercent(), row.getYearlyDownPercent());
+                row.getDailyPercent(), row.getWeeklyPercent(), row.getMonthlyPercent(),
+                row.getQuarterlyPercent(), row.getYearlyPercent());
     }
 }

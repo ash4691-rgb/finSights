@@ -5,9 +5,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * Per-user, per-period movement thresholds that drive Top movers — an independent up % and down %
- * for each lookback window (see {@link com.finsights.portfolio.service.MovementService#PERIOD_DAYS}).
- * One row per user, created lazily on first save.
+ * Per-user, per-period movement thresholds that drive Top movers — a single % for each lookback
+ * window (see {@link com.finsights.portfolio.service.MovementService#PERIOD_DAYS}); a move past it
+ * in either direction, up or down, counts. One row per user, created lazily on first save.
  */
 @Entity
 @Table(name = "movement_thresholds")
@@ -18,16 +18,11 @@ public class MovementThreshold {
     @JoinColumn(unique = true)
     private UserAccount user;
 
-    @Column(precision = 6, scale = 2) private BigDecimal dailyUpPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal dailyDownPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal weeklyUpPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal weeklyDownPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal monthlyUpPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal monthlyDownPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal quarterlyUpPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal quarterlyDownPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal yearlyUpPercent;
-    @Column(precision = 6, scale = 2) private BigDecimal yearlyDownPercent;
+    @Column(precision = 6, scale = 2) private BigDecimal dailyPercent;
+    @Column(precision = 6, scale = 2) private BigDecimal weeklyPercent;
+    @Column(precision = 6, scale = 2) private BigDecimal monthlyPercent;
+    @Column(precision = 6, scale = 2) private BigDecimal quarterlyPercent;
+    @Column(precision = 6, scale = 2) private BigDecimal yearlyPercent;
     private Instant updatedAt = Instant.now();
 
     @PreUpdate
@@ -36,25 +31,15 @@ public class MovementThreshold {
     public String getId() { return id; }
     public UserAccount getUser() { return user; }
     public void setUser(UserAccount user) { this.user = user; }
-    public BigDecimal getDailyUpPercent() { return dailyUpPercent; }
-    public void setDailyUpPercent(BigDecimal value) { this.dailyUpPercent = value; }
-    public BigDecimal getDailyDownPercent() { return dailyDownPercent; }
-    public void setDailyDownPercent(BigDecimal value) { this.dailyDownPercent = value; }
-    public BigDecimal getWeeklyUpPercent() { return weeklyUpPercent; }
-    public void setWeeklyUpPercent(BigDecimal value) { this.weeklyUpPercent = value; }
-    public BigDecimal getWeeklyDownPercent() { return weeklyDownPercent; }
-    public void setWeeklyDownPercent(BigDecimal value) { this.weeklyDownPercent = value; }
-    public BigDecimal getMonthlyUpPercent() { return monthlyUpPercent; }
-    public void setMonthlyUpPercent(BigDecimal value) { this.monthlyUpPercent = value; }
-    public BigDecimal getMonthlyDownPercent() { return monthlyDownPercent; }
-    public void setMonthlyDownPercent(BigDecimal value) { this.monthlyDownPercent = value; }
-    public BigDecimal getQuarterlyUpPercent() { return quarterlyUpPercent; }
-    public void setQuarterlyUpPercent(BigDecimal value) { this.quarterlyUpPercent = value; }
-    public BigDecimal getQuarterlyDownPercent() { return quarterlyDownPercent; }
-    public void setQuarterlyDownPercent(BigDecimal value) { this.quarterlyDownPercent = value; }
-    public BigDecimal getYearlyUpPercent() { return yearlyUpPercent; }
-    public void setYearlyUpPercent(BigDecimal value) { this.yearlyUpPercent = value; }
-    public BigDecimal getYearlyDownPercent() { return yearlyDownPercent; }
-    public void setYearlyDownPercent(BigDecimal value) { this.yearlyDownPercent = value; }
+    public BigDecimal getDailyPercent() { return dailyPercent; }
+    public void setDailyPercent(BigDecimal value) { this.dailyPercent = value; }
+    public BigDecimal getWeeklyPercent() { return weeklyPercent; }
+    public void setWeeklyPercent(BigDecimal value) { this.weeklyPercent = value; }
+    public BigDecimal getMonthlyPercent() { return monthlyPercent; }
+    public void setMonthlyPercent(BigDecimal value) { this.monthlyPercent = value; }
+    public BigDecimal getQuarterlyPercent() { return quarterlyPercent; }
+    public void setQuarterlyPercent(BigDecimal value) { this.quarterlyPercent = value; }
+    public BigDecimal getYearlyPercent() { return yearlyPercent; }
+    public void setYearlyPercent(BigDecimal value) { this.yearlyPercent = value; }
     public Instant getUpdatedAt() { return updatedAt; }
 }
