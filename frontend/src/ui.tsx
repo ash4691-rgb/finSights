@@ -13,6 +13,22 @@ export function Switch({ checked, onChange, text, icon, disabled, title }: { che
 
 export function Field({ label: title, children, required, wide }: { label: React.ReactNode; children: React.ReactNode; required?: boolean; wide?: boolean }) { return <label className={wide ? 'field wide' : 'field'}><span>{title}{required && <b> *</b>}</span>{children}</label> }
 
+// Esc closes whatever modal/drawer/pop-up called this — with a confirm prompt first when
+// `dirty` says there are unsaved changes to lose. Every modal in the app is mutually exclusive
+// with every other (opening one always closes whatever was open first), so there's never more
+// than one of these listening at a time.
+export function useEscToClose(onClose: () => void, dirty = false) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (dirty && !confirm('Discard unsaved changes?')) return
+      onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose, dirty])
+}
+
 // A small ⓘ dot that shows `text` in a floating tooltip on hover/focus. Positioned with
 // position:fixed off the icon's rect so it never gets clipped by a table's overflow.
 export function InfoTip({ text }: { text: string }) {

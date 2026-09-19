@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, API_URL } from '../api'
 import { money, rate, label, since, numeric, shortId, transactionTypes, assetTxnTypes, liabilityTxnTypes } from '../util'
-import { Field, InfoTip } from '../ui'
+import { Field, InfoTip, useEscToClose } from '../ui'
 import type { Transaction, Holding, TransactionType, ImportResult } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -117,9 +117,10 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
     ? { holdingId: transaction.holdingId, type: transaction.type, date: transaction.date.slice(0, 10), amount: String(transaction.amount), quantity: transaction.quantity != null ? String(transaction.quantity) : '', interestPaid: !!transaction.interestPaid, notes: transaction.notes || '' }
     : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', interestPaid: false, notes: '' })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
   const liability = isLiab(form.holdingId)
   const allowedTypes = liability ? liabilityTxnTypes : assetTxnTypes
-  const set = (key: string, value: string | boolean) => setForm(current => {
+  const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => {
     const next = { ...current, [key]: value }
     if (key === 'holdingId') {
       const nowLiab = holdings.find(h => h.id === value)?.kind === 'LIABILITY'
@@ -127,7 +128,8 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
       if (!nowLiab && !assetTxnTypes.includes(next.type)) next.type = 'BUY'
     }
     return next
-  })
+  }) }
+  useEscToClose(onClose, dirty)
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('')
     const payload = { holdingId: form.holdingId, type: form.type, date: form.date, amount: form.type === 'SPLIT' ? 0 : numeric(form.amount), quantity: form.quantity ? numeric(form.quantity) : null, interestPaid: form.type === 'INTEREST' ? form.interestPaid : null, notes: form.notes || null }
@@ -191,6 +193,7 @@ export function HoldingPicker({ holdings, value, onChange, allowClear, clearLabe
 }
 
 export function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+  useEscToClose(onClose)
   const [tab, setTab] = useState<'csv' | 'xml'>('csv')
   const [busy, setBusy] = useState(false)
   const [fileName, setFileName] = useState('')

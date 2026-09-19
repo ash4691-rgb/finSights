@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
 import { money, percent, label, blankCategoryForm, selectableValuationMethods, valuationMethodLabel } from '../util'
-import { Field, InfoTip } from '../ui'
+import { Field, InfoTip, useEscToClose } from '../ui'
 import type { Category, Holding, HoldingKind } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -94,6 +94,7 @@ export function CategoryDrawer({ category, holdings, onClose, onEdit, onAddHoldi
   category: Category; holdings: Holding[]; onClose: () => void; onEdit: (c: Category) => void
   onAddHolding: (c: Category) => void; onOpenHolding: (h: Holding) => void; reload: () => Promise<void>
 }) {
+  useEscToClose(onClose)
   const removeCategory = async () => {
     if (!confirm(`Delete ${category.name} and its ${holdings.length} holding${holdings.length === 1 ? '' : 's'}? This also removes their transactions.`)) return
     await api(`/api/categories/${category.id}`, { method: 'DELETE' }); await reload(); onClose()
@@ -131,7 +132,9 @@ export function CategoryModal({ category, holdings, onClose, onSaved }: { catego
     ? { name: category.name, kind: category.kind, description: category.description || '', allowedValuationMethods: category.allowedValuationMethods ?? [] }
     : blankCategoryForm())
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
-  const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
+  const [dirty, setDirty] = useState(false)
+  const set = (key: string, value: string) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
+  useEscToClose(onClose, dirty)
 
   // Holdings already filed under this category whose current valuation method would fall
   // outside the selection being saved — saving the restriction now would strand them.
@@ -156,9 +159,9 @@ export function CategoryModal({ category, holdings, onClose, onSaved }: { catego
           <div className="check-row">
             {selectableValuationMethods.map(m => <label key={m}>
               <input type="checkbox" checked={form.allowedValuationMethods.includes(m)}
-                onChange={e => setForm(current => ({ ...current, allowedValuationMethods: e.target.checked
+                onChange={e => { setDirty(true); setForm(current => ({ ...current, allowedValuationMethods: e.target.checked
                   ? [...current.allowedValuationMethods, m]
-                  : current.allowedValuationMethods.filter(x => x !== m) }))} /> {valuationMethodLabel(m)}
+                  : current.allowedValuationMethods.filter(x => x !== m) })) }} /> {valuationMethodLabel(m)}
             </label>)}
           </div>
           <p className="hint">Leave all unchecked to allow every method. Checked methods are enforced on holdings filed under this category.</p>

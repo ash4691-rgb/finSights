@@ -3,7 +3,7 @@ import type * as React from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
 import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel } from '../util'
-import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput } from '../ui'
+import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
 import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
@@ -124,7 +124,9 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   const isMarket = !isLiability && form.valuationMethod === 'MARKET_PRICE'
   const isOneTime = isLiability && form.repaymentFrequency === 'ONE_TIME'
   const isEdit = !!holding
-  const set = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }))
+  const [dirty, setDirty] = useState(false)
+  const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
+  useEscToClose(onClose, dirty)
   const allowedMethods = selectedCategory?.allowedValuationMethods
   const methodOptions = allowedMethods && allowedMethods.length ? selectableValuationMethods.filter(m => allowedMethods.includes(m)) : selectableValuationMethods
 
@@ -249,7 +251,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
           <label><input type="checkbox" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} /> Blocked / NPA <InfoTip text="The holding is locked, pledged, in default, or a non-performing asset. It is valued separately from healthy assets and flagged in the Action centre." /></label>
         </div>
         <Field label="Tags" wide>
-          <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => setForm(current => ({ ...current, tags: next }))} />
+          <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => { setDirty(true); setForm(current => ({ ...current, tags: next })) }} />
         </Field>
       </div>
       {isEdit && !isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
@@ -276,6 +278,7 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { h
   const [txns, setTxns] = useState<Transaction[] | null>(null)
   const [visibleTxns, setVisibleTxns] = useState(10)
   const [calcOpen, setCalcOpen] = useState(false)
+  useEscToClose(onClose)
   useEffect(() => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }, [holding.id])
   useEffect(() => { setVisibleTxns(10); api<Transaction[]>(`/api/transactions?holdingId=${holding.id}&currency=${displayCurrency}`).then(setTxns).catch(() => setTxns([])) }, [holding.id, displayCurrency])
   const onTxnScroll = (e: React.UIEvent<HTMLDivElement>) => {

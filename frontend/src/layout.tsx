@@ -6,7 +6,7 @@ import type { SectionSeed, Widget } from './layout-config'
 import { WIDGET_TYPES, WidgetView, AddWidgetModal } from './widgets'
 import type { PageDataSource } from './widgets'
 import { saveLayout } from './layout-api'
-import { Field } from './ui'
+import { Field, useEscToClose } from './ui'
 
 // ---------------------------------------------------------------------------
 // Editable layout — per-page "Edit layout" mode. Each page is a set of zones
@@ -456,20 +456,27 @@ export function LayoutMenu({ onCreatePanel, onSave, onReset }: {
       <li><button type="button" onClick={() => void save()}>Save layout</button></li>
       <li><button type="button" onClick={() => { setOpen(false); onReset() }}>↺ Reset layout</button></li>
     </ul>}
-    {naming && <div className="modal-backdrop"><section className="modal narrow">
-      <div className="modal-header">
-        <div><p className="eyebrow">NEW PANEL</p><h2>Name this section</h2></div>
-        <button className="close" onClick={() => setNaming(false)}>×</button>
-      </div>
-      <Field label="Section name" wide>
-        <input autoFocus value={name} maxLength={48} placeholder="e.g. Retirement accounts"
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') submitCreate(); else if (e.key === 'Escape') setNaming(false) }} />
-      </Field>
-      <div className="modal-actions">
-        <button type="button" className="outline" onClick={() => setNaming(false)}>Cancel</button>
-        <button type="button" className="primary" disabled={!name.trim()} onClick={submitCreate}>Create panel</button>
-      </div>
-    </section></div>}
+    {naming && <PanelNameModal name={name} onNameChange={setName} onCancel={() => setNaming(false)} onSubmit={submitCreate} />}
   </div>
+}
+
+function PanelNameModal({ name, onNameChange, onCancel, onSubmit }: {
+  name: string; onNameChange: (name: string) => void; onCancel: () => void; onSubmit: () => void
+}) {
+  useEscToClose(onCancel, name.trim() !== '')
+  return <div className="modal-backdrop"><section className="modal narrow">
+    <div className="modal-header">
+      <div><p className="eyebrow">NEW PANEL</p><h2>Name this section</h2></div>
+      <button className="close" onClick={onCancel}>×</button>
+    </div>
+    <Field label="Section name" wide>
+      <input autoFocus value={name} maxLength={48} placeholder="e.g. Retirement accounts"
+        onChange={e => onNameChange(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') onSubmit() }} />
+    </Field>
+    <div className="modal-actions">
+      <button type="button" className="outline" onClick={onCancel}>Cancel</button>
+      <button type="button" className="primary" disabled={!name.trim()} onClick={onSubmit}>Create panel</button>
+    </div>
+  </section></div>
 }
