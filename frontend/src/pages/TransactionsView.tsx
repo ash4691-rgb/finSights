@@ -145,13 +145,13 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
       <Field label="Holding" required wide><HoldingPicker holdings={holdings} value={form.holdingId} onChange={id => set('holdingId', id)} /></Field>
       <Field label={<>Type <InfoTip text={typeHint} /></>} required><select required value={form.type} onChange={e => set('type', e.target.value)}>{allowedTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
-      {form.type !== 'SPLIT' && <Field label={form.type === 'SELL' ? 'Sale proceeds (total)' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'}><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>}
-      {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'}><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
+      {form.type !== 'SPLIT' && <Field label={form.type === 'SELL' ? 'Sale proceeds (total)' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'} required><input required type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>}
+      {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'} required={form.type === 'SPLIT'}><input required={form.type === 'SPLIT'} type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
       {form.type === 'INTEREST' && <div className="check-row"><label><input type="checkbox" checked={form.interestPaid} onChange={e => set('interestPaid', e.target.checked)} /> Received in cash <InfoTip text="On: the income is booked as realised P/L. Off: it accrues onto the holding's current value." /></label></div>}
       <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
     </div>
     {error && <p className="form-error">{error}</p>}
-    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.holdingId}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
+    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.holdingId || (form.type !== 'SPLIT' && !form.amount) || (form.type === 'SPLIT' && !form.quantity)}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
     </form>
   </section></div>
 }

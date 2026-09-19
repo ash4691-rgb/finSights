@@ -8,6 +8,8 @@ import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.dto.ImportResultResponse;
 import com.finsights.portfolio.dto.TransactionRequest;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,10 +21,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class XmlServiceTest {
 
     @Mock TransactionService transactionService;
+    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     @Test
     void importsTransactionAndCreatesWhenIdMissing() {
-        XmlService xml = new XmlService(transactionService);
+        XmlService xml = new XmlService(transactionService, validator);
         String body = """
                 <transactions>
                   <transaction>
@@ -48,7 +51,7 @@ class XmlServiceTest {
 
     @Test
     void updatesExistingTransactionWhenIdPresent() {
-        XmlService xml = new XmlService(transactionService);
+        XmlService xml = new XmlService(transactionService, validator);
         String body = """
                 <transactions>
                   <transaction>
@@ -68,7 +71,7 @@ class XmlServiceTest {
 
     @Test
     void rejectsDoctypeDeclarationsToPreventXxe() {
-        XmlService xml = new XmlService(transactionService);
+        XmlService xml = new XmlService(transactionService, validator);
         String malicious = """
                 <?xml version="1.0"?>
                 <!DOCTYPE transactions [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
@@ -81,7 +84,7 @@ class XmlServiceTest {
 
     @Test
     void exportProducesParsableXml() {
-        XmlService xml = new XmlService(transactionService);
+        XmlService xml = new XmlService(transactionService, validator);
         when(transactionService.list(null, null, null, null, null, null)).thenReturn(java.util.List.of());
         String exported = xml.export();
         assertThat(exported).contains("<transactions");

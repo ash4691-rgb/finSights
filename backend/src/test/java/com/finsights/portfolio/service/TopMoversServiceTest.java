@@ -2,6 +2,7 @@ package com.finsights.portfolio.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.domain.HoldingKind;
@@ -38,6 +39,7 @@ class TopMoversServiceTest {
     void setUp() {
         service = new TopMoversService(holdings, watchlist, movements, thresholds, fx);
         when(watchlist.list()).thenReturn(List.of());
+        lenient().when(fx.supports(any())).thenReturn(true);
     }
 
     @Test
@@ -134,6 +136,6 @@ class TopMoversServiceTest {
         return new HoldingResponse(
                 id, id, "c-1", "Growth Equity", "Reliance", kind, method,
                 "RELIANCE", "Kite", "INR", new BigDecimal("100"), new BigDecimal("110"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null, null, null, null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null);
+                null, null, null, null, null, null, null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null);
     }
 }

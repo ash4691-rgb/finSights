@@ -117,6 +117,7 @@ public class PortfolioSnapshotService {
             if (lastCapturedAt == null || s.getRecordedAt().isAfter(lastCapturedAt)) lastCapturedAt = s.getRecordedAt();
         }
 
+        boolean canConvert = fx.supports(base) && fx.supports(target);
         List<Week> weeks = new ArrayList<>();
         for (Map.Entry<LocalDate, List<PortfolioSnapshot>> entry : byWeek.entrySet()) {
             List<CategoryPoint> categories = new ArrayList<>();
@@ -124,8 +125,10 @@ public class PortfolioSnapshotService {
             BigDecimal assetsCurrent = BigDecimal.ZERO;
             BigDecimal liabilities = BigDecimal.ZERO;
             for (PortfolioSnapshot s : entry.getValue()) {
-                BigDecimal invested = fx.convert(s.getInvestedValue(), base, target);
-                BigDecimal current = fx.convert(s.getCurrentValue(), base, target);
+                // An unsupported base/target currency must not fail the whole timeline — fall back
+                // to the snapshot's own (unconverted) figures for that one category-point.
+                BigDecimal invested = canConvert ? fx.convert(s.getInvestedValue(), base, target) : s.getInvestedValue();
+                BigDecimal current = canConvert ? fx.convert(s.getCurrentValue(), base, target) : s.getCurrentValue();
                 categories.add(new CategoryPoint(s.getCategoryId(), s.getCategoryName(), s.getKind().name(), invested, current));
                 if (s.getKind() == HoldingKind.LIABILITY) {
                     liabilities = liabilities.add(current);
@@ -147,7 +150,9 @@ public class PortfolioSnapshotService {
         snapshots.deleteByUser_Id(userId);
     }
 
-    /** Per-category invested + current value, converted to the user's base currency. */
+    /** Per-category invested + current value, converted to the user's base currency. One holding
+     *  with an unsupported currency is skipped (its contribution omitted) rather than failing the
+     *  whole snapshot capture for every other category. */
     private Map<String, Aggregate> aggregateByCategory(UserAccount user) {
         String base = user.getBaseCurrency();
         Map<String, Aggregate> byCategory = new LinkedHashMap<>();
@@ -155,6 +160,7 @@ public class PortfolioSnapshotService {
             Category category = h.getCategory();
             if (category == null) continue;
             String holdingCurrency = h.getCurrency() == null || h.getCurrency().isBlank() ? base : h.getCurrency();
+            if (!fx.supports(holdingCurrency) || !fx.supports(base)) continue;
             BigDecimal invested = fx.convert(h.getInvestedValue() == null ? BigDecimal.ZERO : h.getInvestedValue(),
                     holdingCurrency, base);
             BigDecimal current = fx.convert(valuations.currentValue(h), holdingCurrency, base);

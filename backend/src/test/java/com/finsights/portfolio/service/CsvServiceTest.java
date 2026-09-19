@@ -8,6 +8,8 @@ import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.dto.ImportResultResponse;
 import com.finsights.portfolio.dto.TransactionRequest;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class CsvServiceTest {
 
     @Mock TransactionService transactionService;
+    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     @Test
     void parsesQuotedFieldsWithCommasAndEscapedQuotes() {
@@ -29,7 +32,7 @@ class CsvServiceTest {
 
     @Test
     void importCreatesNewRowAndUpdatesExistingById() {
-        CsvService csv = new CsvService(transactionService);
+        CsvService csv = new CsvService(transactionService, validator);
         String body = String.join("\n",
                 "id,holdingId,type,date,amount,quantity,notes",
                 ",h-1,BUY,2026-01-15,50000,10,Initial buy",
@@ -50,7 +53,7 @@ class CsvServiceTest {
 
     @Test
     void importUpdatesExistingTransactionWhenIdPresent() {
-        CsvService csv = new CsvService(transactionService);
+        CsvService csv = new CsvService(transactionService, validator);
         String body = String.join("\n",
                 "id,holdingId,type,date,amount",
                 "t-1,h-1,SELL,2026-03-01,20000");
@@ -62,7 +65,7 @@ class CsvServiceTest {
 
     @Test
     void importReportsRowErrorsWithoutStopping() {
-        CsvService csv = new CsvService(transactionService);
+        CsvService csv = new CsvService(transactionService, validator);
         String body = String.join("\n",
                 "holdingId,type,date,amount",
                 "h-1,NOT_A_TYPE,2026-01-01,1",

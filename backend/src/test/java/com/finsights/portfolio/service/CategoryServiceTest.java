@@ -69,7 +69,7 @@ class CategoryServiceTest {
                 null, "Broker", "INR", new BigDecimal(invested), new BigDecimal(current),
                 new BigDecimal(current).subtract(new BigDecimal(invested)), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, null, null, null, null, null, null, null,
-                liquid, npa, null, null, java.util.Set.of(), null, null, null);
+                liquid, npa, null, null, java.util.Set.of(), null, null, null, false, null);
     }
 
     @Test
