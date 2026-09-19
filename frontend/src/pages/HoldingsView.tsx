@@ -217,7 +217,6 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
               <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries'} /></Field>
               <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><SuggestInput required maxLength={96} value={form.broker} suggestions={brokerSuggestions} onChange={v => set('broker', v)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>
             </div>}
-        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
         {!isLiability && !isEdit && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
         {!isLiability && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required>
           <input required type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} />
@@ -260,6 +259,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
         <Field label="Tags" wide>
           <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => { setDirty(true); setForm(current => ({ ...current, tags: next })) }} />
         </Field>
+        <Field label="Notes" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
       </div>
       {isEdit && !isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
         <span><b>Broker</b> is fixed for the life of a holding, and <b>quantity</b> is calculated from its transactions — add or edit <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>transactions</button> to change it. Changing <b>invested value</b> above logs an adjustment transaction automatically.</span>
