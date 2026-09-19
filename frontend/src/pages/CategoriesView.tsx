@@ -166,7 +166,7 @@ export function CategoryModal({ category, holdings, onClose, onSaved }: { catego
           </div>
           <p className="hint">Leave all unchecked to allow every method. Checked methods are enforced on holdings filed under this category.</p>
         </Field>}
-        <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={1024} /></Field>
+        <Field label="Notes" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={1024} /></Field>
       </div>
       {nonCompliant.length > 0 && <div className="form-callout warn"><span className="form-callout-dot">!</span>
         <span><b>These changes won't be saved</b> — {nonCompliant.length} holding{nonCompliant.length === 1 ? '' : 's'} in this category {nonCompliant.length === 1 ? 'uses' : 'use'} a valuation method outside your selection:
