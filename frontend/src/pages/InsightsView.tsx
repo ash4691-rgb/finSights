@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import type { FormEvent, MouseEvent as ReactMouseEvent } from 'react'
 import { api } from '../api'
 import { LayoutZone } from '../layout'
 import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
@@ -174,7 +174,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
       <div className="panel-heading hot-picks-heading">
         <h3>🔥 Hot Picks <InfoTip text="Market-linked holdings and watchlist symbols whose price has moved past the % you set here for that lookback window, checked daily through yearly. Click any entry for its price history and which windows it broke." /></h3>
         <div className="threshold-inline">
-          <span className="threshold-inline-label">Thresholds (%)</span>
+          <span className="threshold-inline-label">Thresholds<br />(%)</span>
           {periodFields.map(([key, text]) => <label key={key} className="threshold-inline-field" title={`${text} threshold`}>
             <span>{text}</span>
             <input type="number" min="0" step="0.1" placeholder="—" value={thresholds[key]} disabled={savingThresholds}
@@ -265,30 +265,68 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   </>
 }
 
+// Shared by every hand-rolled inline-SVG line chart (NetWorthChart, PriceHistoryChart): tracks
+// the pointer over the plot, snaps to the nearest data point by x, and returns enough to render
+// a guide line + dot in the SVG and a fixed-positioned tooltip outside it (so it's never clipped
+// by a scrolling ancestor — same technique as InfoTip). `points` must already be projected into
+// the chart's own SVG viewBox coordinates.
+function useChartHover(points: { x: number; y: number }[], W: number) {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [index, setIndex] = useState<number | null>(null)
+  const [tip, setTip] = useState<{ left: number; top: number } | null>(null)
+
+  useEffect(() => { setIndex(null); setTip(null) }, [points.length])
+
+  const onMove = (e: ReactMouseEvent<SVGSVGElement>) => {
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect || !points.length) return
+    const svgX = (e.clientX - rect.left) / rect.width * W
+    let nearest = 0, nearestDist = Infinity
+    points.forEach((p, i) => { const d = Math.abs(p.x - svgX); if (d < nearestDist) { nearestDist = d; nearest = i } })
+    const vw = window.innerWidth || document.documentElement.clientWidth || 1024
+    const screenX = rect.left + (points[nearest].x / W) * rect.width
+    setIndex(nearest)
+    setTip({ left: Math.min(Math.max(screenX, 90), Math.max(vw - 90, 90)), top: rect.top - 10 })
+  }
+  const onLeave = () => { setIndex(null); setTip(null) }
+  return { svgRef, onMove, onLeave, index, tip }
+}
+
 // A lightweight inline-SVG line chart of net worth across the snapshot weeks (oldest → newest).
 export function NetWorthChart({ weeks }: { weeks: TimelineWeek[] }) {
-  if (weeks.length < 2) return null
   const W = 680, H = 150, padX = 10, padTop = 12, padBot = 16
   const values = weeks.map(w => w.netWorth)
   const min = Math.min(...values), max = Math.max(...values)
   const span = max - min || Math.abs(max) || 1
   const x = (i: number) => padX + (i / (weeks.length - 1)) * (W - padX * 2)
   const y = (v: number) => padTop + (1 - (v - min) / span) * (H - padTop - padBot)
+  const points = weeks.map((w, i) => ({ x: x(i), y: y(w.netWorth) }))
+  const { svgRef, onMove, onLeave, index, tip } = useChartHover(points, W)
+  if (weeks.length < 2) return null
   const line = weeks.map((w, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(w.netWorth).toFixed(1)}`).join(' ')
   const area = `${line} L ${x(weeks.length - 1).toFixed(1)} ${(H - padBot).toFixed(1)} L ${x(0).toFixed(1)} ${(H - padBot).toFixed(1)} Z`
   const growth = weeks[weeks.length - 1].netWorth - weeks[0].netWorth
   const zeroY = min < 0 && max > 0 ? y(0) : null
+  const hovered = index != null ? weeks[index] : null
   return <div className="networth-chart">
     <div className="networth-caption">
       <span>Net worth</span>
       <strong className={growth >= 0 ? 'positive' : 'negative'}>{growth >= 0 ? '▲' : '▼'} {money(Math.abs(growth))} over {weeks.length} weeks</strong>
     </div>
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="networth-svg" role="img" aria-label="Net worth over time">
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="networth-svg" role="img" aria-label="Net worth over time"
+        onMouseMove={onMove} onMouseLeave={onLeave}>
       {zeroY != null && <line x1={padX} x2={W - padX} y1={zeroY} y2={zeroY} className="networth-zero" vectorEffect="non-scaling-stroke" />}
       <path d={area} className="networth-area" />
       <path d={line} className="networth-line" vectorEffect="non-scaling-stroke" />
+      {hovered && <g>
+        <line x1={points[index!].x} x2={points[index!].x} y1={padTop} y2={H - padBot} className="chart-hover-line" vectorEffect="non-scaling-stroke" />
+        <circle cx={points[index!].x} cy={points[index!].y} r="4" className="chart-hover-dot" />
+      </g>}
     </svg>
     <div className="networth-axis"><span>{since(weeks[0].weekOf)}</span><span>{since(weeks[weeks.length - 1].weekOf)}</span></div>
+    {hovered && tip && <div className="chart-tooltip" style={{ left: tip.left, top: tip.top }}>
+      <strong>{money(hovered.netWorth)}</strong><span>{since(hovered.weekOf)}</span>
+    </div>}
   </div>
 }
 
@@ -446,6 +484,10 @@ export function ViewMoverItemModal({ symbol, name, currency, triggered, onClose 
   </section></div>
 }
 
+// Date-only (`since`) reads fine for the chart's fixed start/end axis labels, but a hovered point
+// on the 1D/1W ranges needs its time of day too, or every point in that window looks identical.
+const pointTimestamp = (value: string) => new Date(value).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+
 function PriceHistoryChart({ points, currency }: { points: { timestamp: string; price: number }[]; currency?: string }) {
   const W = 680, H = 220, padX = 10, padTop = 12, padBot = 16
   const values = points.map(p => p.price)
@@ -453,21 +495,32 @@ function PriceHistoryChart({ points, currency }: { points: { timestamp: string; 
   const span = max - min || Math.abs(max) || 1
   const x = (i: number) => padX + (i / (points.length - 1)) * (W - padX * 2)
   const y = (v: number) => padTop + (1 - (v - min) / span) * (H - padTop - padBot)
+  const chartPoints = points.map((p, i) => ({ x: x(i), y: y(p.price) }))
+  const { svgRef, onMove, onLeave, index, tip } = useChartHover(chartPoints, W)
   const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(p.price).toFixed(1)}`).join(' ')
   const area = `${line} L ${x(points.length - 1).toFixed(1)} ${(H - padBot).toFixed(1)} L ${x(0).toFixed(1)} ${(H - padBot).toFixed(1)} Z`
   const first = points[0].price, last = points[points.length - 1].price
   const change = last - first
   const changePercent = first !== 0 ? (change / first) * 100 : 0
   const fmt = (v: number) => currency ? money(v, currency) : v.toLocaleString(numberLocale)
+  const hovered = index != null ? points[index] : null
   return <div className="networth-chart">
     <div className="networth-caption">
       <span>{fmt(last)}</span>
       <strong className={change >= 0 ? 'positive' : 'negative'}>{change >= 0 ? '▲' : '▼'} {fmt(Math.abs(change))} ({changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%)</strong>
     </div>
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="networth-svg" role="img" aria-label="Price history">
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="networth-svg" role="img" aria-label="Price history"
+        onMouseMove={onMove} onMouseLeave={onLeave}>
       <path d={area} className="networth-area" />
       <path d={line} className="networth-line" vectorEffect="non-scaling-stroke" />
+      {hovered && <g>
+        <line x1={chartPoints[index!].x} x2={chartPoints[index!].x} y1={padTop} y2={H - padBot} className="chart-hover-line" vectorEffect="non-scaling-stroke" />
+        <circle cx={chartPoints[index!].x} cy={chartPoints[index!].y} r="4" className="chart-hover-dot" />
+      </g>}
     </svg>
     <div className="networth-axis"><span>{since(points[0].timestamp)}</span><span>{since(points[points.length - 1].timestamp)}</span></div>
+    {hovered && tip && <div className="chart-tooltip" style={{ left: tip.left, top: tip.top }}>
+      <strong>{fmt(hovered.price)}</strong><span>{pointTimestamp(hovered.timestamp)}</span>
+    </div>}
   </div>
 }
