@@ -2,6 +2,7 @@ package com.finsights.portfolio.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.dto.SymbolSuggestion;
 import java.math.BigDecimal;
@@ -44,7 +45,17 @@ public class MarketDataService {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     private static final Duration QUOTE_TTL = Duration.ofSeconds(60);
     private static final Duration SEARCH_TTL = Duration.ofMinutes(10);
+    private static final Duration HISTORY_TTL = Duration.ofMinutes(5);
     private static final Duration COOKIE_TTL = Duration.ofMinutes(30);
+
+    /** ViewMoverItem's chart ranges, mapped to Yahoo's own range/interval query params. */
+    private static final Map<String, String[]> HISTORY_RANGES = Map.of(
+            "1D", new String[] { "1d", "5m" },
+            "1W", new String[] { "5d", "15m" },
+            "1M", new String[] { "1mo", "1d" },
+            "3M", new String[] { "3mo", "1d" },
+            "6M", new String[] { "6mo", "1d" },
+            "1Y", new String[] { "1y", "1d" });
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
@@ -53,6 +64,7 @@ public class MarketDataService {
     private final ObjectMapper json = new ObjectMapper();
     private final Map<String, Cached<MarketQuoteResponse>> quoteCache = new ConcurrentHashMap<>();
     private final Map<String, Cached<List<SymbolSuggestion>>> searchCache = new ConcurrentHashMap<>();
+    private final Map<String, Cached<MarketHistoryResponse>> historyCache = new ConcurrentHashMap<>();
     private final AtomicReference<Instant> cookiesPrimedAt = new AtomicReference<>();
 
     public List<SymbolSuggestion> search(String query) {
@@ -118,6 +130,44 @@ public class MarketDataService {
             quote(symbol).ifPresent(q -> out.put(symbol.trim().toUpperCase(), q));
         }
         return out;
+    }
+
+    /**
+     * Closing prices for {@code symbol} over one of ViewMoverItem's chart ranges (1D/1W/1M/3M/6M/1Y,
+     * defaulting to 1M for anything else) — oldest point first. Same never-throws contract as quote().
+     */
+    public Optional<MarketHistoryResponse> history(String symbol, String rangeKey) {
+        if (symbol == null || symbol.isBlank()) return Optional.empty();
+        String[] params = HISTORY_RANGES.getOrDefault(rangeKey, HISTORY_RANGES.get("1M"));
+        String key = symbol.trim().toUpperCase() + ":" + params[0] + ":" + params[1];
+        Cached<MarketHistoryResponse> hit = historyCache.get(key);
+        if (hit != null && hit.fresh(HISTORY_TTL)) return Optional.ofNullable(hit.value);
+
+        MarketHistoryResponse history = null;
+        try {
+            String url = CHART_URL + URLEncoder.encode(symbol.trim().toUpperCase(), StandardCharsets.UTF_8)
+                    + "?range=" + params[0] + "&interval=" + params[1];
+            JsonNode result = get(url).path("chart").path("result").path(0);
+            JsonNode meta = result.path("meta");
+            JsonNode timestamps = result.path("timestamp");
+            JsonNode closes = result.path("indicators").path("quote").path(0).path("close");
+            List<MarketHistoryResponse.Point> points = new ArrayList<>();
+            for (int i = 0; i < timestamps.size(); i++) {
+                JsonNode close = closes.path(i);
+                if (!close.isNumber()) continue; // market-closed gaps come back null — skip rather than fabricate
+                points.add(new MarketHistoryResponse.Point(Instant.ofEpochSecond(timestamps.path(i).asLong()), close.decimalValue()));
+            }
+            if (!points.isEmpty()) {
+                history = new MarketHistoryResponse(
+                        firstNonBlank(meta.path("symbol").asText(null), symbol.trim().toUpperCase()),
+                        firstNonBlank(meta.path("currency").asText(null), "USD"),
+                        points);
+            }
+        } catch (Exception e) {
+            log.debug("History lookup failed for '{}' [{}]: {}", symbol, rangeKey, e.toString());
+        }
+        historyCache.put(key, new Cached<>(history));
+        return Optional.ofNullable(history);
     }
 
     private JsonNode get(String url) throws Exception {

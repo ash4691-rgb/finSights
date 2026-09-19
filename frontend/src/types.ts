@@ -34,6 +34,9 @@ export type Holding = {
 }
 export type SymbolSuggestion = { symbol: string; name: string; exchange: string; type: string }
 export type MarketQuote = { symbol: string; name: string; price: number; currency: string; asOf: string }
+export type ChartRange = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y'
+export type MarketHistoryPoint = { timestamp: string; price: number }
+export type MarketHistory = { symbol: string; currency: string; points: MarketHistoryPoint[] }
 export type Breakdown = { label: string; value: number; investedValue: number; profitLoss: number }
 export type Dashboard = { netWorth: number; totalAssets: number; totalLiabilities: number; investedAssets: number; portfolioProfitLoss: number; byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[] }
 export type User = { email: string; displayName: string; demoMode: boolean }

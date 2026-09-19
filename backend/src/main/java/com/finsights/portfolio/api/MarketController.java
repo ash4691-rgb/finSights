@@ -1,5 +1,6 @@
 package com.finsights.portfolio.api;
 
+import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.dto.SymbolSuggestion;
 import com.finsights.portfolio.service.MarketDataService;
@@ -28,5 +29,11 @@ public class MarketController {
     @GetMapping("/quote")
     ResponseEntity<MarketQuoteResponse> quote(@RequestParam("symbol") String symbol) {
         return marketData.quote(symbol).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/history")
+    ResponseEntity<MarketHistoryResponse> history(@RequestParam("symbol") String symbol,
+                                                   @RequestParam(value = "range", defaultValue = "1M") String range) {
+        return marketData.history(symbol, range).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 }
