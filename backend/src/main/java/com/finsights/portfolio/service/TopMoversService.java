@@ -55,19 +55,23 @@ public class TopMoversService {
             if (!isMarketLinked(h.valuationMethod())) continue; // Top movers only tracks live market pricing
             List<PeriodMovement> triggered = evaluate(thresholdByPeriod, days -> movements.holdingMovement(h, days));
             if (!triggered.isEmpty()) {
-                BigDecimal shown = displayCurrency == null || displayCurrency.isBlank()
-                        ? h.currentValue() : fx.convert(h.currentValue(), h.currency(), displayCurrency);
-                String currency = displayCurrency == null || displayCurrency.isBlank() ? h.currency() : displayCurrency.trim().toUpperCase();
+                // One holding with an unsupported/legacy currency must not 500 the whole top-movers
+                // list — fall back to its native currency instead (mirrors HoldingService.list()).
+                boolean canConvert = displayCurrency != null && !displayCurrency.isBlank()
+                        && fx.supports(h.currency()) && fx.supports(displayCurrency);
+                BigDecimal shown = canConvert ? fx.convert(h.currentValue(), h.currency(), displayCurrency) : h.currentValue();
+                String currency = canConvert ? displayCurrency.trim().toUpperCase() : h.currency();
                 results.add(new TopMoverResponse("HOLDING", h.id(), h.name(), h.categoryName(), h.tickerSymbol(), shown, currency, triggered));
             }
         }
         for (WatchlistResponse w : watchlist.list()) {
             List<PeriodMovement> triggered = evaluate(thresholdByPeriod, days -> movements.watchlistMovement(w, days));
             if (!triggered.isEmpty()) {
-                boolean canConvert = w.currentValue() != null && w.currency() != null;
-                BigDecimal shown = displayCurrency == null || displayCurrency.isBlank() || !canConvert
-                        ? w.currentValue() : fx.convert(w.currentValue(), w.currency(), displayCurrency);
-                String currency = displayCurrency == null || displayCurrency.isBlank() ? w.currency() : displayCurrency.trim().toUpperCase();
+                boolean canConvert = w.currentValue() != null && w.currency() != null
+                        && displayCurrency != null && !displayCurrency.isBlank()
+                        && fx.supports(w.currency()) && fx.supports(displayCurrency);
+                BigDecimal shown = canConvert ? fx.convert(w.currentValue(), w.currency(), displayCurrency) : w.currentValue();
+                String currency = canConvert ? displayCurrency.trim().toUpperCase() : w.currency();
                 results.add(new TopMoverResponse("WATCHLIST", w.id(), w.name(), null, w.tickerSymbol(), shown, currency, triggered));
             }
         }

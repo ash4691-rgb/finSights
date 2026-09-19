@@ -174,7 +174,7 @@ export function CategoryModal({ category, holdings, onClose, onSaved }: { catego
           Update or move these holdings first, or widen your selection.</span>
       </div>}
       {error && <p className="form-error">{error}</p>}
-      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || nonCompliant.length > 0}>{saving ? 'Saving…' : category ? 'Save changes' : 'Add category'}</button></div>
+      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.name.trim() || nonCompliant.length > 0}>{saving ? 'Saving…' : category ? 'Save changes' : 'Add category'}</button></div>
     </form>
   </section></div>
 }

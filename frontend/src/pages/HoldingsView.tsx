@@ -84,6 +84,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
         </td>
         <td><div className="name-cell">
           <button className="name-button" onClick={() => onOpen(holding)} title={holding.name}><strong>{holding.name}</strong><small className="holding-ref">{holding.holdingId}</small></button>
+          {holding.dataIssue && <button type="button" className="needs-attention" title={holding.dataIssueMessage ?? 'This holding needs attention — edit it to fix the underlying data.'} onClick={() => onEdit(holding)}>⚠ Needs attention</button>}
           {holding.description && <InfoTip text={holding.description} />}
         </div></td>
         <td><span className="trunc-cell" title={holding.broker || ''}>{holding.broker || '—'}</span></td>
@@ -127,6 +128,9 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   const [dirty, setDirty] = useState(false)
   const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
   useEscToClose(onClose, dirty)
+  // Editing invested value directly (e.g. to fix a partial-sell mismatch) books a visible
+  // adjustment transaction for the difference rather than silently overwriting the figure.
+  const investedDelta = isEdit && !isLiability && holding ? numeric(form.investedValue) - holding.investedValue : 0
   const allowedMethods = selectedCategory?.allowedValuationMethods
   const methodOptions = allowedMethods && allowedMethods.length ? selectableValuationMethods.filter(m => allowedMethods.includes(m)) : selectableValuationMethods
 
@@ -215,10 +219,13 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
             </div>}
         <Field label="Description" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
         {!isLiability && !isEdit && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
-        {!isLiability && !isEdit && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required><input required type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} /></Field>}
+        {!isLiability && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required>
+          <input required type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} />
+          {investedDelta !== 0 && <p className="hint">Saving will log an adjustment transaction of {investedDelta > 0 ? '+' : ''}{money(investedDelta, form.currency)} (from {money(holding!.investedValue, form.currency)} to {money(numeric(form.investedValue), form.currency)}) — visible in Transactions afterward.</p>}
+        </Field>}
         {isFixedRate && <>
           <Field label="Annual rate (%)" required><input required type="number" min="0" step="0.01" value={form.fixedAnnualRate} onChange={e => set('fixedAnnualRate', e.target.value)} /></Field>
-          <Field label="Interest payout frequency" required><select value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}>{frequencies.map(item => <option key={item} value={item}>{frequencyLabel(item)}</option>)}</select></Field>
+          <Field label="Interest payout frequency" required><select required value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}><option value="" disabled>Choose one…</option>{frequencies.map(item => <option key={item} value={item}>{frequencyLabel(item)}</option>)}</select></Field>
           <Field label="Start date" required><input required type="date" value={form.fixedRateStartDate} onChange={e => set('fixedRateStartDate', e.target.value)} /></Field>
           <Field label="Maturity date"><input type="date" value={form.fixedRateEndDate} min={form.fixedRateStartDate} onChange={e => set('fixedRateEndDate', e.target.value)} /></Field>
         </>}
@@ -255,7 +262,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
         </Field>
       </div>
       {isEdit && !isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
-        <span><b>Broker</b> is fixed for the life of a holding, and <b>invested value</b> &amp; <b>quantity</b> are calculated from its transactions — add or edit <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>transactions</button> to change them.</span>
+        <span><b>Broker</b> is fixed for the life of a holding, and <b>quantity</b> is calculated from its transactions — add or edit <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>transactions</button> to change it. Changing <b>invested value</b> above logs an adjustment transaction automatically.</span>
       </p>}
       {isEdit && isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
         <span><b>Lender</b> and <b>total amount</b> are fixed once a loan exists — the total is logged from <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>Transactions</button>. Update the <b>outstanding amount</b> here, or mark instalments paid from the Action centre.</span>
@@ -265,7 +272,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.categoryId || !form.name.trim()
         || (isMarket && !form.tickerSymbol.trim())
         || (isMarket && !isEdit && !form.quantity)
-        || (!isEdit && !isLiability && !form.investedValue)
+        || (!isLiability && !form.investedValue)
         || (!isLiability && form.valuationMethod === 'MANUAL' && !form.currentValue)
         || (isLiability && (!form.investedValue || !form.currentValue || (isOneTime ? !form.repaymentDueDate : (!form.emiDayOfMonth || (!form.emiAmount && !form.loanTermMonths)))))
         || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
@@ -292,6 +299,9 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { h
       <div><p className="eyebrow">{label(holding.kind)} · {holding.broker || (isLiab ? 'No lender' : 'Unassigned broker')}</p><h2>{holding.name}</h2><p className="drawer-ref">{holding.holdingId}</p></div>
       <button className="close" onClick={onClose}>×</button>
     </div>
+    {holding.dataIssue && <div className="form-callout warn"><span className="form-callout-dot">!</span>
+      <span><b>Needs attention</b> — {holding.dataIssueMessage ?? 'This holding has a data problem.'} <button type="button" className="primary-link" onClick={() => onEdit(holding)}>Edit to fix</button></span>
+    </div>}
     {holding.description && <p className="drawer-description">{holding.description}</p>}
     {isLiab ? <div className="drawer-metrics">
       <div><p>Outstanding</p><strong>{money(holding.currentValue, holding.currency)}</strong></div>

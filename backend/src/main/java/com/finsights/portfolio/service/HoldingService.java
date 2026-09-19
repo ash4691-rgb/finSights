@@ -259,12 +259,34 @@ public class HoldingService {
         Holding holding = findOwned(id);
         ValuationMethod oldMethod = holding.getValuationMethod();
         BigDecimal oldValue = holding.getCurrentValue();
+        // Invested value is normally ledger-derived (below), not user-editable — but a manual
+        // correction from the Holding form (e.g. a partial-sell mismatch) is booked as a real,
+        // visible ADJUSTMENT transaction rather than silently overwriting the stored figure.
+        // Computed off the PRE-edit state, before copy() below overwrites holding.investedValue.
+        boolean wasLiability = holding.getCategory() != null && holding.getCategory().getKind() == HoldingKind.LIABILITY;
+        BigDecimal ledgerInvestedValue = zeroIfNull(holding.getInvestedValue());
+        BigDecimal investedDelta = (!wasLiability && request.investedValue() != null)
+                ? request.investedValue().subtract(ledgerInvestedValue).setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        if (investedDelta.signum() != 0) {
+            ensureOpeningTransaction(holding); // must run before copy() rewrites investedValue/quantity below
+        }
         String lockedBroker = holding.getBroker(); // broker is 1-1 with the holding and cannot be re-mapped
         copy(request, holding);
         holding.setBroker(lockedBroker);
         requireUniqueNameAndBroker(currentUser.currentUser().getId(), holding.getName(), lockedBroker, id);
+        if (investedDelta.signum() != 0) {
+            Transaction adjustment = new Transaction();
+            adjustment.setUser(holding.getUser());
+            adjustment.setHolding(holding);
+            adjustment.setType(TransactionType.ADJUSTMENT);
+            adjustment.setAmount(investedDelta);
+            adjustment.setDate(LocalDate.now());
+            adjustment.setNotes("Invested value adjusted from " + ledgerInvestedValue + " to " + request.investedValue() + " via holding edit");
+            transactions.save(adjustment);
+        }
         Holding saved = holdings.save(holding);
-        // invested value + quantity are owned by the transaction ledger, not this form.
+        // invested value + quantity are owned by the transaction ledger, not this form — this
+        // re-derives them, folding in the adjustment transaction just booked above (if any).
         syncFromTransactions(saved);
         // Snapshot the new value if it's freshly observable (not FIXED_RATE, which is analytic) and
         // it actually moved — or this is the first snapshot after switching away from FIXED_RATE.
@@ -443,24 +465,62 @@ public class HoldingService {
         holdings.delete(holding);
     }
 
+    /**
+     * This is the single choke point every aggregate endpoint (dashboard, categories, insights,
+     * hot picks) ultimately flows through via {@link #list()} — so it must never throw for one bad
+     * record. Known incomplete-data cases are flagged via {@code dataIssue} instead of hidden; a
+     * last-resort catch guards against any other unanticipated one, returning a degraded-but-valid
+     * placeholder rather than failing the whole list.
+     */
     public HoldingResponse toResponse(Holding holding) {
+        try {
+            Category category = holding.getCategory();
+            if (category == null) {
+                return degradedResponse(holding, "This holding's category is missing — edit it to reassign one.");
+            }
+            BigDecimal invested = zeroIfNull(holding.getInvestedValue());
+            BigDecimal current = valuations.currentValue(holding);
+            BigDecimal pnl = current.subtract(invested);
+            BigDecimal pnlPct = invested.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
+                    : pnl.divide(invested, 6, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
+            HoldingResponse response = new HoldingResponse(
+                    holding.getId(), holding.getHoldingRef(), category.getId(), category.getName(), holding.getName(), category.getKind(),
+                    holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
+                    holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
+                    zeroIfNull(holding.getAccruedIncome()),
+                    holding.getQuantity(), holding.getFixedAnnualRate(),
+                    holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
+                    holding.getRepaymentFrequency(), holding.getEmiAmount(), holding.getEmiDayOfMonth(),
+                    holding.getLoanTermMonths(), holding.getRepaymentDueDate(), holding.getLiquidWithinSevenDays(),
+                    holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
+                    holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt(), false, null);
+            if (valuations.isFixedRateIncomplete(holding)) {
+                response = response.withDataIssue("Fixed-rate details are incomplete — edit this holding to set "
+                        + "its rate, interest payout frequency, and start date.");
+            }
+            return response;
+        } catch (RuntimeException e) {
+            log.warn("Failed to build a response for holding {} — returning a degraded placeholder instead of failing the list", holding.getId(), e);
+            return degradedResponse(holding, "This holding has an unexpected data problem — edit it or contact support.");
+        }
+    }
+
+    /** A maximally-safe response for a holding whose real figures can't be computed right now. */
+    private HoldingResponse degradedResponse(Holding holding, String message) {
         Category category = holding.getCategory();
-        BigDecimal invested = zeroIfNull(holding.getInvestedValue());
-        BigDecimal current = valuations.currentValue(holding);
-        BigDecimal pnl = current.subtract(invested);
-        BigDecimal pnlPct = invested.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
-                : pnl.divide(invested, 6, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
         return new HoldingResponse(
-                holding.getId(), holding.getHoldingRef(), category.getId(), category.getName(), holding.getName(), category.getKind(),
+                holding.getId(), holding.getHoldingRef(), category == null ? "" : category.getId(),
+                category == null ? "Unknown category" : category.getName(), holding.getName(),
+                category == null ? HoldingKind.ASSET : category.getKind(),
                 holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
-                holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
-                zeroIfNull(holding.getAccruedIncome()),
-                holding.getQuantity(), holding.getFixedAnnualRate(),
-                holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
-                holding.getRepaymentFrequency(), holding.getEmiAmount(), holding.getEmiDayOfMonth(),
-                holding.getLoanTermMonths(), holding.getRepaymentDueDate(), holding.getLiquidWithinSevenDays(),
-                holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
-                holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt());
+                holding.getCurrency() == null ? "INR" : holding.getCurrency(),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                holding.getQuantity(), holding.getFixedAnnualRate(), holding.getCompoundingFrequency(),
+                holding.getFixedRateStartDate(), holding.getFixedRateEndDate(), holding.getRepaymentFrequency(),
+                holding.getEmiAmount(), holding.getEmiDayOfMonth(), holding.getLoanTermMonths(), holding.getRepaymentDueDate(),
+                holding.getLiquidWithinSevenDays(), holding.getBlocked(), holding.getDescription(), holding.getNotes(),
+                Set.copyOf(holding.getTags()), holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt(),
+                true, message);
     }
 
     private Holding findOwned(String id) {
@@ -479,6 +539,12 @@ public class HoldingService {
         // A liability is always manually valued: total borrowed = investedValue, outstanding = currentValue.
         ValuationMethod method = liability || source.valuationMethod() == null
                 ? ValuationMethod.MANUAL : source.valuationMethod();
+
+        // Reject an unsupported currency now, rather than let it corrupt a later currency-converted
+        // read (dashboard, holdings list in another currency, transaction history, …).
+        if (source.currency() != null && !source.currency().isBlank() && !fx.supports(source.currency())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported currency: " + source.currency().trim().toUpperCase());
+        }
 
         if (!liability && !category.getAllowedValuationMethods().isEmpty() && !category.getAllowedValuationMethods().contains(method)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

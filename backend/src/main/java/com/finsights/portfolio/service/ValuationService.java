@@ -28,6 +28,14 @@ public class ValuationService {
                 holding.getFixedRateEndDate(), LocalDate.now());
     }
 
+    /** True when this holding is marked FIXED_RATE but is missing a field needed to compute its
+     *  value (rate, compounding frequency, or start date) — {@link #currentValue} then silently
+     *  falls back to the stored (likely zero) current value instead of computing one. Callers use
+     *  this to flag the holding as needing attention rather than showing a wrong figure unexplained. */
+    public boolean isFixedRateIncomplete(Holding holding) {
+        return holding.getValuationMethod() == ValuationMethod.FIXED_RATE && !isFixedRate(holding);
+    }
+
     /** After a fixed-rate holding's maturity date it stops accruing, so value it as of that date. */
     private static LocalDate cap(LocalDate asOf, LocalDate maturity) {
         return maturity != null && asOf.isAfter(maturity) ? maturity : asOf;

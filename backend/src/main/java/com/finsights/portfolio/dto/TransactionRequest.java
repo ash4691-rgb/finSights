@@ -11,7 +11,7 @@ public record TransactionRequest(
         @NotBlank String holdingId,
         @NotNull TransactionType type,
         @NotNull LocalDate date,
-        BigDecimal amount,
+        @NotNull(message = "Enter an amount") BigDecimal amount,
         BigDecimal quantity,
         Boolean interestPaid,
         @Size(max = 1024, message = "Notes must be 1024 characters or fewer") String notes
