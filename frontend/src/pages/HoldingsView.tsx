@@ -110,9 +110,9 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
-export function HoldingModal({ holding, category, categories, holdings, onClose, onSaved, onGoToTransactions }: {
+export function HoldingModal({ holding, category, categories, holdings, onClose, onSaved, onGoToTransactions, reload }: {
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; onClose: () => void; onSaved: () => void
-  onGoToTransactions?: () => void
+  onGoToTransactions?: () => void; reload?: () => Promise<void>
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
@@ -127,11 +127,26 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   const isOneTime = isLiability && form.repaymentFrequency === 'ONE_TIME'
   const isEdit = !!holding
   const [dirty, setDirty] = useState(false)
+  const [addingTxn, setAddingTxn] = useState(false)
   const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
-  useEscToClose(onClose, dirty)
+  // Suppressed while the transaction modal is open on top — otherwise one Esc closes both.
+  useEscToClose(() => { if (!addingTxn) onClose() }, dirty)
   // Editing invested value directly (e.g. to fix a partial-sell mismatch) books a visible
   // adjustment transaction for the difference rather than silently overwriting the figure.
-  const investedDelta = isEdit && !isLiability && holding ? numeric(form.investedValue) - holding.investedValue : 0
+  // Tracked separately from `holding` (a static snapshot) so it can be refreshed after logging
+  // a transaction from within this form — otherwise the delta below would misfire against a
+  // now-stale baseline.
+  const [ledgerInvestedValue, setLedgerInvestedValue] = useState(holding?.investedValue ?? 0)
+  const investedDelta = isEdit && !isLiability ? numeric(form.investedValue) - ledgerInvestedValue : 0
+  const refreshAfterTransaction = async () => {
+    if (!holding) return
+    try {
+      const fresh = await api<Holding>(`/api/holdings/${holding.id}`)
+      setForm(current => ({ ...current, investedValue: String(fresh.investedValue), currentValue: String(fresh.currentValue) }))
+      setLedgerInvestedValue(fresh.investedValue)
+    } catch { /* keep showing the pre-transaction figures if the refetch fails */ }
+    void reload?.()
+  }
   const allowedMethods = selectedCategory?.allowedValuationMethods
   const methodOptions = allowedMethods && allowedMethods.length ? selectableValuationMethods.filter(m => allowedMethods.includes(m)) : selectableValuationMethods
 
@@ -196,7 +211,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   }
 
   const kindWord = isLiability ? 'LIABILITY' : 'HOLDING'
-  return <div className="modal-backdrop"><section className="modal"><div className="modal-header"><div><p className="eyebrow">{holding ? `EDIT ${kindWord}` : `NEW ${kindWord}`}</p><h2>{holding ? holding.name : category ? `Add ${isLiability ? 'a liability' : 'a holding'} in ${category.name}` : isLiability ? 'Add a liability' : 'Add a holding'}</h2></div><button className="close" onClick={onClose}>×</button></div>
+  return <div className="modal-backdrop"><section className="modal"><div className="modal-header"><div><p className="eyebrow">{holding ? `EDIT ${kindWord}` : `NEW ${kindWord}`}</p><h2>{holding ? holding.name : category ? `Add ${isLiability ? 'a liability' : 'a holding'} in ${category.name}` : isLiability ? 'Add a liability' : 'Add a holding'}</h2></div>{isEdit && <button type="button" className="outline compact" onClick={() => setAddingTxn(true)}>+ Add transaction</button>}</div>
     <form onSubmit={submit}>
       <div className="form-grid">
         <Field label="Category" required>
@@ -221,7 +236,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
         {!isLiability && !isEdit && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
         {!isLiability && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required>
           <input required type="number" min="0" step="0.01" value={form.investedValue} onChange={e => set('investedValue', e.target.value)} />
-          {investedDelta !== 0 && <p className="hint">Saving will log an adjustment transaction of {investedDelta > 0 ? '+' : ''}{money(investedDelta, form.currency)} (from {money(holding!.investedValue, form.currency)} to {money(numeric(form.investedValue), form.currency)}) — visible in Transactions afterward.</p>}
+          {investedDelta !== 0 && <p className="hint">Saving will log an adjustment transaction of {investedDelta > 0 ? '+' : ''}{money(investedDelta, form.currency)} (from {money(ledgerInvestedValue, form.currency)} to {money(numeric(form.investedValue), form.currency)}) — visible in Transactions afterward.</p>}
         </Field>}
         {isFixedRate && <>
           <Field label="Annual rate (%)" required><input required type="number" min="0" step="0.01" value={form.fixedAnnualRate} onChange={e => set('fixedAnnualRate', e.target.value)} /></Field>
@@ -278,6 +293,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
         || (isLiability && (!form.investedValue || !form.currentValue || (isOneTime ? !form.repaymentDueDate : (!form.emiDayOfMonth || (!form.emiAmount && !form.loanTermMonths)))))
         || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
     </form>
+    {addingTxn && holding && <TransactionModal transaction={null} holdings={[holding]} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); void refreshAfterTransaction() }} />}
   </section></div>
 }
 

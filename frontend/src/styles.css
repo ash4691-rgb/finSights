@@ -456,7 +456,7 @@ th.sortable:hover{color:var(--text)}
 .preset-strip{display:flex;flex-wrap:wrap;gap:7px;margin:-6px 0 20px}
 .preset-strip button{border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700}
 .preset-strip button:hover{border-color:var(--accent);color:var(--text)}
-.mapped-holdings{display:grid;gap:8px;margin-bottom:14px}
+.mapped-holdings{display:grid;gap:8px;margin-bottom:14px;max-height:340px;overflow-y:auto;padding-right:4px}
 .mapped-holding{display:flex;min-width:0;justify-content:space-between;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:10px 12px;text-align:left;color:var(--text)}
 .mapped-holding:hover{border-color:var(--border-strong)}
 .mapped-holding-name{flex:1;min-width:0;overflow:hidden}

@@ -127,7 +127,9 @@ export function CategoryDrawer({ category, holdings, onClose, onEdit, onAddHoldi
   </section></div>
 }
 
-export function CategoryModal({ category, holdings, onClose, onSaved }: { category: Category | null; holdings: Holding[]; onClose: () => void; onSaved: () => void }) {
+export function CategoryModal({ category, holdings, onClose, onSaved, onAddHolding }: {
+  category: Category | null; holdings: Holding[]; onClose: () => void; onSaved: () => void; onAddHolding?: (c: Category) => void
+}) {
   const [form, setForm] = useState(() => category
     ? { name: category.name, kind: category.kind, description: category.description || '', allowedValuationMethods: category.allowedValuationMethods ?? [] }
     : blankCategoryForm())
@@ -150,7 +152,7 @@ export function CategoryModal({ category, holdings, onClose, onSaved }: { catego
       onSaved()
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save category') } finally { setSaving(false) }
   }
-  return <div className="modal-backdrop"><section className="modal narrow"><div className="modal-header"><div><p className="eyebrow">{category ? 'EDIT CATEGORY' : 'NEW CATEGORY'}</p><h2>{category ? category.name : 'Add a category'}</h2></div><button className="close" onClick={onClose}>×</button></div>
+  return <div className="modal-backdrop"><section className="modal narrow"><div className="modal-header"><div><p className="eyebrow">{category ? 'EDIT CATEGORY' : 'NEW CATEGORY'}</p><h2>{category ? category.name : 'Add a category'}</h2></div>{category && onAddHolding && <button type="button" className="outline compact" onClick={() => onAddHolding(category)}>+ Add holding</button>}</div>
     <form onSubmit={submit}>
       <div className="form-grid">
         <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Growth Equity, Emergency Fund" /></Field>
