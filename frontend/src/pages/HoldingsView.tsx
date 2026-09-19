@@ -108,8 +108,9 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
-export function HoldingModal({ holding, category, categories, holdings, onClose, onSaved }: {
+export function HoldingModal({ holding, category, categories, holdings, onClose, onSaved, onGoToTransactions }: {
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; onClose: () => void; onSaved: () => void
+  onGoToTransactions?: () => void
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
@@ -252,10 +253,10 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
         </Field>
       </div>
       {isEdit && !isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
-        <span><b>Broker</b> is fixed for the life of a holding, and <b>invested value</b> &amp; <b>quantity</b> are calculated from its transactions — add or edit transactions to change them.</span>
+        <span><b>Broker</b> is fixed for the life of a holding, and <b>invested value</b> &amp; <b>quantity</b> are calculated from its transactions — add or edit <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>transactions</button> to change them.</span>
       </p>}
       {isEdit && isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
-        <span><b>Lender</b> and <b>total amount</b> are fixed once a loan exists. Update the <b>outstanding amount</b> here, or mark instalments paid from the Action centre.</span>
+        <span><b>Lender</b> and <b>total amount</b> are fixed once a loan exists — the total is logged from <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>Transactions</button>. Update the <b>outstanding amount</b> here, or mark instalments paid from the Action centre.</span>
       </p>}
       {duplicate && <p className="form-error">A holding named "{form.name.trim()}" at "{form.broker.trim()}" already exists — one holding maps to one broker.</p>}
       {error && <p className="form-error">{error}</p>}
