@@ -172,7 +172,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
     topMovers: <section className="panel">
       <div className="panel-heading"><h3>🔥 Hot Picks</h3><span>Market-linked movement beyond your thresholds</span></div>
-      <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'thresholds', span: 6 }, { key: 'watchlist', span: 6 }]} render={{
+      <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'thresholds', span: 12 }, { key: 'watchlist', span: 12 }]} render={{
         movers: <div className="action-col">
           <div className="action-col-head"><span className="action-col-icon">🔥</span><h4>Movers</h4><span className="action-col-count">{topMovers?.length ?? 0}</span></div>
           {topMovers === null ? <p className="hint">Loading hot picks…</p> : topMovers.length ? <div className="top-mover-list">
