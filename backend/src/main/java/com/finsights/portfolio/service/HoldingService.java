@@ -236,12 +236,34 @@ public class HoldingService {
         Holding holding = findOwned(id);
         ValuationMethod oldMethod = holding.getValuationMethod();
         BigDecimal oldValue = holding.getCurrentValue();
+        // Invested value is normally ledger-derived (below), not user-editable — but a manual
+        // correction from the Holding form (e.g. a partial-sell mismatch) is booked as a real,
+        // visible ADJUSTMENT transaction rather than silently overwriting the stored figure.
+        // Computed off the PRE-edit state, before copy() below overwrites holding.investedValue.
+        boolean wasLiability = holding.getCategory() != null && holding.getCategory().getKind() == HoldingKind.LIABILITY;
+        BigDecimal ledgerInvestedValue = zeroIfNull(holding.getInvestedValue());
+        BigDecimal investedDelta = (!wasLiability && request.investedValue() != null)
+                ? request.investedValue().subtract(ledgerInvestedValue).setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        if (investedDelta.signum() != 0) {
+            ensureOpeningTransaction(holding); // must run before copy() rewrites investedValue/quantity below
+        }
         String lockedBroker = holding.getBroker(); // broker is 1-1 with the holding and cannot be re-mapped
         copy(request, holding);
         holding.setBroker(lockedBroker);
         requireUniqueNameAndBroker(currentUser.currentUser().getId(), holding.getName(), lockedBroker, id);
+        if (investedDelta.signum() != 0) {
+            Transaction adjustment = new Transaction();
+            adjustment.setUser(holding.getUser());
+            adjustment.setHolding(holding);
+            adjustment.setType(TransactionType.ADJUSTMENT);
+            adjustment.setAmount(investedDelta);
+            adjustment.setDate(LocalDate.now());
+            adjustment.setNotes("Invested value adjusted from " + ledgerInvestedValue + " to " + request.investedValue() + " via holding edit");
+            transactions.save(adjustment);
+        }
         Holding saved = holdings.save(holding);
-        // invested value + quantity are owned by the transaction ledger, not this form.
+        // invested value + quantity are owned by the transaction ledger, not this form — this
+        // re-derives them, folding in the adjustment transaction just booked above (if any).
         syncFromTransactions(saved);
         // Snapshot the new value if it's freshly observable (not FIXED_RATE, which is analytic) and
         // it actually moved — or this is the first snapshot after switching away from FIXED_RATE.
