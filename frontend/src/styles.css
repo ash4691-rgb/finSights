@@ -184,6 +184,8 @@ td>strong{color:var(--text)}
 .name-button strong,.name-cell>strong,.trunc-name{display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trunc-cell{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .name-button small,.owner,td .positive small,td .negative small{margin-top:3px;color:var(--text-3);font-size:11px;font-weight:400}
+.needs-attention{flex-shrink:0;align-self:center;border:1px solid var(--warn-text);background:var(--warn-bg);color:var(--warn-text);border-radius:999px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}
+.needs-attention:hover{filter:brightness(1.1)}
 .badge{display:inline-block;border:1px solid var(--border-strong);color:var(--chip-text);background:var(--chip-bg);border-radius:4px;padding:3px 5px;font-size:9px;font-weight:800}
 .badge.liability{background:var(--liability-bg);border-color:var(--liability-bg);color:var(--liability-text)}
 .tag-row{display:flex;gap:3px;margin-top:5px;flex-wrap:wrap}
@@ -229,6 +231,10 @@ th.sortable:hover{color:var(--text)}
 .check-row{grid-column:1/-1;display:flex;gap:20px;color:var(--text-2);font-size:12px}
 .check-row label{display:flex;gap:7px;align-items:center}
 .form-error{color:var(--error-text);font-size:12px;background:var(--error-bg);padding:9px;border-radius:6px;margin:16px 0 0}
+/* Page-scoped fetch failure — stands in for one page's data without blocking the rest of the app. */
+.section-error{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin:16px 0;padding:20px;border:1px solid var(--error-text);border-radius:13px;background:var(--error-bg);color:var(--text)}
+.section-error p{margin:0;font-size:13px;color:var(--text-2)}
+.section-error strong{color:var(--text)}
 .form-hint{color:var(--text-3);font-size:11px;line-height:1.5;margin:16px 0 0}
 .txn-hint{grid-column:1/-1;margin:0;color:var(--text-3);font-size:11px;line-height:1.5}
 .form-callout{display:flex;gap:9px;align-items:flex-start;margin:16px 0 0;padding:11px 13px;border:1px solid var(--accent);border-left-width:3px;border-radius:8px;background:var(--accent-soft);color:var(--text-2);font-size:12px;line-height:1.5}

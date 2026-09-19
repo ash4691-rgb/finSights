@@ -12,6 +12,19 @@ import { InsightsView } from './pages/InsightsView'
 import { BrokersView } from './pages/BrokersView'
 import { SettingsView } from './pages/SettingsView'
 
+// Which independently-fetched piece of the bootstrap failed, keyed by name, with its message —
+// so one resource's failure never has to blank out the whole app, only the page(s) that need it.
+type LoadErrors = Partial<Record<'settings' | 'fx' | 'countries' | 'dashboard' | 'categories' | 'holdings', string>>
+
+// Inline, page-scoped stand-in for whatever couldn't load — the rest of the app (nav, other
+// pages) stays fully usable around it.
+function SectionError({ what, message, onRetry }: { what: string; message?: string; onRetry: () => void }) {
+  return <div className="section-error">
+    <p><strong>Couldn't load {what}.</strong> {message ?? 'Something went wrong.'}</p>
+    <button className="outline" onClick={onRetry}>Retry</button>
+  </div>
+}
+
 export function App({ onSignOut }: { onSignOut: () => void }) {
   const [page, setPage] = useState<Page>('dashboard')
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
@@ -20,7 +33,10 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [user, setUser] = useState<User | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loading, setLoading] = useState(true)
+  // Only auth/me failing blocks the whole app — nothing can render without knowing who's signed
+  // in. Every other resource fetched below fails independently into loadErrors instead.
   const [error, setError] = useState('')
+  const [loadErrors, setLoadErrors] = useState<LoadErrors>({})
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null)
   const [creatingHolding, setCreatingHolding] = useState(false)
   // Optional category to pre-select and lock when adding a holding from within a category drawer.
@@ -50,39 +66,72 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     try { localStorage.setItem(THEME_KEY, theme) } catch { /* storage unavailable */ }
   }, [theme])
 
-  // Only the very first call blocks the screen with the full-page spinner/error — every
-  // later reload (after adding a holding, importing a file, switching currency, …) updates
-  // data quietly in the background so it doesn't unmount whatever the user has open (a modal,
-  // a drawer) mid-interaction.
+  // Only the very first call blocks the screen with the full-page spinner — every later reload
+  // (after adding a holding, importing a file, switching currency, …) updates data quietly in
+  // the background so it doesn't unmount whatever the user has open (a modal, a drawer)
+  // mid-interaction.
+  //
+  // auth/me is the one call the whole shell depends on (we can't render anything without knowing
+  // who's signed in), so it alone can still show the full-page "could not connect" screen. Every
+  // other resource is fetched independently via Promise.allSettled and applied to its own piece
+  // of state regardless of what else failed — a bad record poisoning one endpoint (say
+  // /api/dashboard) no longer blanks pages that don't need it (Holdings, Transactions, …). A
+  // resource that fails keeps whatever it last had (never nulled out) and records why in
+  // loadErrors, which pages read to show an inline "couldn't load — retry" instead of nothing.
   const load = async (currency?: string) => {
     const isFirstLoad = !bootstrapped.current
     if (isFirstLoad) { setLoading(true); setError('') }
-    try {
-      const cur = currency ?? displayCurrency
-      const [me, nextSettings, fx, nextCountries, nextDashboard, nextCategories, nextHoldings, nextLayouts] = await Promise.all([
-        api<User>('/api/auth/me'), api<Settings>('/api/settings'), api<FxRates>('/api/fx-rates'), api<Country[]>('/api/countries'),
-        api<Dashboard>(`/api/dashboard?currency=${cur}`), api<Category[]>(`/api/categories?currency=${cur}`),
-        api<Holding[]>(`/api/holdings?currency=${cur}`), fetchLayouts(),
-      ])
+    const cur = currency ?? displayCurrency
 
-      applyLocale(cur, nextSettings.numberFormat)
-      hydrateLayouts(nextLayouts)
-      setUser(me); setSettings(nextSettings); setFxCurrencies(Object.keys(fx.ratesToBase).sort())
-      setFxRatesToBase(fx.ratesToBase); setCountries(nextCountries)
-      setDashboard(nextDashboard); setCategories(nextCategories); setHoldings(nextHoldings); setDisplayCurrency(cur)
-      setDataVersion(v => v + 1)
-      setLayoutNonce(n => n + 1)
-      if (isFirstLoad) {
-        bootstrapped.current = true
-        if (!currency && nextSettings.baseCurrency && nextSettings.baseCurrency !== cur) {
-          void load(nextSettings.baseCurrency)
-          return
-        }
-      }
+    let me: User
+    try {
+      me = await api<User>('/api/auth/me')
     } catch (err) {
-      if (isFirstLoad) setError(err instanceof Error ? err.message : 'Unable to load the portfolio')
-      else console.error('Background refresh failed', err)
-    } finally { if (isFirstLoad) setLoading(false) }
+      if (isFirstLoad) { setError(err instanceof Error ? err.message : 'Unable to load the portfolio'); setLoading(false) }
+      return
+    }
+    setUser(me)
+
+    const [settingsR, fxR, countriesR, dashboardR, categoriesR, holdingsR, layoutsR] = await Promise.allSettled([
+      api<Settings>('/api/settings'), api<FxRates>('/api/fx-rates'), api<Country[]>('/api/countries'),
+      api<Dashboard>(`/api/dashboard?currency=${cur}`), api<Category[]>(`/api/categories?currency=${cur}`),
+      api<Holding[]>(`/api/holdings?currency=${cur}`), fetchLayouts(),
+    ])
+    const errors: LoadErrors = {}
+    const reason = (r: PromiseRejectedResult) => r.reason instanceof Error ? r.reason.message : 'Something went wrong'
+
+    let nextSettings: Settings | undefined
+    if (settingsR.status === 'fulfilled') { nextSettings = settingsR.value; applyLocale(cur, nextSettings.numberFormat); setSettings(nextSettings) }
+    else errors.settings = reason(settingsR)
+
+    if (fxR.status === 'fulfilled') { setFxCurrencies(Object.keys(fxR.value.ratesToBase).sort()); setFxRatesToBase(fxR.value.ratesToBase) }
+    else errors.fx = reason(fxR)
+
+    if (countriesR.status === 'fulfilled') setCountries(countriesR.value)
+    else errors.countries = reason(countriesR)
+
+    if (dashboardR.status === 'fulfilled') setDashboard(dashboardR.value)
+    else errors.dashboard = reason(dashboardR)
+
+    if (categoriesR.status === 'fulfilled') setCategories(categoriesR.value)
+    else errors.categories = reason(categoriesR)
+
+    if (holdingsR.status === 'fulfilled') setHoldings(holdingsR.value)
+    else errors.holdings = reason(holdingsR)
+
+    if (layoutsR.status === 'fulfilled') hydrateLayouts(layoutsR.value)
+
+    setDisplayCurrency(cur)
+    setLoadErrors(errors)
+    setDataVersion(v => v + 1)
+    setLayoutNonce(n => n + 1)
+    if (isFirstLoad) {
+      bootstrapped.current = true
+      setLoading(false)
+      if (!currency && nextSettings?.baseCurrency && nextSettings.baseCurrency !== cur) {
+        void load(nextSettings.baseCurrency)
+      }
+    }
   }
   useEffect(() => { void load() }, [])
 
@@ -158,13 +207,23 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         </div>
       </header>
       {user?.demoMode && <div className="demo-banner"><strong>Demo mode</strong><span>Local data is saved in the backend. Configure Google OAuth before deployment.</span></div>}
-      {page === 'dashboard' && dashboard && <DashboardView dashboard={dashboard} holdings={holdings} onManage={() => setPage('categories')} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
-      {page === 'categories' && <CategoriesView categories={categories} onOpen={setCategoryDetail} onEdit={setEditingCategory} onAdd={() => setCreatingCategory(true)} reload={load} />}
-      {page === 'holdings' && <HoldingsView holdings={holdings} categories={categories} reload={load} onEdit={setEditingHolding} onAdd={() => setCreatingHolding(true)} onOpen={setHoldingDetail} />}
+      {page === 'dashboard' && (dashboard
+        ? <DashboardView dashboard={dashboard} holdings={holdings} onManage={() => setPage('categories')} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />
+        : <SectionError what="your dashboard" message={loadErrors.dashboard} onRetry={() => void load()} />)}
+      {page === 'categories' && (loadErrors.categories
+        ? <SectionError what="categories" message={loadErrors.categories} onRetry={() => void load()} />
+        : <CategoriesView categories={categories} onOpen={setCategoryDetail} onEdit={setEditingCategory} onAdd={() => setCreatingCategory(true)} reload={load} />)}
+      {page === 'holdings' && (loadErrors.holdings
+        ? <SectionError what="your holdings" message={loadErrors.holdings} onRetry={() => void load()} />
+        : <HoldingsView holdings={holdings} categories={categories} reload={load} onEdit={setEditingHolding} onAdd={() => setCreatingHolding(true)} onOpen={setHoldingDetail} />)}
       {page === 'transactions' && <TransactionsView holdings={holdings} displayCurrency={displayCurrency} dataVersion={dataVersion} reload={load} />}
-      {page === 'insights' && settings && dashboard && <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
+      {page === 'insights' && (settings && dashboard
+        ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />
+        : <SectionError what="insights" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
-      {page === 'settings' && settings && <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme} />}
+      {page === 'settings' && (settings
+        ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme} />
+        : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
     {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null); void load() }} />}

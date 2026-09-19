@@ -27,6 +27,10 @@ export type Holding = {
   repaymentFrequency?: RepaymentFrequency; emiAmount?: number; emiDayOfMonth?: number; loanTermMonths?: number; repaymentDueDate?: string
   liquidWithinSevenDays: boolean; blocked: boolean; description?: string; notes?: string; tags: string[]
   createdAt?: string; updatedAt?: string; priceUpdatedAt?: string
+  // True when the backend had to fall back a computed figure for this holding (incomplete
+  // fixed-rate data, an unconvertible currency, …) instead of failing the whole list — the
+  // holding still renders, but needs a look; dataIssueMessage explains what to fix.
+  dataIssue?: boolean; dataIssueMessage?: string
 }
 export type SymbolSuggestion = { symbol: string; name: string; exchange: string; type: string }
 export type MarketQuote = { symbol: string; name: string; price: number; currency: string; asOf: string }

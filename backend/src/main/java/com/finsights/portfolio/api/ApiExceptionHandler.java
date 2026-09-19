@@ -1,6 +1,8 @@
 package com.finsights.portfolio.api;
 
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -11,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     // Render ResponseStatusException as a JSON body directly, so unauthenticated endpoints
     // (sign-in, registration) don't forward to a secured /error and come back as an opaque 403.
     @ExceptionHandler(ResponseStatusException.class)
@@ -31,5 +34,15 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     Map<String, String> invalid(IllegalArgumentException exception) {
         return Map.of("message", exception.getMessage());
+    }
+
+    // Last-resort net: an unanticipated bug (e.g. a null field on one bad record) must never
+    // surface as a raw unhandled exception — log it for diagnosis and return a safe, generic
+    // response so the rest of the app keeps working.
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    Map<String, String> unexpected(Exception exception) {
+        log.warn("Unhandled exception serving API request", exception);
+        return Map.of("message", "Something went wrong on our end. Please try again.");
     }
 }

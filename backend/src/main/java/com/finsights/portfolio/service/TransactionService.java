@@ -171,14 +171,14 @@ public class TransactionService {
         com.finsights.portfolio.domain.Category category = h.getCategory();
         String currency = h.getCurrency() == null ? "INR" : h.getCurrency();
         BigDecimal amount = t.getAmount() == null ? BigDecimal.ZERO : t.getAmount();
-        String outCurrency = currency;
-        if (displayCurrency != null && !displayCurrency.isBlank()) {
-            amount = fx.convert(amount, currency, displayCurrency);
-            outCurrency = displayCurrency.trim().toUpperCase();
-        }
         BigDecimal principal = t.getPrincipalPortion();
-        if (principal != null && displayCurrency != null && !displayCurrency.isBlank()) {
-            principal = fx.convert(principal, currency, displayCurrency);
+        String outCurrency = currency;
+        // One holding with an unsupported/legacy currency must not 500 the whole transaction list —
+        // fall back to its native currency instead (mirrors HoldingService.convertToHoldingCurrency).
+        if (displayCurrency != null && !displayCurrency.isBlank() && fx.supports(currency) && fx.supports(displayCurrency)) {
+            amount = fx.convert(amount, currency, displayCurrency);
+            if (principal != null) principal = fx.convert(principal, currency, displayCurrency);
+            outCurrency = displayCurrency.trim().toUpperCase();
         }
         return new TransactionResponse(t.getId(), h.getId(), h.getName(), category.getId(), category.getName(),
                 h.getBroker(), outCurrency, t.getType(), t.getDate(), amount,

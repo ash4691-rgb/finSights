@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class HoldingService {
+    private static final Logger log = LoggerFactory.getLogger(HoldingService.class);
     private final HoldingRepository holdings;
     private final CategoryRepository categories;
     private final CurrentUserService currentUser;
@@ -386,24 +389,62 @@ public class HoldingService {
         holdings.delete(holding);
     }
 
+    /**
+     * This is the single choke point every aggregate endpoint (dashboard, categories, insights,
+     * hot picks) ultimately flows through via {@link #list()} — so it must never throw for one bad
+     * record. Known incomplete-data cases are flagged via {@code dataIssue} instead of hidden; a
+     * last-resort catch guards against any other unanticipated one, returning a degraded-but-valid
+     * placeholder rather than failing the whole list.
+     */
     public HoldingResponse toResponse(Holding holding) {
+        try {
+            Category category = holding.getCategory();
+            if (category == null) {
+                return degradedResponse(holding, "This holding's category is missing — edit it to reassign one.");
+            }
+            BigDecimal invested = zeroIfNull(holding.getInvestedValue());
+            BigDecimal current = valuations.currentValue(holding);
+            BigDecimal pnl = current.subtract(invested);
+            BigDecimal pnlPct = invested.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
+                    : pnl.divide(invested, 6, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
+            HoldingResponse response = new HoldingResponse(
+                    holding.getId(), holding.getHoldingRef(), category.getId(), category.getName(), holding.getName(), category.getKind(),
+                    holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
+                    holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
+                    zeroIfNull(holding.getAccruedIncome()),
+                    holding.getQuantity(), holding.getFixedAnnualRate(),
+                    holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
+                    holding.getRepaymentFrequency(), holding.getEmiAmount(), holding.getEmiDayOfMonth(),
+                    holding.getLoanTermMonths(), holding.getRepaymentDueDate(), holding.getLiquidWithinSevenDays(),
+                    holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
+                    holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt(), false, null);
+            if (valuations.isFixedRateIncomplete(holding)) {
+                response = response.withDataIssue("Fixed-rate details are incomplete — edit this holding to set "
+                        + "its rate, interest payout frequency, and start date.");
+            }
+            return response;
+        } catch (RuntimeException e) {
+            log.warn("Failed to build a response for holding {} — returning a degraded placeholder instead of failing the list", holding.getId(), e);
+            return degradedResponse(holding, "This holding has an unexpected data problem — edit it or contact support.");
+        }
+    }
+
+    /** A maximally-safe response for a holding whose real figures can't be computed right now. */
+    private HoldingResponse degradedResponse(Holding holding, String message) {
         Category category = holding.getCategory();
-        BigDecimal invested = zeroIfNull(holding.getInvestedValue());
-        BigDecimal current = valuations.currentValue(holding);
-        BigDecimal pnl = current.subtract(invested);
-        BigDecimal pnlPct = invested.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
-                : pnl.divide(invested, 6, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
         return new HoldingResponse(
-                holding.getId(), holding.getHoldingRef(), category.getId(), category.getName(), holding.getName(), category.getKind(),
+                holding.getId(), holding.getHoldingRef(), category == null ? "" : category.getId(),
+                category == null ? "Unknown category" : category.getName(), holding.getName(),
+                category == null ? HoldingKind.ASSET : category.getKind(),
                 holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
-                holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
-                zeroIfNull(holding.getAccruedIncome()),
-                holding.getQuantity(), holding.getFixedAnnualRate(),
-                holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
-                holding.getRepaymentFrequency(), holding.getEmiAmount(), holding.getEmiDayOfMonth(),
-                holding.getLoanTermMonths(), holding.getRepaymentDueDate(), holding.getLiquidWithinSevenDays(),
-                holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
-                holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt());
+                holding.getCurrency() == null ? "INR" : holding.getCurrency(),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                holding.getQuantity(), holding.getFixedAnnualRate(), holding.getCompoundingFrequency(),
+                holding.getFixedRateStartDate(), holding.getFixedRateEndDate(), holding.getRepaymentFrequency(),
+                holding.getEmiAmount(), holding.getEmiDayOfMonth(), holding.getLoanTermMonths(), holding.getRepaymentDueDate(),
+                holding.getLiquidWithinSevenDays(), holding.getBlocked(), holding.getDescription(), holding.getNotes(),
+                Set.copyOf(holding.getTags()), holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt(),
+                true, message);
     }
 
     private Holding findOwned(String id) {
@@ -418,6 +459,12 @@ public class HoldingService {
         // A liability is always manually valued: total borrowed = investedValue, outstanding = currentValue.
         ValuationMethod method = liability || source.valuationMethod() == null
                 ? ValuationMethod.MANUAL : source.valuationMethod();
+
+        // Reject an unsupported currency now, rather than let it corrupt a later currency-converted
+        // read (dashboard, holdings list in another currency, transaction history, …).
+        if (source.currency() != null && !source.currency().isBlank() && !fx.supports(source.currency())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported currency: " + source.currency().trim().toUpperCase());
+        }
 
         if (!liability && !category.getAllowedValuationMethods().isEmpty() && !category.getAllowedValuationMethods().contains(method)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

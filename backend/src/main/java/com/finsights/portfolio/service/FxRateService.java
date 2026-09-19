@@ -52,10 +52,16 @@ public class FxRateService {
         return inrValue.divide(rateToInr(t), 2, RoundingMode.HALF_UP);
     }
 
-    /** Returns a copy of {@code holding} re-expressed in {@code targetCurrency}. P&amp;L % is currency-invariant. */
+    /** Returns a copy of {@code holding} re-expressed in {@code targetCurrency}. P&amp;L % is currency-invariant.
+     *  An unsupported currency on this one holding (bad/legacy data) never fails the whole list — it's
+     *  returned unconverted and flagged instead. */
     public HoldingResponse convert(HoldingResponse holding, String targetCurrency) {
         String target = normalize(targetCurrency);
         if (target.equals(normalize(holding.currency()))) return holding;
+        if (!supports(holding.currency()) || !supports(target)) {
+            return holding.withDataIssue("Couldn't convert this holding's currency (" + holding.currency()
+                    + ") — showing its original value instead of " + target + ".");
+        }
         BigDecimal invested = convert(holding.investedValue(), holding.currency(), target);
         BigDecimal current = convert(holding.currentValue(), holding.currency(), target);
         BigDecimal realised = convert(holding.realisedProfitLoss(), holding.currency(), target);
@@ -69,7 +75,8 @@ public class FxRateService {
                 holding.fixedRateStartDate(), holding.fixedRateEndDate(),
                 holding.repaymentFrequency(), emi, holding.emiDayOfMonth(), holding.loanTermMonths(), holding.repaymentDueDate(),
                 holding.liquidWithinSevenDays(), holding.blocked(), holding.description(), holding.notes(),
-                holding.tags(), holding.createdAt(), holding.updatedAt(), holding.priceUpdatedAt());
+                holding.tags(), holding.createdAt(), holding.updatedAt(), holding.priceUpdatedAt(),
+                holding.dataIssue(), holding.dataIssueMessage());
     }
 
     private BigDecimal rateToInr(String currency) {

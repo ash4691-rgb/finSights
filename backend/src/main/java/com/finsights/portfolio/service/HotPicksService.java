@@ -51,9 +51,10 @@ public class HotPicksService {
             if (h.kind() == HoldingKind.LIABILITY) continue; // movement/threshold tracking is for assets
             List<PeriodMovement> triggered = evaluate(thresholds, days -> movements.holdingMovement(h, days));
             if (!triggered.isEmpty()) {
-                BigDecimal shown = displayCurrency == null || displayCurrency.isBlank()
-                        ? h.currentValue() : fx.convert(h.currentValue(), h.currency(), displayCurrency);
-                String currency = displayCurrency == null || displayCurrency.isBlank() ? h.currency() : displayCurrency.trim().toUpperCase();
+                boolean canConvert = displayCurrency != null && !displayCurrency.isBlank()
+                        && fx.supports(h.currency()) && fx.supports(displayCurrency);
+                BigDecimal shown = canConvert ? fx.convert(h.currentValue(), h.currency(), displayCurrency) : h.currentValue();
+                String currency = canConvert ? displayCurrency.trim().toUpperCase() : h.currency();
                 results.add(new HotPickResponse("HOLDING", h.id(), h.name(), h.categoryName(), h.tickerSymbol(), shown, currency, triggered));
             }
         }
