@@ -19,6 +19,7 @@ import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.MarketHistoryResponse;
+import com.finsights.portfolio.dto.HoldingRequest;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.repository.CategoryRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
@@ -34,6 +35,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
@@ -68,6 +70,12 @@ class HoldingServiceTest {
         t.setAmount(new BigDecimal(amount));
         t.setQuantity(quantity == null ? null : new BigDecimal(quantity));
         return t;
+    }
+
+    private HoldingRequest editRequest(BigDecimal investedValue, BigDecimal currentValue) {
+        return new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
+                null, investedValue, currentValue, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null);
     }
 
     @Test
@@ -251,5 +259,84 @@ class HoldingServiceTest {
         service.list();
 
         verify(marketData, never()).history(any(), any());
+    private void stubForUpdate(Category category) {
+        UserAccount user = new UserAccount("demo@finsights.local", "Demo");
+        holding.setUser(user);
+        holding.setCategory(category);
+        holding.setBroker("Kite");
+        holding.setCurrency("INR");
+        when(currentUser.currentUser()).thenReturn(user);
+        when(holdings.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(holding));
+        when(categories.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(category));
+        when(holdings.findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(any(), any(), any())).thenReturn(Optional.empty());
+        when(holdings.save(any())).thenReturn(holding);
+        when(fx.supports(any())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(transactions.existsByHolding_Id(any())).thenReturn(true); // ledger already backfilled — only consulted when an adjustment is actually booked
+        when(valuations.currentValue(any())).thenAnswer(inv -> ((Holding) inv.getArgument(0)).getCurrentValue());
+    }
+
+    // A holding-edit invested-value correction (e.g. for a partial-sell mismatch) is booked as a
+    // real, visible ADJUSTMENT transaction for the difference — not a silent field overwrite.
+    @Test
+    void editingInvestedValueBooksAVisibleAdjustmentForTheDifference() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForUpdate(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setInvestedValue(new BigDecimal("10000.00"));
+        holding.setCurrentValue(new BigDecimal("12000.00"));
+        // After the adjustment is booked, syncFromTransactions replays the ledger to land at the target.
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
+                txn(TransactionType.BUY, "10000", null),
+                txn(TransactionType.ADJUSTMENT, "500", null)));
+
+        service.update("h-1", editRequest(new BigDecimal("10500.00"), new BigDecimal("12000.00")));
+
+        ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactions).save(captor.capture());
+        Transaction adjustment = captor.getValue();
+        assertThat(adjustment.getType()).isEqualTo(TransactionType.ADJUSTMENT);
+        assertThat(adjustment.getAmount()).isEqualByComparingTo("500.00");
+        assertThat(adjustment.getQuantity()).isNull();
+        assertThat(holding.getInvestedValue()).isEqualByComparingTo("10500.00");
+    }
+
+    @Test
+    void editingWithoutChangingInvestedValueBooksNoAdjustment() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForUpdate(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setInvestedValue(new BigDecimal("10000.00"));
+        holding.setCurrentValue(new BigDecimal("12000.00"));
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
+                txn(TransactionType.BUY, "10000", null)));
+
+        service.update("h-1", editRequest(new BigDecimal("10000.00"), new BigDecimal("12000.00")));
+
+        verify(transactions, never()).save(any(Transaction.class));
+    }
+
+    // A liability's "total amount" stays locked to the transaction ledger (the UI disables the
+    // field on edit) — the backend never books an invested-value adjustment for a liability.
+    @Test
+    void editingALiabilityNeverBooksAnInvestedValueAdjustment() {
+        Category category = new Category();
+        category.setKind(HoldingKind.LIABILITY);
+        stubForUpdate(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setInvestedValue(new BigDecimal("500000.00"));
+        holding.setCurrentValue(new BigDecimal("400000.00"));
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
+                txn(TransactionType.BUY, "500000", null)));
+
+        HoldingRequest request = new HoldingRequest("cat-1", "HDFC Home Loan", null, null, "HDFC Bank", "INR",
+                null, new BigDecimal("999999.00"), new BigDecimal("400000.00"), null, null, null, null,
+                com.finsights.portfolio.domain.RepaymentFrequency.MONTHLY, new BigDecimal("10000"), 5, null, null,
+                null, null, null, null, null);
+
+        service.update("h-1", request);
+
+        verify(transactions, never()).save(any(Transaction.class));
     }
 }

@@ -29,7 +29,7 @@ final class TransactionRowParser {
                 require(field.apply("holdingid"), "holdingId"),
                 parseEnum(TransactionType.class, field.apply("type"), "type"),
                 requireDate(field.apply("date")),
-                decimal(field.apply("amount"), "amount"),
+                decimal(require(field.apply("amount"), "amount"), "amount"),
                 optionalDecimal(field.apply("quantity"), "quantity"),
                 // bulk import can't tick a checkbox — a note that says "paid"/"received" marks cash interest
                 notes != null && notes.toLowerCase().matches(".*\\b(paid|received|in cash)\\b.*"),

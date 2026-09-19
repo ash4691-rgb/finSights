@@ -2,6 +2,7 @@ package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.dto.ImportResultResponse;
 import com.finsights.portfolio.dto.TransactionResponse;
+import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,9 +19,11 @@ public class CsvService {
     private static final List<String> EXPORT_EXTRA_COLUMNS = List.of("holdingName", "broker");
 
     private final TransactionService transactions;
+    private final Validator validator;
 
-    public CsvService(TransactionService transactions) {
+    public CsvService(TransactionService transactions, Validator validator) {
         this.transactions = transactions;
+        this.validator = validator;
     }
 
     public String export() {
@@ -49,7 +52,7 @@ public class CsvService {
             }
             dataRows.add(fields);
         }
-        return TransactionImportRunner.run(dataRows, i -> i + 2, transactions);
+        return TransactionImportRunner.run(dataRows, i -> i + 2, transactions, validator);
     }
 
     // --- CSV text <-> rows-of-cells parsing ---
