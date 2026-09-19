@@ -4,6 +4,7 @@ import type { FormEvent } from 'react'
 import { api } from '../api'
 import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel } from '../util'
 import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
+import { TransactionModal } from './TransactionsView'
 import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
@@ -280,14 +281,19 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   </section></div>
 }
 
-export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { holding: Holding; displayCurrency: string; onClose: () => void; onEdit: (holding: Holding) => void }) {
+export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit, reload }: {
+  holding: Holding; displayCurrency: string; onClose: () => void; onEdit: (holding: Holding) => void; reload: () => Promise<void>
+}) {
   const [detail, setDetail] = useState<ValuationDetail | null>(null)
   const [txns, setTxns] = useState<Transaction[] | null>(null)
   const [visibleTxns, setVisibleTxns] = useState(10)
   const [calcOpen, setCalcOpen] = useState(false)
-  useEscToClose(onClose)
+  const [addingTxn, setAddingTxn] = useState(false)
+  // Suppressed while the transaction modal is open on top — otherwise one Esc closes both.
+  useEscToClose(() => { if (!addingTxn) onClose() })
   useEffect(() => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }, [holding.id])
-  useEffect(() => { setVisibleTxns(10); api<Transaction[]>(`/api/transactions?holdingId=${holding.id}&currency=${displayCurrency}`).then(setTxns).catch(() => setTxns([])) }, [holding.id, displayCurrency])
+  const loadTxns = () => { setVisibleTxns(10); api<Transaction[]>(`/api/transactions?holdingId=${holding.id}&currency=${displayCurrency}`).then(setTxns).catch(() => setTxns([])) }
+  useEffect(loadTxns, [holding.id, displayCurrency])
   const onTxnScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) setVisibleTxns(count => count + 10)
@@ -346,7 +352,9 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { h
           <span className="drawer-txn-amount">{money(t.amount, t.currency)}{t.type === 'REPAY' && t.principalPortion != null ? ` · ${money(t.principalPortion, t.currency)} principal` : t.quantity != null ? ` · qty ${t.quantity}` : ''}</span>
           {t.notes && <span className="drawer-txn-notes">{t.notes}</span>}
         </div>)}{visibleTxns < txns.length && <p className="hint drawer-txns-more">Scroll for {txns.length - visibleTxns} more</p>}</div>}
+    <button type="button" className="outline compact" onClick={() => setAddingTxn(true)}>+ Log transaction</button>
 
     <div className="modal-actions"><button className="outline" onClick={onClose}>Close</button><button className="primary" onClick={() => onEdit(holding)}>Edit holding</button></div>
+    {addingTxn && <TransactionModal transaction={null} holdings={[holding]} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); void reload() }} />}
   </section></div>
 }

@@ -228,7 +228,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
     {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null); void load() }} onGoToTransactions={() => setPage('transactions')} />}
     {categoryDetail && <CategoryDrawer category={categoryDetail} holdings={holdings.filter(h => h.categoryId === categoryDetail.id)} onClose={() => setCategoryDetail(null)} onEdit={c => { setCategoryDetail(null); setEditingCategory(c) }} onAddHolding={c => { setCategoryDetail(null); setCreatingHoldingFor(c) }} onOpenHolding={h => { setCategoryDetail(null); setHoldingDetail(h) }} reload={load} />}
-    {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} />}
+    {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
   </div>
 }
