@@ -5,12 +5,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.WatchlistItem;
+import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.dto.WatchlistCreateRequest;
 import com.finsights.portfolio.dto.WatchlistResponse;
@@ -18,6 +20,7 @@ import com.finsights.portfolio.dto.WatchlistUpdateRequest;
 import com.finsights.portfolio.repository.WatchlistRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -201,5 +204,44 @@ class WatchlistServiceTest {
         service.list();
 
         verify(marketData, never()).quotes(any());
+    }
+
+    @Test
+    void listBackfillsRealHistoricalPricesWhenNoDeepHistoryExistsYet() {
+        WatchlistItem item = new WatchlistItem();
+        item.setUser(user);
+        item.setName("Reliance");
+        item.setTickerSymbol("RELIANCE.NS");
+        item.setCurrency("INR");
+        when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
+        when(snapshots.latestRecordedAt(any(), any())).thenReturn(null);
+        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE.NS",
+                new MarketQuoteResponse("RELIANCE.NS", "Reliance", new BigDecimal("2950.00"), "INR", Instant.now())));
+        when(snapshots.hasSnapshotAtOrBefore(any(), any(), any())).thenReturn(false);
+        when(marketData.history(eq("RELIANCE.NS"), eq("1Y"))).thenReturn(Optional.of(new MarketHistoryResponse("RELIANCE.NS", "INR", List.of(
+                new MarketHistoryResponse.Point(Instant.now().minus(300, ChronoUnit.DAYS), new BigDecimal("2800")),
+                new MarketHistoryResponse.Point(Instant.now().minus(100, ChronoUnit.DAYS), new BigDecimal("2900"))))));
+
+        service.list();
+
+        verify(snapshots, times(2)).recordAt(eq(SnapshotSubject.WATCHLIST), any(), eq(user), any(), any());
+    }
+
+    @Test
+    void listSkipsTheHistoryBackfillOnceDeepHistoryAlreadyExists() {
+        WatchlistItem item = new WatchlistItem();
+        item.setUser(user);
+        item.setName("Reliance");
+        item.setTickerSymbol("RELIANCE.NS");
+        item.setCurrency("INR");
+        when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
+        when(snapshots.latestRecordedAt(any(), any())).thenReturn(null);
+        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE.NS",
+                new MarketQuoteResponse("RELIANCE.NS", "Reliance", new BigDecimal("2950.00"), "INR", Instant.now())));
+        when(snapshots.hasSnapshotAtOrBefore(any(), any(), any())).thenReturn(true);
+
+        service.list();
+
+        verify(marketData, never()).history(any(), any());
     }
 }

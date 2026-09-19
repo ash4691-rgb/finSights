@@ -3,6 +3,7 @@ package com.finsights.portfolio.service;
 import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.WatchlistItem;
+import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.dto.WatchlistCreateRequest;
 import com.finsights.portfolio.dto.WatchlistPriceRequest;
@@ -29,6 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class WatchlistService {
     /** Ticker-bearing items are re-priced from the live feed no more often than this — same cadence as holdings. */
     private static final Duration PRICE_MAX_AGE = Duration.ofMinutes(15);
+    /** How far back a historical backfill needs to already reach before it's considered done. */
+    private static final Duration DEEP_HISTORY_WINDOW = Duration.ofDays(350);
 
     private final WatchlistRepository items;
     private final PriceSnapshotService snapshots;
@@ -82,7 +85,25 @@ public class WatchlistService {
             }
             BigDecimal value = convertToItemCurrency(quote.price(), quote.currency(), currency);
             snapshots.record(SnapshotSubject.WATCHLIST, item.getId(), item.getUser(), value);
+            backfillHistoryIfNeeded(item, currency);
         }
+    }
+
+    /**
+     * One-time backfill of real historical closes (Yahoo's 1-year chart) so monthly, quarterly,
+     * half-yearly, and yearly thresholds have a genuine baseline right away instead of only after
+     * months of live use — never fabricated, just fetched earlier. Skipped once a snapshot already
+     * exists that old; a fetch failure is swallowed and simply retried on the next refresh.
+     */
+    private void backfillHistoryIfNeeded(WatchlistItem item, String currency) {
+        Instant cutoff = Instant.now().minus(DEEP_HISTORY_WINDOW);
+        if (snapshots.hasSnapshotAtOrBefore(SnapshotSubject.WATCHLIST, item.getId(), cutoff)) return;
+        marketData.history(item.getTickerSymbol(), "1Y").ifPresent(history -> {
+            for (MarketHistoryResponse.Point point : history.points()) {
+                BigDecimal value = convertToItemCurrency(point.price(), history.currency(), currency);
+                snapshots.recordAt(SnapshotSubject.WATCHLIST, item.getId(), item.getUser(), value, point.timestamp());
+            }
+        });
     }
 
     private BigDecimal convertToItemCurrency(BigDecimal amount, String from, String to) {

@@ -4,5 +4,5 @@ import java.math.BigDecimal;
 
 public record MovementThresholdResponse(
         BigDecimal dailyPercent, BigDecimal weeklyPercent, BigDecimal monthlyPercent,
-        BigDecimal quarterlyPercent, BigDecimal yearlyPercent
+        BigDecimal quarterlyPercent, BigDecimal halfYearlyPercent, BigDecimal yearlyPercent
 ) { }

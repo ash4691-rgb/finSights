@@ -29,9 +29,10 @@ public class MovementThresholdService {
 
     public MovementThresholdResponse get() {
         UserAccount user = currentUser.currentUser();
+        // Half-yearly is new — there's no legacy Settings field for it to fall back to.
         return repository.findByUser(user).map(this::toResponse).orElseGet(() -> new MovementThresholdResponse(
                 user.getDailyThresholdPercent(), user.getWeeklyThresholdPercent(), user.getMonthlyThresholdPercent(),
-                user.getQuarterlyThresholdPercent(), user.getYearlyThresholdPercent()));
+                user.getQuarterlyThresholdPercent(), null, user.getYearlyThresholdPercent()));
     }
 
     public MovementThresholdResponse save(MovementThresholdRequest request) {
@@ -45,6 +46,7 @@ public class MovementThresholdService {
         row.setWeeklyPercent(nonNegative(request.weeklyPercent(), "weeklyPercent"));
         row.setMonthlyPercent(nonNegative(request.monthlyPercent(), "monthlyPercent"));
         row.setQuarterlyPercent(nonNegative(request.quarterlyPercent(), "quarterlyPercent"));
+        row.setHalfYearlyPercent(nonNegative(request.halfYearlyPercent(), "halfYearlyPercent"));
         row.setYearlyPercent(nonNegative(request.yearlyPercent(), "yearlyPercent"));
         return toResponse(repository.save(row));
     }
@@ -59,6 +61,6 @@ public class MovementThresholdService {
     private MovementThresholdResponse toResponse(MovementThreshold row) {
         return new MovementThresholdResponse(
                 row.getDailyPercent(), row.getWeeklyPercent(), row.getMonthlyPercent(),
-                row.getQuarterlyPercent(), row.getYearlyPercent());
+                row.getQuarterlyPercent(), row.getHalfYearlyPercent(), row.getYearlyPercent());
     }
 }

@@ -53,7 +53,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
       await api('/api/insights/thresholds', { method: 'PUT', body: JSON.stringify({
         dailyPercent: numOrNull(thresholds.DAILY), weeklyPercent: numOrNull(thresholds.WEEKLY),
         monthlyPercent: numOrNull(thresholds.MONTHLY), quarterlyPercent: numOrNull(thresholds.QUARTERLY),
-        yearlyPercent: numOrNull(thresholds.YEARLY),
+        halfYearlyPercent: numOrNull(thresholds.HALF_YEARLY), yearlyPercent: numOrNull(thresholds.YEARLY),
       }) })
       await loadTopMovers()
     } finally { setSavingThresholds(false) }
@@ -174,8 +174,9 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
       <div className="panel-heading hot-picks-heading">
         <h3>🔥 Hot Picks <InfoTip text="Market-linked holdings and watchlist symbols whose price has moved past the % you set here for that lookback window, checked daily through yearly. Click any entry for its price history and which windows it broke." /></h3>
         <div className="threshold-inline">
+          <span className="threshold-inline-label">Thresholds (%)</span>
           {periodFields.map(([key, text]) => <label key={key} className="threshold-inline-field" title={`${text} threshold`}>
-            <span>{text[0]}</span>
+            <span>{text}</span>
             <input type="number" min="0" step="0.1" placeholder="—" value={thresholds[key]} disabled={savingThresholds}
               onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))}
               onBlur={() => void saveThresholds()} />
@@ -339,6 +340,7 @@ export function thresholdForm(thresholds: MovementThresholds | null): Record<Per
     WEEKLY: value(thresholds?.weeklyPercent),
     MONTHLY: value(thresholds?.monthlyPercent),
     QUARTERLY: value(thresholds?.quarterlyPercent),
+    HALF_YEARLY: value(thresholds?.halfYearlyPercent),
     YEARLY: value(thresholds?.yearlyPercent),
   }
 }

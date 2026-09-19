@@ -37,6 +37,12 @@ class MovementServiceTest {
     }
 
     @Test
+    void periodDaysCoversAllSixLookbackWindowsInOrder() {
+        assertThat(MovementService.PERIOD_DAYS.keySet()).containsExactly("DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "HALF_YEARLY", "YEARLY");
+        assertThat(MovementService.PERIOD_DAYS.get("HALF_YEARLY")).isEqualTo(182);
+    }
+
+    @Test
     void percentChangeComputesSignedMove() {
         assertThat(service.percentChange(new BigDecimal("100"), new BigDecimal("110"))).isEqualByComparingTo("10.00");
         assertThat(service.percentChange(new BigDecimal("100"), new BigDecimal("90"))).isEqualByComparingTo("-10.00");

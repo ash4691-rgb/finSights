@@ -5,9 +5,11 @@ export const frequencyLabel = (f: Frequency) => f === 'ANNUALLY' ? 'Yearly' : f 
   : f.toLowerCase().replace(/_/g, '-').replace(/\b\w/g, c => c.toUpperCase())
 export const repaymentFrequencies: RepaymentFrequency[] = ['WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', 'ONE_TIME']
 export const repaymentLabel = (f: RepaymentFrequency) => f === 'ONE_TIME' ? 'One-time' : f.charAt(0) + f.slice(1).toLowerCase()
-export const periodLabels: Record<PeriodKey, string> = { DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly', QUARTERLY: 'Quarterly', YEARLY: 'Yearly' }
+// Matches the price-history chart's own range buttons (1D/1W/1M/3M/6M/1Y) for one consistent
+// vocabulary across Hot Picks thresholds, mover badges, and ViewMoverItem.
+export const periodLabels: Record<PeriodKey, string> = { DAILY: '1D', WEEKLY: '1W', MONTHLY: '1M', QUARTERLY: '3M', HALF_YEARLY: '6M', YEARLY: '1Y' }
 export const periodFields: [PeriodKey, string][] = [
-  ['DAILY', 'Daily'], ['WEEKLY', 'Weekly'], ['MONTHLY', 'Monthly'], ['QUARTERLY', 'Quarterly'], ['YEARLY', 'Yearly'],
+  ['DAILY', '1D'], ['WEEKLY', '1W'], ['MONTHLY', '1M'], ['QUARTERLY', '3M'], ['HALF_YEARLY', '6M'], ['YEARLY', '1Y'],
 ]
 export const transactionTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INTEREST', 'ADJUSTMENT', 'REPAY']
 export const assetTxnTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INTEREST', 'ADJUSTMENT']
