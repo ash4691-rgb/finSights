@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { api } from '../api'
 import { LayoutZone } from '../layout'
 import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
-import { Field, SymbolSearchInput, InfoTip } from '../ui'
+import { Field, SymbolSearchInput, InfoTip, useEscToClose } from '../ui'
 import { seriesKeysOf } from '../widgets'
 import type { PageDataSource } from '../widgets'
 import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote, ChartRange, MarketHistory } from '../types'
@@ -26,8 +26,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   const [savingThresholds, setSavingThresholds] = useState(false)
   const [addingWatch, setAddingWatch] = useState(false)
   const [editingWatch, setEditingWatch] = useState<WatchlistEntry | null>(null)
-  const [viewingChart, setViewingChart] = useState<{ symbol: string; name: string; currency?: string } | null>(null)
-  const [thresholdsOpen, setThresholdsOpen] = useState(false)
+  const [viewingChart, setViewingChart] = useState<{ symbol: string; name: string; currency?: string; triggered?: TopMover['triggered'] } | null>(null)
   const [watchlistOpen, setWatchlistOpen] = useState(false)
   const [timeline, setTimeline] = useState<PortfolioTimeline | null>(null)
   const [capturing, setCapturing] = useState(false)
@@ -154,16 +153,16 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'widgets', span: 12 }, { key: 'actions', span: 12 }, { key: 'topMovers', span: 12 }, { key: 'timeline', span: 12 }]} render={{
     widgets: <LayoutZone zoneKey="insights/widgets" {...zone} dataSource={insightsDataSource} />,
     actions: <section className="panel data-quality">
-      <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
+      <div className="panel-heading"><h3>Action centre <InfoTip text="Things that need a decision from you — EMIs and interest due, matured deposits, missing values — split into what's due now and what's worth a second look." /></h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
       <LayoutZone zoneKey="insights/actions" {...zone} defaults={[{ key: 'pending', span: 6 }, { key: 'radar', span: 6 }]} render={{
         pending: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">⚡</span><h4>Pending actions</h4><span className="action-col-count">{pendingActions.length}</span></div>
+          <div className="action-col-head"><span className="action-col-icon">⚡</span><h4>Pending actions <InfoTip text="EMIs and interest payouts due or overdue right now — log them here or from the holding itself." /></h4><span className="action-col-count">{pendingActions.length}</span></div>
           {pendingActions.length
             ? <div className="warning-list action-col-list">{pendingActions.map(renderAction)}</div>
             : <p className="hint">Nothing to log right now — you're caught up.</p>}
         </div>,
         radar: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">🔭</span><h4>On your radar</h4><span className="action-col-count">{radarItems.length}</span></div>
+          <div className="action-col-head"><span className="action-col-icon">🔭</span><h4>On your radar <InfoTip text="Lower-urgency flags — matured fixed deposits, holdings missing a current value — worth a look when you get to it." /></h4><span className="action-col-count">{radarItems.length}</span></div>
           {radarItems.length
             ? <div className="warning-list action-col-list">{radarItems.map(renderAction)}</div>
             : <p className="hint">Nothing needs a second look right now.</p>}
@@ -172,42 +171,29 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     </section>,
 
     topMovers: <section className="panel">
-      <div className="panel-heading"><h3>🔥 Hot Picks</h3><span>Market-linked movement beyond your thresholds</span></div>
-      <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'thresholds', span: 12 }, { key: 'watchlist', span: 12 }]} render={{
+      <div className="panel-heading hot-picks-heading">
+        <h3>🔥 Hot Picks <InfoTip text="Market-linked holdings and watchlist symbols whose price has moved past the % you set here for that lookback window, checked daily through yearly. Click any entry for its price history and which windows it broke." /></h3>
+        <div className="threshold-inline">
+          {periodFields.map(([key, text]) => <label key={key} className="threshold-inline-field" title={`${text} threshold`}>
+            <span>{text[0]}</span>
+            <input type="number" min="0" step="0.1" placeholder="—" value={thresholds[key]} disabled={savingThresholds}
+              onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))}
+              onBlur={() => void saveThresholds()} />
+          </label>)}
+        </div>
+      </div>
+      <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'watchlist', span: 12 }]} render={{
         movers: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">🔥</span><h4>Movers</h4><span className="action-col-count">{topMovers?.length ?? 0}</span></div>
           {topMovers === null ? <p className="hint">Loading hot picks…</p> : topMovers.length ? <div className="top-mover-list">
-            {topMovers.map(pick => <div key={`${pick.subjectType}-${pick.id}`} className="top-mover-row">
-              <button className={`top-mover${pick.subjectType === 'HOLDING' ? '' : ' static'}`}
-                  onClick={() => pick.subjectType === 'HOLDING' && onOpen(pick.id)}>
-                <div className="top-mover-name"><strong>{pick.name}</strong><small>{pick.categoryName || pick.tickerSymbol || 'Watchlist'}</small></div>
-                <div className="top-mover-value">{pick.currency ? money(pick.currentValue ?? 0, pick.currency) : (pick.currentValue ?? 0).toLocaleString(numberLocale)}</div>
-                <div className="top-mover-badges">{pick.triggered.map(t => <span key={t.period} className={`mover-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>{periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}%</span>)}</div>
-              </button>
-              {pick.tickerSymbol && <button type="button" className="chart-trigger" title="View price graph" aria-label={`View price graph for ${pick.name}`}
-                onClick={() => setViewingChart({ symbol: pick.tickerSymbol!, name: pick.name, currency: pick.currency })}>📈</button>}
-            </div>)}
+            {topMovers.map(pick => <button key={`${pick.subjectType}-${pick.id}`} className={`top-mover${pick.tickerSymbol ? '' : ' static'}`}
+                onClick={() => pick.tickerSymbol && setViewingChart({ symbol: pick.tickerSymbol, name: pick.name, currency: pick.currency, triggered: pick.triggered })}>
+              <div className="top-mover-name"><strong>{pick.name}</strong><small>{pick.categoryName || pick.tickerSymbol || 'Watchlist'}</small></div>
+              <div className="top-mover-value">{pick.currency ? money(pick.currentValue ?? 0, pick.currency) : (pick.currentValue ?? 0).toLocaleString(numberLocale)}</div>
+              <div className="top-mover-badges">{pick.triggered.map(t => <span key={t.period} className={`mover-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>{periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}%</span>)}</div>
+            </button>)}
           </div> : thresholdsSet === 0
-            ? <p className="hint">No thresholds set yet — open <button className="inline-link" onClick={() => setThresholdsOpen(true)}>Thresholds</button> to choose how far a market-linked holding has to move before it lands here.</p>
+            ? <p className="hint">No thresholds set yet — set one above to choose how far a market-linked holding or watchlist symbol has to move before it lands here.</p>
             : <p className="hint">Nothing is outside your configured thresholds right now.</p>}
-        </div>,
-
-        thresholds: <div className="action-col">
-          <button className="action-col-head action-col-toggle" onClick={() => setThresholdsOpen(open => !open)} aria-expanded={thresholdsOpen}>
-            <span className="action-col-icon">🎯</span><h4>Thresholds</h4><span className="action-col-count">{thresholdsSet}</span>
-            <span className="action-col-caret">{toggleLabel(thresholdsOpen)}</span>
-          </button>
-          {thresholdsOpen && <>
-            <p className="hint">A single % per window — a move past it, up or down, puts a holding or watchlist symbol into Movers. Leave a window blank to turn it off.</p>
-            <div className="threshold-list">
-              {periodFields.map(([key, text]) => <div className="threshold-list-row" key={key}>
-                <span>{text}</span>
-                <input type="number" min="0" step="0.1" placeholder="e.g. 5" value={thresholds[key]}
-                  onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))} />
-              </div>)}
-            </div>
-            <button className="primary compact" onClick={() => void saveThresholds()} disabled={savingThresholds}>{savingThresholds ? 'Saving…' : 'Save thresholds'}</button>
-          </>}
         </div>,
 
         watchlist: <div className="action-col">
@@ -222,14 +208,18 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
             </div>
             {watchlist.length ? <div className="table-panel"><table>
               <thead><tr><th>Name</th><th>Ticker</th><th /></tr></thead>
-              <tbody>{watchlist.map(item => <tr key={item.id}>
-                <td><div className="name-cell"><strong title={item.name}>{item.name}</strong>
-                  {item.tickerSymbol && <button type="button" className="chart-trigger" title="View price graph" aria-label={`View price graph for ${item.name}`}
-                    onClick={() => setViewingChart({ symbol: item.tickerSymbol!, name: item.name, currency: item.currency })}>📈</button>}
-                  {item.notes && <InfoTip text={item.notes} />}</div></td>
-                <td>{item.tickerSymbol || '—'}</td>
-                <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditingWatch(item)}>Edit</button><button className="danger-link" onClick={() => void removeWatch(item)}>Delete</button></td>
-              </tr>)}</tbody>
+              <tbody>{watchlist.map(item => {
+                const moverEntry = topMovers?.find(p => p.subjectType === 'WATCHLIST' && p.id === item.id)
+                return <tr key={item.id} className={item.tickerSymbol ? 'clickable-row' : ''}
+                    onClick={() => item.tickerSymbol && setViewingChart({ symbol: item.tickerSymbol, name: item.name, currency: item.currency, triggered: moverEntry?.triggered })}>
+                  <td><div className="name-cell"><strong title={item.name}>{item.name}</strong>{item.notes && <InfoTip text={item.notes} />}</div></td>
+                  <td>{item.tickerSymbol || '—'}</td>
+                  <td className="actions actions-vertical">
+                    <button className="primary-link" onClick={e => { e.stopPropagation(); setEditingWatch(item) }}>Edit</button>
+                    <button className="danger-link" onClick={e => { e.stopPropagation(); void removeWatch(item) }}>Delete</button>
+                  </td>
+                </tr>
+              })}</tbody>
             </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Hot Picks too.</p>}
           </>}
         </div>,
@@ -238,7 +228,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
     timeline: <section className="panel">
       <div className="panel-heading">
-        <h3>Portfolio timeline</h3>
+        <h3>Portfolio timeline <InfoTip text="Net worth and per-category invested/current value, captured every Monday, so you can see how the portfolio actually moved week over week." /></h3>
         <button className="outline compact" onClick={() => void captureNow()}
           disabled={capturing || (timeline?.capturedToday ?? false)}
           title={timeline?.capturedToday ? 'Already captured today' : 'Record this week’s values now'}>
@@ -269,7 +259,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     {(addingWatch || editingWatch) && <WatchlistModal item={editingWatch}
       onClose={() => { setAddingWatch(false); setEditingWatch(null) }}
       onSaved={() => { setAddingWatch(false); setEditingWatch(null); void loadWatchlist(); void loadTopMovers() }} />}
-    {viewingChart && <ViewMoverItemModal symbol={viewingChart.symbol} name={viewingChart.name} currency={viewingChart.currency}
+    {viewingChart && <ViewMoverItemModal symbol={viewingChart.symbol} name={viewingChart.name} currency={viewingChart.currency} triggered={viewingChart.triggered}
       onClose={() => setViewingChart(null)} />}
   </>
 }
@@ -360,7 +350,9 @@ export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntr
     price: item?.currentValue != null ? String(item.currentValue) : '', currency: item?.currency ?? '',
   }))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
-  const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
+  const [dirty, setDirty] = useState(false)
+  const set = (key: string, value: string) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
+  useEscToClose(onClose, dirty)
   // Name, price, and currency always come from the ticker's live quote — a market-linked entry, not free text.
   useEffect(() => {
     const symbol = form.tickerSymbol.trim()
@@ -416,11 +408,14 @@ const chartRanges: ChartRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y']
 // ViewMoverItem: a symbol's price history over a chosen window (up to 1 year), for anything
 // market-linked — a Hot Picks entry or a watchlist item alike. Backed by /api/market/history,
 // which reads straight from the same Yahoo Finance feed as live quotes.
-export function ViewMoverItemModal({ symbol, name, currency, onClose }: { symbol: string; name: string; currency?: string; onClose: () => void }) {
+export function ViewMoverItemModal({ symbol, name, currency, triggered, onClose }: {
+  symbol: string; name: string; currency?: string; triggered?: TopMover['triggered']; onClose: () => void
+}) {
   const [range, setRange] = useState<ChartRange>('1M')
   const [history, setHistory] = useState<MarketHistory | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  useEscToClose(onClose)
 
   useEffect(() => {
     setLoading(true); setError('')
@@ -434,6 +429,12 @@ export function ViewMoverItemModal({ symbol, name, currency, onClose }: { symbol
     <div><p className="eyebrow">PRICE HISTORY</p><h2>{name}</h2></div>
     <button className="close" onClick={onClose}>×</button>
   </div>
+    {triggered && triggered.length > 0 && <div className="view-mover-thresholds">
+      <span className="hint">Currently past threshold:</span>
+      <div className="top-mover-badges">{triggered.map(t => <span key={t.period} className={`mover-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>
+        {periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}% <small>(threshold {t.thresholdPercent}%)</small>
+      </span>)}</div>
+    </div>}
     <div className="format-tabs">
       {chartRanges.map(r => <button key={r} type="button" className={r === range ? 'active' : ''} onClick={() => setRange(r)}>{r}</button>)}
     </div>
