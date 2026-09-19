@@ -15,5 +15,7 @@ class MarketDataServiceTest {
         assertThat(service.quote(null)).isEmpty();
         assertThat(service.quote("")).isEmpty();
         assertThat(service.quotes(null)).isEmpty();
+        assertThat(service.history(null, "1M")).isEmpty();
+        assertThat(service.history("", "1M")).isEmpty();
     }
 }
