@@ -3,32 +3,31 @@ import type { FormEvent } from 'react'
 import { api } from '../api'
 import { LayoutZone } from '../layout'
 import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
-import { Field, SymbolSearchInput } from '../ui'
+import { Field, SymbolSearchInput, InfoTip, useEscToClose } from '../ui'
 import { seriesKeysOf } from '../widgets'
 import type { PageDataSource } from '../widgets'
-import type { Insights, Settings, Dashboard, Breakdown, ActionItem, HotPick, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote } from '../types'
+import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote, ChartRange, MarketHistory } from '../types'
 
 // ---------------------------------------------------------------------------
 
 // Insights is deliberately not a second Overview: the shared breakdown/movers data that also
 // appears on the Dashboard lives in the collapsed "Portfolio overview" section at the bottom.
-// This page's own job is Hot picks (holdings + watchlist symbols moving beyond a configured
-// threshold) and data-quality checks.
+// This page's own job is Hot Picks (market-linked holdings + watchlist symbols moving beyond a
+// configured threshold) and data-quality checks.
 export function InsightsView({ displayCurrency, dataVersion, settings, dashboard, reload, onOpen, layoutEditing, layoutNonce }: {
   displayCurrency: string; dataVersion: number; settings: Settings; dashboard: Dashboard; reload: () => Promise<void>; onOpen: (id: string) => void
   layoutEditing: boolean; layoutNonce: number
 }) {
   const [data, setData] = useState<Insights | null>(null)
   const [error, setError] = useState('')
-  const [hotPicks, setHotPicks] = useState<HotPick[] | null>(null)
+  const [topMovers, setTopMovers] = useState<TopMover[] | null>(null)
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([])
-  const [thresholds, setThresholds] = useState(() => thresholdForm(settings))
+  const [thresholds, setThresholds] = useState(() => thresholdForm(null))
   const [savingThresholds, setSavingThresholds] = useState(false)
   const [addingWatch, setAddingWatch] = useState(false)
   const [editingWatch, setEditingWatch] = useState<WatchlistEntry | null>(null)
-  const [thresholdsOpen, setThresholdsOpen] = useState(false)
+  const [viewingChart, setViewingChart] = useState<{ symbol: string; name: string; currency?: string; triggered?: TopMover['triggered'] } | null>(null)
   const [watchlistOpen, setWatchlistOpen] = useState(false)
-  const [timelineOpen, setTimelineOpen] = useState(false)
   const [timeline, setTimeline] = useState<PortfolioTimeline | null>(null)
   const [capturing, setCapturing] = useState(false)
 
@@ -41,29 +40,27 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     catch (e) { setError(e instanceof Error ? e.message : 'Could not capture a snapshot') }
     finally { setCapturing(false) }
   }
-  const loadHotPicks = () => api<HotPick[]>(`/api/insights/hot-picks?currency=${displayCurrency}`).then(setHotPicks).catch(() => setHotPicks([]))
-  const loadWatchlist = () => api<WatchlistEntry[]>('/api/watchlist').then(setWatchlist).catch(() => setWatchlist([]))
-  useEffect(() => { void loadHotPicks() }, [displayCurrency, dataVersion])
-  useEffect(() => { void loadWatchlist() }, [dataVersion])
-  useEffect(() => { setThresholds(thresholdForm(settings)) }, [settings])
+  const loadTopMovers = () => api<TopMover[]>(`/api/insights/top-movers?currency=${displayCurrency}`).then(setTopMovers).catch(() => setTopMovers([]))
+  const loadWatchlist = () => api<WatchlistEntry[]>(`/api/watchlist?currency=${displayCurrency}`).then(setWatchlist).catch(() => setWatchlist([]))
+  const loadThresholds = () => api<MovementThresholds>('/api/insights/thresholds').then(t => setThresholds(thresholdForm(t))).catch(() => { /* leave defaults */ })
+  useEffect(() => { void loadTopMovers() }, [displayCurrency, dataVersion])
+  useEffect(() => { void loadWatchlist() }, [displayCurrency, dataVersion])
+  useEffect(() => { void loadThresholds() }, [dataVersion])
 
   const saveThresholds = async () => {
     setSavingThresholds(true)
     try {
-      await api('/api/settings', { method: 'PUT', body: JSON.stringify({
-        country: settings.country, displayName: settings.displayName, phone: settings.phone, numberFormat: settings.numberFormat,
-        notifyEmail: settings.notifyEmail, notifySms: settings.notifySms, notifyPush: settings.notifyPush,
-        notifyThresholdPercent: settings.notifyThresholdPercent,
-        dailyThresholdPercent: numOrNull(thresholds.DAILY), weeklyThresholdPercent: numOrNull(thresholds.WEEKLY),
-        monthlyThresholdPercent: numOrNull(thresholds.MONTHLY), quarterlyThresholdPercent: numOrNull(thresholds.QUARTERLY),
-        yearlyThresholdPercent: numOrNull(thresholds.YEARLY),
+      await api('/api/insights/thresholds', { method: 'PUT', body: JSON.stringify({
+        dailyPercent: numOrNull(thresholds.DAILY), weeklyPercent: numOrNull(thresholds.WEEKLY),
+        monthlyPercent: numOrNull(thresholds.MONTHLY), quarterlyPercent: numOrNull(thresholds.QUARTERLY),
+        yearlyPercent: numOrNull(thresholds.YEARLY),
       }) })
-      await reload(); await loadHotPicks()
+      await loadTopMovers()
     } finally { setSavingThresholds(false) }
   }
   const removeWatch = async (item: WatchlistEntry) => {
     if (!confirm(`Remove ${item.name} from the watchlist?`)) return
-    await api(`/api/watchlist/${item.id}`, { method: 'DELETE' }); await loadWatchlist(); await loadHotPicks()
+    await api(`/api/watchlist/${item.id}`, { method: 'DELETE' }); await loadWatchlist(); await loadTopMovers()
   }
 
   if (error) return <p className="hint">{error}</p>
@@ -153,19 +150,19 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
   const zone = { editing: layoutEditing, nonce: layoutNonce }
   return <>
-    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'widgets', span: 12 }, { key: 'actions', span: 12 }, { key: 'hotpicks', span: 12 }, { key: 'watchlistSettings', span: 12 }, { key: 'timeline', span: 12 }]} render={{
+    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'widgets', span: 12 }, { key: 'actions', span: 12 }, { key: 'topMovers', span: 12 }, { key: 'timeline', span: 12 }]} render={{
     widgets: <LayoutZone zoneKey="insights/widgets" {...zone} dataSource={insightsDataSource} />,
     actions: <section className="panel data-quality">
-      <div className="panel-heading"><h3>Action centre</h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
+      <div className="panel-heading"><h3>Action centre <InfoTip text="Things that need a decision from you — EMIs and interest due, matured deposits, missing values — split into what's due now and what's worth a second look." /></h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
       <LayoutZone zoneKey="insights/actions" {...zone} defaults={[{ key: 'pending', span: 6 }, { key: 'radar', span: 6 }]} render={{
         pending: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">⚡</span><h4>Pending actions</h4><span className="action-col-count">{pendingActions.length}</span></div>
+          <div className="action-col-head"><span className="action-col-icon">⚡</span><h4>Pending actions <InfoTip text="EMIs and interest payouts due or overdue right now — log them here or from the holding itself." /></h4><span className="action-col-count">{pendingActions.length}</span></div>
           {pendingActions.length
             ? <div className="warning-list action-col-list">{pendingActions.map(renderAction)}</div>
             : <p className="hint">Nothing to log right now — you're caught up.</p>}
         </div>,
         radar: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">🔭</span><h4>On your radar</h4><span className="action-col-count">{radarItems.length}</span></div>
+          <div className="action-col-head"><span className="action-col-icon">🔭</span><h4>On your radar <InfoTip text="Lower-urgency flags — matured fixed deposits, holdings missing a current value — worth a look when you get to it." /></h4><span className="action-col-count">{radarItems.length}</span></div>
           {radarItems.length
             ? <div className="warning-list action-col-list">{radarItems.map(renderAction)}</div>
             : <p className="hint">Nothing needs a second look right now.</p>}
@@ -173,83 +170,97 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
       }} />
     </section>,
 
-    hotpicks: <section className="panel">
-      <div className="panel-heading"><h3>Hot picks</h3><span>Movement beyond your thresholds</span></div>
-
-      {hotPicks === null ? <p className="hint">Loading hot picks…</p> : hotPicks.length ? <div className="hot-pick-list">
-        {hotPicks.map(pick => <button key={`${pick.subjectType}-${pick.id}`} className={`hot-pick${pick.subjectType === 'HOLDING' ? '' : ' static'}`}
-            onClick={() => pick.subjectType === 'HOLDING' && onOpen(pick.id)}>
-          <div className="hot-pick-name"><strong>{pick.name}</strong><small>{pick.categoryName || pick.tickerSymbol || 'Watchlist'}</small></div>
-          <div className="hot-pick-value">{pick.currency ? money(pick.currentValue ?? 0, pick.currency) : (pick.currentValue ?? 0).toLocaleString(numberLocale)}</div>
-          <div className="hot-pick-badges">{pick.triggered.map(t => <span key={t.period} className={`hot-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>{periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}%</span>)}</div>
-        </button>)}
-      </div> : thresholdsSet === 0
-        ? <p className="hint">No thresholds set yet — open <button className="inline-link" onClick={() => setThresholdsOpen(true)}>Movement thresholds</button> to choose how far a holding has to move before it lands here.</p>
-        : <p className="hint">Nothing is outside your configured thresholds right now.</p>}
-    </section>,
-
-    watchlistSettings: <section className="panel">
-      <button className="section-toggle" onClick={() => setThresholdsOpen(open => !open)}>
-        <span>Movement thresholds</span>
-        <span className="toggle-meta">{toggleLabel(thresholdsOpen)}</span>
-      </button>
-      {thresholdsOpen && <div className="watchlist-body">
-        <p className="watchlist-count">{thresholdsSet ? `${thresholdsSet} threshold${thresholdsSet === 1 ? '' : 's'} set` : 'No thresholds set yet'}</p>
-        <div className="threshold-row">
-          {periodFields.map(([key, text]) => <Field label={`${text} threshold %`} key={key}>
-            <input type="number" min="0" step="0.1" placeholder="e.g. 5" value={thresholds[key]}
-              onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))} />
-          </Field>)}
-          <button className="primary compact" onClick={() => void saveThresholds()} disabled={savingThresholds}>{savingThresholds ? 'Saving…' : 'Save thresholds'}</button>
+    topMovers: <section className="panel">
+      <div className="panel-heading hot-picks-heading">
+        <h3>🔥 Hot Picks <InfoTip text="Market-linked holdings and watchlist symbols whose price has moved past the % you set here for that lookback window, checked daily through yearly. Click any entry for its price history and which windows it broke." /></h3>
+        <div className="threshold-inline">
+          {periodFields.map(([key, text]) => <label key={key} className="threshold-inline-field" title={`${text} threshold`}>
+            <span>{text[0]}</span>
+            <input type="number" min="0" step="0.1" placeholder="—" value={thresholds[key]} disabled={savingThresholds}
+              onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))}
+              onBlur={() => void saveThresholds()} />
+          </label>)}
         </div>
-      </div>}
+      </div>
+      <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'watchlist', span: 12 }]} render={{
+        movers: <div className="action-col">
+          {topMovers === null ? <p className="hint">Loading hot picks…</p> : topMovers.length ? <div className="top-mover-list">
+            {topMovers.map(pick => <button key={`${pick.subjectType}-${pick.id}`} className={`top-mover${pick.tickerSymbol ? '' : ' static'}`}
+                onClick={() => pick.tickerSymbol && setViewingChart({ symbol: pick.tickerSymbol, name: pick.name, currency: pick.currency, triggered: pick.triggered })}>
+              <div className="top-mover-name"><strong>{pick.name}</strong><small>{pick.categoryName || pick.tickerSymbol || 'Watchlist'}</small></div>
+              <div className="top-mover-value">{pick.currency ? money(pick.currentValue ?? 0, pick.currency) : (pick.currentValue ?? 0).toLocaleString(numberLocale)}</div>
+              <div className="top-mover-badges">{pick.triggered.map(t => <span key={t.period} className={`mover-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>{periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}%</span>)}</div>
+            </button>)}
+          </div> : thresholdsSet === 0
+            ? <p className="hint">No thresholds set yet — set one above to choose how far a market-linked holding or watchlist symbol has to move before it lands here.</p>
+            : <p className="hint">Nothing is outside your configured thresholds right now.</p>}
+        </div>,
 
-      <button className="section-toggle" onClick={() => setWatchlistOpen(open => !open)}>
-        <span>Watchlist</span>
-        <span className="toggle-meta">{toggleLabel(watchlistOpen)}</span>
-      </button>
-      {watchlistOpen && <div className="watchlist-body">
-        <div className="watchlist-actions">
-          <span className="watchlist-count">{watchlist.length ? `${watchlist.length} symbol${watchlist.length === 1 ? '' : 's'} tracked` : 'No symbols yet'}</span>
-          <button className="outline compact" onClick={() => setAddingWatch(true)}>+ Add to watchlist</button>
-        </div>
-        {watchlist.length ? <div className="table-panel"><table>
-          <thead><tr><th>Name</th><th>Ticker</th><th>Price</th><th>Last updated</th><th /></tr></thead>
-          <tbody>{watchlist.map(item => <tr key={item.id}>
-            <td><strong>{item.name}</strong>{item.notes && <small className="owner">{item.notes}</small>}</td>
-            <td>{item.tickerSymbol || '—'}</td>
-            <td>{item.currentValue != null ? item.currentValue.toLocaleString(numberLocale) : '—'}</td>
-            <td>{since(item.lastUpdated)}</td>
-            <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditingWatch(item)}>Edit</button><button className="danger-link" onClick={() => void removeWatch(item)}>Delete</button></td>
-          </tr>)}</tbody>
-        </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Hot picks too.</p>}
-      </div>}
-    </section>,
-
-    timeline: <section className="overview-section">
-      <button className="overview-toggle" onClick={() => setTimelineOpen(current => !current)}>
-        <h3>Portfolio timeline</h3><span>{toggleLabel(timelineOpen)}</span>
-      </button>
-      {timelineOpen && <div className="panel timeline-panel">
-        <div className="timeline-head">
-          <p className="hint">Net worth week by week — each category's invested and current value is snapshotted every Monday.</p>
-          <button className="outline compact" onClick={() => void captureNow()}
-            disabled={capturing || (timeline?.capturedToday ?? false)}
-            title={timeline?.capturedToday ? 'Already captured today' : 'Record this week’s values now'}>
-            {capturing ? 'Capturing…' : timeline?.capturedToday ? 'Captured today' : 'Capture snapshot now'}
+        watchlist: <div className="action-col">
+          <button className="action-col-head action-col-toggle" onClick={() => setWatchlistOpen(open => !open)} aria-expanded={watchlistOpen}>
+            <span className="action-col-icon">👁</span><h4>Watchlist</h4><span className="action-col-count">{watchlist.length}</span>
+            <span className="action-col-caret">{toggleLabel(watchlistOpen)}</span>
           </button>
-        </div>
-        {!timeline ? <p className="hint">Loading timeline…</p>
-          : timeline.weeks.length === 0
-            ? <p className="hint">No snapshots yet — this week's is being recorded now. Come back next week to see how things moved.</p>
-            : <><NetWorthChart weeks={timeline.weeks} /><TimelineTable weeks={timeline.weeks} /></>}
-        {timeline?.lastCapturedAt && <p className="hint timeline-foot">Last snapshot {ago(timeline.lastCapturedAt)}.</p>}
-      </div>}
+          {watchlistOpen && <>
+            <div className="watchlist-actions">
+              <span className="watchlist-count">{watchlist.length ? `${watchlist.length} symbol${watchlist.length === 1 ? '' : 's'} tracked` : 'No symbols yet'}</span>
+              <button className="outline compact" onClick={() => setAddingWatch(true)}>+ Add to watchlist</button>
+            </div>
+            {watchlist.length ? <div className="table-panel"><table>
+              <thead><tr><th>Name</th><th>Ticker</th><th /></tr></thead>
+              <tbody>{watchlist.map(item => {
+                const moverEntry = topMovers?.find(p => p.subjectType === 'WATCHLIST' && p.id === item.id)
+                return <tr key={item.id} className={item.tickerSymbol ? 'clickable-row' : ''}
+                    onClick={() => item.tickerSymbol && setViewingChart({ symbol: item.tickerSymbol, name: item.name, currency: item.currency, triggered: moverEntry?.triggered })}>
+                  <td><div className="name-cell"><strong title={item.name}>{item.name}</strong>{item.notes && <InfoTip text={item.notes} />}</div></td>
+                  <td>{item.tickerSymbol || '—'}</td>
+                  <td className="actions actions-vertical">
+                    <button className="primary-link" onClick={e => { e.stopPropagation(); setEditingWatch(item) }}>Edit</button>
+                    <button className="danger-link" onClick={e => { e.stopPropagation(); void removeWatch(item) }}>Delete</button>
+                  </td>
+                </tr>
+              })}</tbody>
+            </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Hot Picks too.</p>}
+          </>}
+        </div>,
+      }} />
+    </section>,
+
+    timeline: <section className="panel">
+      <div className="panel-heading">
+        <h3>Portfolio timeline <InfoTip text="Net worth and per-category invested/current value, captured every Monday, so you can see how the portfolio actually moved week over week." /></h3>
+        <button className="outline compact" onClick={() => void captureNow()}
+          disabled={capturing || (timeline?.capturedToday ?? false)}
+          title={timeline?.capturedToday ? 'Already captured today' : 'Record this week’s values now'}>
+          {capturing ? 'Capturing…' : timeline?.capturedToday ? 'Captured today' : 'Capture snapshot now'}
+        </button>
+      </div>
+      <p className="hint">Net worth week by week — each category's invested and current value is snapshotted every Monday.
+        {timeline?.lastCapturedAt && ` Last snapshot ${ago(timeline.lastCapturedAt)}.`}</p>
+      <LayoutZone zoneKey="insights/timeline" {...zone} defaults={[{ key: 'networth', span: 12 }, { key: 'history', span: 12 }]} render={{
+        networth: <div className="action-col">
+          <div className="action-col-head"><span className="action-col-icon">📈</span><h4>Net worth</h4></div>
+          {!timeline ? <p className="hint">Loading timeline…</p>
+            : timeline.weeks.length < 2
+              ? <p className="hint">Not enough history yet — check back after a couple of weekly snapshots.</p>
+              : <NetWorthChart weeks={timeline.weeks} />}
+        </div>,
+
+        history: <div className="action-col">
+          <div className="action-col-head"><span className="action-col-icon">📋</span><h4>Weekly history</h4><span className="action-col-count">{timeline?.weeks.length ?? 0}</span></div>
+          {!timeline ? <p className="hint">Loading timeline…</p>
+            : timeline.weeks.length === 0
+              ? <p className="hint">No snapshots yet — this week's is being recorded now. Come back next week to see how things moved.</p>
+              : <div className="timeline-panel"><TimelineTable weeks={timeline.weeks} /></div>}
+        </div>,
+      }} />
     </section>,
     }} />
     {(addingWatch || editingWatch) && <WatchlistModal item={editingWatch}
       onClose={() => { setAddingWatch(false); setEditingWatch(null) }}
-      onSaved={() => { setAddingWatch(false); setEditingWatch(null); void loadWatchlist(); void loadHotPicks() }} />}
+      onSaved={() => { setAddingWatch(false); setEditingWatch(null); void loadWatchlist(); void loadTopMovers() }} />}
+    {viewingChart && <ViewMoverItemModal symbol={viewingChart.symbol} name={viewingChart.name} currency={viewingChart.currency} triggered={viewingChart.triggered}
+      onClose={() => setViewingChart(null)} />}
   </>
 }
 
@@ -321,13 +332,14 @@ export function TimelineTable({ weeks }: { weeks: TimelineWeek[] }) {
   </table></div>
 }
 
-export function thresholdForm(settings: Settings): Record<PeriodKey, string> {
+export function thresholdForm(thresholds: MovementThresholds | null): Record<PeriodKey, string> {
+  const value = (v?: number) => v != null ? String(v) : ''
   return {
-    DAILY: settings.dailyThresholdPercent != null ? String(settings.dailyThresholdPercent) : '',
-    WEEKLY: settings.weeklyThresholdPercent != null ? String(settings.weeklyThresholdPercent) : '',
-    MONTHLY: settings.monthlyThresholdPercent != null ? String(settings.monthlyThresholdPercent) : '',
-    QUARTERLY: settings.quarterlyThresholdPercent != null ? String(settings.quarterlyThresholdPercent) : '',
-    YEARLY: settings.yearlyThresholdPercent != null ? String(settings.yearlyThresholdPercent) : '',
+    DAILY: value(thresholds?.dailyPercent),
+    WEEKLY: value(thresholds?.weeklyPercent),
+    MONTHLY: value(thresholds?.monthlyPercent),
+    QUARTERLY: value(thresholds?.quarterlyPercent),
+    YEARLY: value(thresholds?.yearlyPercent),
   }
 }
 export const numOrNull = (value: string) => value === '' ? null : Number(value)
@@ -335,23 +347,20 @@ export const numOrNull = (value: string) => value === '' ? null : Number(value)
 export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntry | null; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState(() => ({
     name: item?.name ?? '', tickerSymbol: item?.tickerSymbol ?? '', notes: item?.notes ?? '',
-    price: item?.currentValue != null ? String(item.currentValue) : '',
+    price: item?.currentValue != null ? String(item.currentValue) : '', currency: item?.currency ?? '',
   }))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
-  const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
-  // Pull the name (and a first price) from the ticker, like a market-linked holding does.
+  const [dirty, setDirty] = useState(false)
+  const set = (key: string, value: string) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
+  useEscToClose(onClose, dirty)
+  // Name, price, and currency always come from the ticker's live quote — a market-linked entry, not free text.
   useEffect(() => {
     const symbol = form.tickerSymbol.trim()
     if (!symbol) return
     const timer = setTimeout(() => {
       api<MarketQuote>(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`)
-        .then(q => setForm(current => {
-          if (current.tickerSymbol.trim().toUpperCase() !== symbol.toUpperCase()) return current
-          const next = { ...current }
-          if (q.name && (!current.name.trim() || current.name === current.tickerSymbol)) next.name = q.name
-          if (q.price && !current.price) next.price = String(q.price)
-          return next
-        }))
+        .then(q => setForm(current => current.tickerSymbol.trim().toUpperCase() !== symbol.toUpperCase() ? current
+          : { ...current, name: q.name || current.name, price: q.price ? String(q.price) : current.price, currency: q.currency || current.currency }))
         .catch(() => { /* leave fields as-is */ })
     }, 400)
     return () => clearTimeout(timer)
@@ -361,14 +370,14 @@ export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntr
     try {
       if (item) {
         await api(`/api/watchlist/${item.id}`, { method: 'PUT', body: JSON.stringify({
-          name: form.name, tickerSymbol: form.tickerSymbol || null, notes: form.notes || null,
+          name: form.name, tickerSymbol: form.tickerSymbol || null, currency: form.currency || null, notes: form.notes || null,
         }) })
-        if (form.price !== '' && Number(form.price) !== item.currentValue) {
+        if (form.price !== '') {
           await api(`/api/watchlist/${item.id}/price`, { method: 'POST', body: JSON.stringify({ price: Number(form.price) }) })
         }
       } else {
         await api('/api/watchlist', { method: 'POST', body: JSON.stringify({
-          name: form.name, tickerSymbol: form.tickerSymbol || null, notes: form.notes || null, price: Number(form.price),
+          name: form.name, tickerSymbol: form.tickerSymbol || null, currency: form.currency || null, notes: form.notes || null, price: Number(form.price),
         }) })
       }
       onSaved()
@@ -380,15 +389,83 @@ export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntr
   </div>
     <form onSubmit={submit}>
       <div className="form-grid">
-        <Field label="Ticker" wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>
-        <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Filled from the ticker, or type your own" /></Field>
-        <Field label={item ? 'Update price' : 'Current price'} required={!item}>
-          <input type="number" min="0" step="any" required={!item} value={form.price} onChange={e => set('price', e.target.value)} />
-        </Field>
+        <Field label="Ticker" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>
+        <Field label="Name" wide><input disabled maxLength={128} value={form.name} placeholder="Filled from the ticker" /></Field>
+        <div className="field-pair">
+          <Field label="Currency"><input disabled value={form.currency} placeholder="Filled from the ticker" /></Field>
+          <Field label="Current price"><input disabled type="number" value={form.price} placeholder="Filled from the ticker" /></Field>
+        </div>
         <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
       </div>
       {error && <p className="form-error">{error}</p>}
-      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : item ? 'Save changes' : 'Add to watchlist'}</button></div>
+      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.tickerSymbol.trim() || !form.name.trim() || !form.price.trim() || !form.currency.trim()}>{saving ? 'Saving…' : item ? 'Save changes' : 'Add to watchlist'}</button></div>
     </form>
   </section></div>
+}
+
+const chartRanges: ChartRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y']
+
+// ViewMoverItem: a symbol's price history over a chosen window (up to 1 year), for anything
+// market-linked — a Hot Picks entry or a watchlist item alike. Backed by /api/market/history,
+// which reads straight from the same Yahoo Finance feed as live quotes.
+export function ViewMoverItemModal({ symbol, name, currency, triggered, onClose }: {
+  symbol: string; name: string; currency?: string; triggered?: TopMover['triggered']; onClose: () => void
+}) {
+  const [range, setRange] = useState<ChartRange>('1M')
+  const [history, setHistory] = useState<MarketHistory | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  useEscToClose(onClose)
+
+  useEffect(() => {
+    setLoading(true); setError('')
+    api<MarketHistory>(`/api/market/history?symbol=${encodeURIComponent(symbol)}&range=${range}`)
+      .then(setHistory)
+      .catch(() => { setHistory(null); setError('No price history available for this symbol yet.') })
+      .finally(() => setLoading(false))
+  }, [symbol, range])
+
+  return <div className="modal-backdrop"><section className="modal"><div className="modal-header">
+    <div><p className="eyebrow">PRICE HISTORY</p><h2>{name}</h2></div>
+    <button className="close" onClick={onClose}>×</button>
+  </div>
+    {triggered && triggered.length > 0 && <div className="view-mover-thresholds">
+      <span className="hint">Currently past threshold:</span>
+      <div className="top-mover-badges">{triggered.map(t => <span key={t.period} className={`mover-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>
+        {periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}% <small>(threshold {t.thresholdPercent}%)</small>
+      </span>)}</div>
+    </div>}
+    <div className="format-tabs">
+      {chartRanges.map(r => <button key={r} type="button" className={r === range ? 'active' : ''} onClick={() => setRange(r)}>{r}</button>)}
+    </div>
+    {loading ? <p className="hint">Loading price history…</p>
+      : error || !history || history.points.length < 2 ? <p className="hint">{error || 'Not enough price history for this window yet.'}</p>
+      : <PriceHistoryChart points={history.points} currency={history.currency || currency} />}
+  </section></div>
+}
+
+function PriceHistoryChart({ points, currency }: { points: { timestamp: string; price: number }[]; currency?: string }) {
+  const W = 680, H = 220, padX = 10, padTop = 12, padBot = 16
+  const values = points.map(p => p.price)
+  const min = Math.min(...values), max = Math.max(...values)
+  const span = max - min || Math.abs(max) || 1
+  const x = (i: number) => padX + (i / (points.length - 1)) * (W - padX * 2)
+  const y = (v: number) => padTop + (1 - (v - min) / span) * (H - padTop - padBot)
+  const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(p.price).toFixed(1)}`).join(' ')
+  const area = `${line} L ${x(points.length - 1).toFixed(1)} ${(H - padBot).toFixed(1)} L ${x(0).toFixed(1)} ${(H - padBot).toFixed(1)} Z`
+  const first = points[0].price, last = points[points.length - 1].price
+  const change = last - first
+  const changePercent = first !== 0 ? (change / first) * 100 : 0
+  const fmt = (v: number) => currency ? money(v, currency) : v.toLocaleString(numberLocale)
+  return <div className="networth-chart">
+    <div className="networth-caption">
+      <span>{fmt(last)}</span>
+      <strong className={change >= 0 ? 'positive' : 'negative'}>{change >= 0 ? '▲' : '▼'} {fmt(Math.abs(change))} ({changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%)</strong>
+    </div>
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="networth-svg" role="img" aria-label="Price history">
+      <path d={area} className="networth-area" />
+      <path d={line} className="networth-line" vectorEffect="non-scaling-stroke" />
+    </svg>
+    <div className="networth-axis"><span>{since(points[0].timestamp)}</span><span>{since(points[points.length - 1].timestamp)}</span></div>
+  </div>
 }

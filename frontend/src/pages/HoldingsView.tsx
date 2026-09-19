@@ -3,7 +3,7 @@ import type * as React from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
 import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel } from '../util'
-import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput } from '../ui'
+import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
 import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
@@ -84,6 +84,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
         </td>
         <td><div className="name-cell">
           <button className="name-button" onClick={() => onOpen(holding)} title={holding.name}><strong>{holding.name}</strong><small className="holding-ref">{holding.holdingId}</small></button>
+          {holding.dataIssue && <button type="button" className="needs-attention" title={holding.dataIssueMessage ?? 'This holding needs attention — edit it to fix the underlying data.'} onClick={() => onEdit(holding)}>⚠ Needs attention</button>}
           {holding.description && <InfoTip text={holding.description} />}
         </div></td>
         <td><span className="trunc-cell" title={holding.broker || ''}>{holding.broker || '—'}</span></td>
@@ -124,7 +125,9 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   const isMarket = !isLiability && form.valuationMethod === 'MARKET_PRICE'
   const isOneTime = isLiability && form.repaymentFrequency === 'ONE_TIME'
   const isEdit = !!holding
-  const set = (key: string, value: string | boolean) => setForm(current => ({ ...current, [key]: value }))
+  const [dirty, setDirty] = useState(false)
+  const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
+  useEscToClose(onClose, dirty)
   // Editing invested value directly (e.g. to fix a partial-sell mismatch) books a visible
   // adjustment transaction for the difference rather than silently overwriting the figure.
   const investedDelta = isEdit && !isLiability && holding ? numeric(form.investedValue) - holding.investedValue : 0
@@ -222,7 +225,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
         </Field>}
         {isFixedRate && <>
           <Field label="Annual rate (%)" required><input required type="number" min="0" step="0.01" value={form.fixedAnnualRate} onChange={e => set('fixedAnnualRate', e.target.value)} /></Field>
-          <Field label="Interest payout frequency" required><select value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}>{frequencies.map(item => <option key={item} value={item}>{frequencyLabel(item)}</option>)}</select></Field>
+          <Field label="Interest payout frequency" required><select required value={form.compoundingFrequency} onChange={e => set('compoundingFrequency', e.target.value)}><option value="" disabled>Choose one…</option>{frequencies.map(item => <option key={item} value={item}>{frequencyLabel(item)}</option>)}</select></Field>
           <Field label="Start date" required><input required type="date" value={form.fixedRateStartDate} onChange={e => set('fixedRateStartDate', e.target.value)} /></Field>
           <Field label="Maturity date"><input type="date" value={form.fixedRateEndDate} min={form.fixedRateStartDate} onChange={e => set('fixedRateEndDate', e.target.value)} /></Field>
         </>}
@@ -255,7 +258,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
           <label><input type="checkbox" checked={form.blocked} onChange={e => set('blocked', e.target.checked)} /> Blocked / NPA <InfoTip text="The holding is locked, pledged, in default, or a non-performing asset. It is valued separately from healthy assets and flagged in the Action centre." /></label>
         </div>
         <Field label="Tags" wide>
-          <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => setForm(current => ({ ...current, tags: next }))} />
+          <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => { setDirty(true); setForm(current => ({ ...current, tags: next })) }} />
         </Field>
       </div>
       {isEdit && !isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
@@ -282,6 +285,7 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { h
   const [txns, setTxns] = useState<Transaction[] | null>(null)
   const [visibleTxns, setVisibleTxns] = useState(10)
   const [calcOpen, setCalcOpen] = useState(false)
+  useEscToClose(onClose)
   useEffect(() => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }, [holding.id])
   useEffect(() => { setVisibleTxns(10); api<Transaction[]>(`/api/transactions?holdingId=${holding.id}&currency=${displayCurrency}`).then(setTxns).catch(() => setTxns([])) }, [holding.id, displayCurrency])
   const onTxnScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -295,6 +299,9 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit }: { h
       <div><p className="eyebrow">{label(holding.kind)} · {holding.broker || (isLiab ? 'No lender' : 'Unassigned broker')}</p><h2>{holding.name}</h2><p className="drawer-ref">{holding.holdingId}</p></div>
       <button className="close" onClick={onClose}>×</button>
     </div>
+    {holding.dataIssue && <div className="form-callout warn"><span className="form-callout-dot">!</span>
+      <span><b>Needs attention</b> — {holding.dataIssueMessage ?? 'This holding has a data problem.'} <button type="button" className="primary-link" onClick={() => onEdit(holding)}>Edit to fix</button></span>
+    </div>}
     {holding.description && <p className="drawer-description">{holding.description}</p>}
     {isLiab ? <div className="drawer-metrics">
       <div><p>Outstanding</p><strong>{money(holding.currentValue, holding.currency)}</strong></div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Field } from './ui'
+import { Field, useEscToClose } from './ui'
 import { Counter, PieChart, BarChart, TimeseriesChart } from './charts'
 import type { Widget, WidgetSubType, WidgetQuery } from './layout-config'
 
@@ -102,6 +102,8 @@ export function AddWidgetModal({ dataSource, initial, onAdd, onClose }: {
   const [subType, setSubType] = useState<WidgetSubType | null>(initial?.subType ?? null)
   const [title, setTitle] = useState(initial?.title ?? '')
   const [query, setQuery] = useState<WidgetQuery>(initial?.query ?? {})
+  const [dirty, setDirty] = useState(false)
+  useEscToClose(onClose, dirty)
 
   const submit = () => {
     if (!subType) return
@@ -115,17 +117,17 @@ export function AddWidgetModal({ dataSource, initial, onAdd, onClose }: {
     </div>
     {!subType
       ? <div className="widget-type-grid">
-          {(Object.keys(WIDGET_TYPES) as WidgetSubType[]).map(key => <button type="button" key={key} className="widget-type-card" onClick={() => setSubType(key)}>
+          {(Object.keys(WIDGET_TYPES) as WidgetSubType[]).map(key => <button type="button" key={key} className="widget-type-card" onClick={() => { setDirty(true); setSubType(key) }}>
             <span className="widget-type-icon">{WIDGET_TYPES[key].icon}</span><span>{WIDGET_TYPES[key].label}</span>
           </button>)}
         </div>
       : <>
           <div className="form-grid">
-            <Field label="Title" wide><input value={title} maxLength={64} placeholder={WIDGET_TYPES[subType].label} onChange={e => setTitle(e.target.value)} /></Field>
+            <Field label="Title" wide><input value={title} maxLength={64} placeholder={WIDGET_TYPES[subType].label} onChange={e => { setDirty(true); setTitle(e.target.value) }} /></Field>
             {WIDGET_TYPES[subType].needs.map(kind => <Field label={kind[0].toUpperCase() + kind.slice(1)} wide key={kind}>
               {kind === 'series'
-                ? <SeriesPicker attributes={dataSource.attributes} value={seriesKeysOf(query)} onChange={keys => setQuery(current => ({ ...current, series: keys }))} />
-                : <AttrPicker kind={kind} attributes={dataSource.attributes} value={query[kind] as string | undefined} onChange={key => setQuery(current => ({ ...current, [kind]: key }))} />}
+                ? <SeriesPicker attributes={dataSource.attributes} value={seriesKeysOf(query)} onChange={keys => { setDirty(true); setQuery(current => ({ ...current, series: keys })) }} />
+                : <AttrPicker kind={kind} attributes={dataSource.attributes} value={query[kind] as string | undefined} onChange={key => { setDirty(true); setQuery(current => ({ ...current, [kind]: key })) }} />}
             </Field>)}
           </div>
           <div className="widget-preview">

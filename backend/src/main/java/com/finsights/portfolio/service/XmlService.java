@@ -2,6 +2,7 @@ package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.dto.ImportResultResponse;
 import com.finsights.portfolio.dto.TransactionResponse;
+import jakarta.validation.Validator;
 import java.io.ByteArrayInputStream;
 import java.io.StringWriter;
 import java.math.BigDecimal;
@@ -45,9 +46,11 @@ import org.w3c.dom.NodeList;
 public class XmlService {
 
     private final TransactionService transactions;
+    private final Validator validator;
 
-    public XmlService(TransactionService transactions) {
+    public XmlService(TransactionService transactions, Validator validator) {
         this.transactions = transactions;
+        this.validator = validator;
     }
 
     public String export() {
@@ -80,7 +83,7 @@ public class XmlService {
         for (int i = 0; i < nodes.getLength(); i++) {
             rows.add(fieldsOf((Element) nodes.item(i)));
         }
-        return TransactionImportRunner.run(rows, i -> i + 1, transactions);
+        return TransactionImportRunner.run(rows, i -> i + 1, transactions, validator);
     }
 
     private Map<String, String> fieldsOf(Element el) {

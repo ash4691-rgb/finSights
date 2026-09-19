@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, API_URL } from '../api'
 import { money, rate, label, since, numeric, shortId, transactionTypes, assetTxnTypes, liabilityTxnTypes } from '../util'
-import { Field, InfoTip } from '../ui'
+import { Field, InfoTip, useEscToClose } from '../ui'
 import type { Transaction, Holding, TransactionType, ImportResult } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -117,9 +117,10 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
     ? { holdingId: transaction.holdingId, type: transaction.type, date: transaction.date.slice(0, 10), amount: String(transaction.amount), quantity: transaction.quantity != null ? String(transaction.quantity) : '', interestPaid: !!transaction.interestPaid, notes: transaction.notes || '' }
     : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', interestPaid: false, notes: '' })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
   const liability = isLiab(form.holdingId)
   const allowedTypes = liability ? liabilityTxnTypes : assetTxnTypes
-  const set = (key: string, value: string | boolean) => setForm(current => {
+  const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => {
     const next = { ...current, [key]: value }
     if (key === 'holdingId') {
       const nowLiab = holdings.find(h => h.id === value)?.kind === 'LIABILITY'
@@ -127,7 +128,8 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
       if (!nowLiab && !assetTxnTypes.includes(next.type)) next.type = 'BUY'
     }
     return next
-  })
+  }) }
+  useEscToClose(onClose, dirty)
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('')
     const payload = { holdingId: form.holdingId, type: form.type, date: form.date, amount: form.type === 'SPLIT' ? 0 : numeric(form.amount), quantity: form.quantity ? numeric(form.quantity) : null, interestPaid: form.type === 'INTEREST' ? form.interestPaid : null, notes: form.notes || null }
@@ -145,13 +147,13 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
       <Field label="Holding" required wide><HoldingPicker holdings={holdings} value={form.holdingId} onChange={id => set('holdingId', id)} /></Field>
       <Field label={<>Type <InfoTip text={typeHint} /></>} required><select required value={form.type} onChange={e => set('type', e.target.value)}>{allowedTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
-      {form.type !== 'SPLIT' && <Field label={form.type === 'SELL' ? 'Sale proceeds (total)' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'}><input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>}
-      {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'}><input type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
+      {form.type !== 'SPLIT' && <Field label={form.type === 'SELL' ? 'Sale proceeds (total)' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'} required><input required type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></Field>}
+      {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'} required={form.type === 'SPLIT'}><input required={form.type === 'SPLIT'} type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
       {form.type === 'INTEREST' && <div className="check-row"><label><input type="checkbox" checked={form.interestPaid} onChange={e => set('interestPaid', e.target.checked)} /> Received in cash <InfoTip text="On: the income is booked as realised P/L. Off: it accrues onto the holding's current value." /></label></div>}
       <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
     </div>
     {error && <p className="form-error">{error}</p>}
-    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.holdingId}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
+    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.holdingId || (form.type !== 'SPLIT' && !form.amount) || (form.type === 'SPLIT' && !form.quantity)}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
     </form>
   </section></div>
 }
@@ -191,6 +193,7 @@ export function HoldingPicker({ holdings, value, onChange, allowClear, clearLabe
 }
 
 export function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+  useEscToClose(onClose)
   const [tab, setTab] = useState<'csv' | 'xml'>('csv')
   const [busy, setBusy] = useState(false)
   const [fileName, setFileName] = useState('')

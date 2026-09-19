@@ -207,6 +207,7 @@ class HoldingServiceTest {
         when(categories.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(category));
         when(holdings.findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(any(), any(), any())).thenReturn(Optional.empty());
         when(holdings.save(any())).thenReturn(holding);
+        when(fx.supports(any())).thenReturn(true);
         org.mockito.Mockito.lenient().when(transactions.existsByHolding_Id(any())).thenReturn(true); // ledger already backfilled — only consulted when an adjustment is actually booked
         when(valuations.currentValue(any())).thenAnswer(inv -> ((Holding) inv.getArgument(0)).getCurrentValue());
     }
