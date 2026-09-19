@@ -4,26 +4,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.domain.Category;
 import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.HoldingKind;
+import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.Transaction;
 import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.ValuationMethod;
+import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.repository.CategoryRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -185,5 +192,64 @@ class HoldingServiceTest {
         assertThatCode(service::list).doesNotThrowAnyException();
         assertThat(holding.getCurrentValue()).isEqualByComparingTo("100.00"); // last known-good value kept, not overwritten
         verify(holdings, never()).save(holding);
+    }
+
+    @Test
+    void listBackfillsRealHistoricalPricesWhenNoDeepHistoryExistsYet() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        category.setName("Growth Equity");
+        holding.setCategory(category);
+        holding.setValuationMethod(ValuationMethod.MARKET_PRICE);
+        holding.setTickerSymbol("RELIANCE");
+        holding.setCurrency("INR");
+        holding.setQuantity(new BigDecimal("10"));
+        holding.setCurrentValue(new BigDecimal("100.00"));
+        holding.setInvestedValue(new BigDecimal("100.00"));
+
+        UserAccount user = new UserAccount("demo@finsights.local", "Demo");
+        holding.setUser(user);
+        when(currentUser.currentUser()).thenReturn(user);
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of(holding));
+        when(transactions.findHoldingIdsWithTransactions(any())).thenReturn(new HashSet<>());
+        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE", new MarketQuoteResponse("RELIANCE", "Reliance", new BigDecimal("500"), "INR", null)));
+        when(fx.convert(any(), any(), any())).thenReturn(new BigDecimal("500"));
+        when(valuations.currentValue(any())).thenReturn(new BigDecimal("100.00"));
+        when(snapshots.hasSnapshotAtOrBefore(any(), any(), any())).thenReturn(false);
+        when(marketData.history(eq("RELIANCE"), eq("1Y"))).thenReturn(Optional.of(new MarketHistoryResponse("RELIANCE", "INR", List.of(
+                new MarketHistoryResponse.Point(Instant.now().minus(300, ChronoUnit.DAYS), new BigDecimal("450")),
+                new MarketHistoryResponse.Point(Instant.now().minus(100, ChronoUnit.DAYS), new BigDecimal("480"))))));
+
+        service.list();
+
+        verify(snapshots, times(2)).recordAt(eq(SnapshotSubject.HOLDING), any(), eq(user), any(), any());
+    }
+
+    @Test
+    void listSkipsTheHistoryBackfillOnceDeepHistoryAlreadyExists() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        category.setName("Growth Equity");
+        holding.setCategory(category);
+        holding.setValuationMethod(ValuationMethod.MARKET_PRICE);
+        holding.setTickerSymbol("RELIANCE");
+        holding.setCurrency("INR");
+        holding.setQuantity(new BigDecimal("10"));
+        holding.setCurrentValue(new BigDecimal("100.00"));
+        holding.setInvestedValue(new BigDecimal("100.00"));
+
+        UserAccount user = new UserAccount("demo@finsights.local", "Demo");
+        holding.setUser(user);
+        when(currentUser.currentUser()).thenReturn(user);
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of(holding));
+        when(transactions.findHoldingIdsWithTransactions(any())).thenReturn(new HashSet<>());
+        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE", new MarketQuoteResponse("RELIANCE", "Reliance", new BigDecimal("500"), "INR", null)));
+        when(fx.convert(any(), any(), any())).thenReturn(new BigDecimal("500"));
+        when(valuations.currentValue(any())).thenReturn(new BigDecimal("100.00"));
+        when(snapshots.hasSnapshotAtOrBefore(any(), any(), any())).thenReturn(true);
+
+        service.list();
+
+        verify(marketData, never()).history(any(), any());
     }
 }

@@ -10,6 +10,7 @@ import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.HoldingRequest;
 import com.finsights.portfolio.dto.HoldingResponse;
+import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.repository.CategoryRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
@@ -53,6 +54,8 @@ public class HoldingService {
 
     /** MARKET_PRICE holdings are re-priced from the live feed no more often than this. */
     private static final Duration PRICE_MAX_AGE = Duration.ofMinutes(15);
+    /** How far back a historical backfill needs to already reach before it's considered done. */
+    private static final Duration DEEP_HISTORY_WINDOW = Duration.ofDays(350);
 
     public HoldingService(HoldingRepository holdings, CategoryRepository categories, CurrentUserService currentUser,
                           ValuationService valuations, FxRateService fx, TransactionRepository transactions,
@@ -117,7 +120,27 @@ public class HoldingService {
             if (oldValue.compareTo(newValue) != 0) {
                 snapshots.record(SnapshotSubject.HOLDING, holding.getId(), holding.getUser(), newValue);
             }
+            backfillHistoryIfNeeded(holding);
         }
+    }
+
+    /**
+     * One-time backfill of real historical closes (Yahoo's 1-year chart) so monthly, quarterly,
+     * half-yearly, and yearly thresholds have a genuine baseline right away instead of only after
+     * months of live use — never fabricated, just fetched earlier. Skipped once a snapshot already
+     * exists that old; a fetch failure is swallowed and simply retried on the next refresh.
+     */
+    private void backfillHistoryIfNeeded(Holding holding) {
+        Instant cutoff = Instant.now().minus(DEEP_HISTORY_WINDOW);
+        if (snapshots.hasSnapshotAtOrBefore(SnapshotSubject.HOLDING, holding.getId(), cutoff)) return;
+        marketData.history(holding.getTickerSymbol(), "1Y").ifPresent(history -> {
+            for (MarketHistoryResponse.Point point : history.points()) {
+                BigDecimal unitPrice = convertToHoldingCurrency(point.price(), history.currency(), holding.getCurrency());
+                BigDecimal value = unitPrice.multiply(holding.getQuantity()).setScale(2, RoundingMode.HALF_UP);
+                if (!withinRange(value, MAX_MONEY)) continue;
+                snapshots.recordAt(SnapshotSubject.HOLDING, holding.getId(), holding.getUser(), value, point.timestamp());
+            }
+        });
     }
 
     private boolean withinRange(BigDecimal value, BigDecimal max) {

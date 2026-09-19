@@ -8,5 +8,5 @@ import java.math.BigDecimal;
  */
 public record MovementThresholdRequest(
         BigDecimal dailyPercent, BigDecimal weeklyPercent, BigDecimal monthlyPercent,
-        BigDecimal quarterlyPercent, BigDecimal yearlyPercent
+        BigDecimal quarterlyPercent, BigDecimal halfYearlyPercent, BigDecimal yearlyPercent
 ) { }

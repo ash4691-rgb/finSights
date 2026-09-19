@@ -13,6 +13,8 @@ public interface PriceSnapshotRepository extends JpaRepository<PriceSnapshot, St
     Optional<PriceSnapshot> findFirstBySubjectTypeAndSubjectIdAndRecordedAtLessThanEqualOrderByRecordedAtDesc(
             SnapshotSubject subjectType, String subjectId, Instant cutoff);
 
+    boolean existsBySubjectTypeAndSubjectIdAndRecordedAtLessThanEqual(SnapshotSubject subjectType, String subjectId, Instant cutoff);
+
     @Transactional
     long deleteBySubjectTypeAndSubjectId(SnapshotSubject subjectType, String subjectId);
 

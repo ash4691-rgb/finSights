@@ -46,6 +46,7 @@ public class TopMoversService {
         thresholdByPeriod.put("WEEKLY", cfg.weeklyPercent());
         thresholdByPeriod.put("MONTHLY", cfg.monthlyPercent());
         thresholdByPeriod.put("QUARTERLY", cfg.quarterlyPercent());
+        thresholdByPeriod.put("HALF_YEARLY", cfg.halfYearlyPercent());
         thresholdByPeriod.put("YEARLY", cfg.yearlyPercent());
 
         List<TopMoverResponse> results = new ArrayList<>();
