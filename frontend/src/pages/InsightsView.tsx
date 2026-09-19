@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { api } from '../api'
 import { LayoutZone } from '../layout'
 import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
-import { Field, SymbolSearchInput } from '../ui'
+import { Field, SymbolSearchInput, InfoTip } from '../ui'
 import { seriesKeysOf } from '../widgets'
 import type { PageDataSource } from '../widgets'
 import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote } from '../types'
@@ -172,7 +172,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
     topMovers: <section className="panel">
       <div className="panel-heading"><h3>🔥 Hot Picks</h3><span>Market-linked movement beyond your thresholds</span></div>
-      <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'thresholds', span: 6 }, { key: 'watchlist', span: 6 }]} render={{
+      <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'thresholds', span: 12 }, { key: 'watchlist', span: 12 }]} render={{
         movers: <div className="action-col">
           <div className="action-col-head"><span className="action-col-icon">🔥</span><h4>Movers</h4><span className="action-col-count">{topMovers?.length ?? 0}</span></div>
           {topMovers === null ? <p className="hint">Loading hot picks…</p> : topMovers.length ? <div className="top-mover-list">
@@ -218,7 +218,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
             {watchlist.length ? <div className="table-panel"><table>
               <thead><tr><th>Name</th><th>Ticker</th><th>Price</th><th>Last updated</th><th /></tr></thead>
               <tbody>{watchlist.map(item => <tr key={item.id}>
-                <td><strong>{item.name}</strong>{item.notes && <small className="owner">{item.notes}</small>}</td>
+                <td><div className="name-cell"><strong title={item.name}>{item.name}</strong>{item.notes && <InfoTip text={item.notes} />}</div></td>
                 <td>{item.tickerSymbol || '—'}</td>
                 <td>{item.currentValue != null ? item.currentValue.toLocaleString(numberLocale) : '—'}</td>
                 <td>{since(item.lastUpdated)}</td>
@@ -353,19 +353,14 @@ export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntr
   }))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
-  // Pull the name (and a first price) from the ticker, like a market-linked holding does.
+  // Name and price always come from the ticker's live quote — a market-linked entry, not free text.
   useEffect(() => {
     const symbol = form.tickerSymbol.trim()
     if (!symbol) return
     const timer = setTimeout(() => {
       api<MarketQuote>(`/api/market/quote?symbol=${encodeURIComponent(symbol)}`)
-        .then(q => setForm(current => {
-          if (current.tickerSymbol.trim().toUpperCase() !== symbol.toUpperCase()) return current
-          const next = { ...current }
-          if (q.name && (!current.name.trim() || current.name === current.tickerSymbol)) next.name = q.name
-          if (q.price && !current.price) next.price = String(q.price)
-          return next
-        }))
+        .then(q => setForm(current => current.tickerSymbol.trim().toUpperCase() !== symbol.toUpperCase() ? current
+          : { ...current, name: q.name || current.name, price: q.price ? String(q.price) : current.price }))
         .catch(() => { /* leave fields as-is */ })
     }, 400)
     return () => clearTimeout(timer)
@@ -394,15 +389,13 @@ export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntr
   </div>
     <form onSubmit={submit}>
       <div className="form-grid">
-        <Field label="Ticker" wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>
-        <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Filled from the ticker, or type your own" /></Field>
-        <Field label={item ? 'Update price' : 'Current price'} required={!item}>
-          <input type="number" min="0" step="any" required={!item} value={form.price} onChange={e => set('price', e.target.value)} />
-        </Field>
+        <Field label="Ticker" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>
+        <Field label="Name" wide><input disabled maxLength={128} value={form.name} placeholder="Filled from the ticker" /></Field>
+        <Field label="Current price"><input disabled type="number" value={form.price} placeholder="Filled from the ticker" /></Field>
         <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
       </div>
       {error && <p className="form-error">{error}</p>}
-      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving}>{saving ? 'Saving…' : item ? 'Save changes' : 'Add to watchlist'}</button></div>
+      <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.tickerSymbol.trim() || !form.name.trim() || !form.price.trim()}>{saving ? 'Saving…' : item ? 'Save changes' : 'Add to watchlist'}</button></div>
     </form>
   </section></div>
 }
