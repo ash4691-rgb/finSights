@@ -55,11 +55,17 @@ export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: strin
 export type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[] }
 export type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
 export type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
-export type HotPick = {
+export type TopMover = {
   subjectType: 'HOLDING' | 'WATCHLIST'; id: string; name: string; categoryName?: string; tickerSymbol?: string
   currentValue?: number; currency?: string; triggered: PeriodMovement[]
 }
-export type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; lastUpdated?: string; createdAt?: string }
+// Insights-owned — a single % per lookback period; a move past it either way, up or down, counts.
+// A period is "off" when its field is absent.
+export type MovementThresholds = {
+  dailyPercent?: number; weeklyPercent?: number; monthlyPercent?: number
+  quarterlyPercent?: number; yearlyPercent?: number
+}
+export type WatchlistEntry = { id: string; name: string; tickerSymbol?: string; notes?: string; currentValue?: number; currency?: string; lastUpdated?: string; createdAt?: string }
 export type TimelineCategoryPoint = { categoryId: string; categoryName: string; kind: 'ASSET' | 'LIABILITY'; invested: number; current: number }
 export type TimelineWeek = { weekOf: string; invested: number; current: number; liabilities: number; netWorth: number; categories: TimelineCategoryPoint[] }
 export type PortfolioTimeline = { weeks: TimelineWeek[]; lastCapturedAt?: string; capturedToday: boolean }

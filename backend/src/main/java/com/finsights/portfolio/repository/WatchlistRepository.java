@@ -9,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 public interface WatchlistRepository extends JpaRepository<WatchlistItem, String> {
     List<WatchlistItem> findByUser_IdOrderByCreatedAtAsc(String userId);
     Optional<WatchlistItem> findByIdAndUser_Id(String id, String userId);
+    boolean existsByUser_IdAndTickerSymbolIgnoreCase(String userId, String tickerSymbol);
+    boolean existsByUser_IdAndTickerSymbolIgnoreCaseAndIdNot(String userId, String tickerSymbol, String id);
 
     @Transactional
     long deleteByUser_Id(String userId);

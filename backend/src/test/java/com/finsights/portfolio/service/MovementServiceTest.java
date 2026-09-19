@@ -96,7 +96,7 @@ class MovementServiceTest {
 
     @Test
     void watchlistMovementDiffsCurrentValueAgainstClosestPriorSnapshot() {
-        WatchlistResponse item = new WatchlistResponse("w-1", "Nifty 50", null, null, new BigDecimal("25000"), Instant.now(), Instant.now());
+        WatchlistResponse item = new WatchlistResponse("w-1", "Nifty 50", null, null, new BigDecimal("25000"), "INR", Instant.now(), Instant.now());
         when(snapshots.closestAtOrBefore(any(SnapshotSubject.class), anyString(), any(Instant.class))).thenReturn(new BigDecimal("24000"));
 
         BigDecimal movement = service.watchlistMovement(item, 1);
