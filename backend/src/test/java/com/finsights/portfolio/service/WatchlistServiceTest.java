@@ -8,14 +8,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.WatchlistItem;
+import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.dto.WatchlistCreateRequest;
 import com.finsights.portfolio.dto.WatchlistResponse;
 import com.finsights.portfolio.dto.WatchlistUpdateRequest;
 import com.finsights.portfolio.repository.WatchlistRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,12 +35,13 @@ class WatchlistServiceTest {
     @Mock PriceSnapshotService snapshots;
     @Mock CurrentUserService currentUser;
     @Mock FxRateService fx;
+    @Mock MarketDataService marketData;
     private WatchlistService service;
     private UserAccount user;
 
     @BeforeEach
     void setUp() {
-        service = new WatchlistService(repository, snapshots, currentUser, fx);
+        service = new WatchlistService(repository, snapshots, currentUser, fx, marketData);
         user = new UserAccount("demo@finsights.local", "Demo");
         when(currentUser.currentUser()).thenReturn(user);
     }
@@ -152,5 +157,49 @@ class WatchlistServiceTest {
         service.list("");
 
         verify(fx, never()).convert(any(), anyString(), anyString());
+    }
+
+    @Test
+    void staleTickerBackedItemIsRefreshedFromTheLiveFeedOnList() {
+        WatchlistItem item = new WatchlistItem();
+        item.setUser(user);
+        item.setName("Reliance");
+        item.setTickerSymbol("RELIANCE.NS");
+        item.setCurrency("INR");
+        when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
+        when(snapshots.latestRecordedAt(any(), any())).thenReturn(null); // never priced yet
+        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE.NS",
+                new MarketQuoteResponse("RELIANCE.NS", "Reliance", new BigDecimal("2950.00"), "INR", Instant.now())));
+
+        service.list();
+
+        verify(snapshots).record(eq(SnapshotSubject.WATCHLIST), any(), eq(user), eq(new BigDecimal("2950.00")));
+    }
+
+    @Test
+    void recentlySnapshottedItemIsNotRefetchedFromTheLiveFeed() {
+        WatchlistItem item = new WatchlistItem();
+        item.setUser(user);
+        item.setName("Reliance");
+        item.setTickerSymbol("RELIANCE.NS");
+        item.setCurrency("INR");
+        when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
+        when(snapshots.latestRecordedAt(any(), any())).thenReturn(Instant.now().minusSeconds(30)); // well within the 15-minute window
+
+        service.list();
+
+        verify(marketData, never()).quotes(any());
+    }
+
+    @Test
+    void itemsWithoutATickerAreNeverLiveRefreshed() {
+        WatchlistItem item = new WatchlistItem();
+        item.setUser(user);
+        item.setName("Custom index");
+        when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
+
+        service.list();
+
+        verify(marketData, never()).quotes(any());
     }
 }
