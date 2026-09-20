@@ -1,10 +1,13 @@
 package com.finsights.portfolio.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finsights.portfolio.domain.MarketHistoryCache;
 import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.dto.SymbolSuggestion;
+import com.finsights.portfolio.repository.MarketHistoryCacheRepository;
 import java.math.BigDecimal;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
@@ -16,6 +19,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -23,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +52,9 @@ public class MarketDataService {
     private static final Duration SEARCH_TTL = Duration.ofMinutes(10);
     private static final Duration HISTORY_TTL = Duration.ofMinutes(5);
     private static final Duration COOKIE_TTL = Duration.ofMinutes(30);
+    /** The shared daily series (below) is refreshed at most this often — much longer than HISTORY_TTL
+     * because it's one fetch serving every user and every one of the four ranges derived from it. */
+    private static final Duration DAILY_SERIES_TTL = Duration.ofHours(6);
 
     /** ViewMoverItem's chart ranges, mapped to Yahoo's own range/interval query params. */
     private static final Map<String, String[]> HISTORY_RANGES = Map.of(
@@ -56,6 +64,10 @@ public class MarketDataService {
             "3M", new String[] { "3mo", "1d" },
             "6M", new String[] { "6mo", "1d" },
             "1Y", new String[] { "1y", "1d" });
+    /** These four are all daily-interval already, so they're never fetched individually — each is
+     * just a different-length slice of the one shared 1-year daily series (see {@link #dailySeries}). */
+    private static final Set<String> DERIVED_FROM_DAILY_SERIES = Set.of("1M", "3M", "6M", "1Y");
+    private static final Map<String, Integer> DERIVED_RANGE_DAYS = Map.of("1M", 32, "3M", 93, "6M", 185, "1Y", 370);
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
@@ -66,6 +78,13 @@ public class MarketDataService {
     private final Map<String, Cached<List<SymbolSuggestion>>> searchCache = new ConcurrentHashMap<>();
     private final Map<String, Cached<MarketHistoryResponse>> historyCache = new ConcurrentHashMap<>();
     private final AtomicReference<Instant> cookiesPrimedAt = new AtomicReference<>();
+    private final MarketHistoryCacheRepository historyCacheRepo;
+    private final ObjectMapper sharedJson;
+
+    public MarketDataService(MarketHistoryCacheRepository historyCacheRepo, ObjectMapper sharedJson) {
+        this.historyCacheRepo = historyCacheRepo;
+        this.sharedJson = sharedJson;
+    }
 
     public List<SymbolSuggestion> search(String query) {
         if (query == null || query.isBlank()) return List.of();
@@ -135,18 +154,88 @@ public class MarketDataService {
     /**
      * Closing prices for {@code symbol} over one of ViewMoverItem's chart ranges (1D/1W/1M/3M/6M/1Y,
      * defaulting to 1M for anything else) — oldest point first. Same never-throws contract as quote().
+     * 1M/3M/6M/1Y are all served from one shared, DB-cached 1-year daily series (see {@link #dailySeries})
+     * instead of a Yahoo call per range — tickers are shared across users far more than they're unique
+     * to one, so this cuts both latency and how often the feed gets hit.
      */
     public Optional<MarketHistoryResponse> history(String symbol, String rangeKey) {
         if (symbol == null || symbol.isBlank()) return Optional.empty();
-        String[] params = HISTORY_RANGES.getOrDefault(rangeKey, HISTORY_RANGES.get("1M"));
-        String key = symbol.trim().toUpperCase() + ":" + params[0] + ":" + params[1];
-        Cached<MarketHistoryResponse> hit = historyCache.get(key);
+        String key = symbol.trim().toUpperCase();
+        String range = HISTORY_RANGES.containsKey(rangeKey) ? rangeKey : "1M";
+        if (DERIVED_FROM_DAILY_SERIES.contains(range)) {
+            return dailySeries(key).map(series -> sliceToRange(series, range));
+        }
+        String[] params = HISTORY_RANGES.get(range);
+        return intradayHistory(key, range, params[0], params[1]);
+    }
+
+    private Optional<MarketHistoryResponse> intradayHistory(String symbol, String rangeKey, String yahooRange, String yahooInterval) {
+        String cacheKey = symbol + ":" + yahooRange + ":" + yahooInterval;
+        Cached<MarketHistoryResponse> hit = historyCache.get(cacheKey);
         if (hit != null && hit.fresh(HISTORY_TTL)) return Optional.ofNullable(hit.value);
 
-        MarketHistoryResponse history = null;
+        MarketHistoryResponse history = fetchChart(symbol, yahooRange, yahooInterval).orElse(null);
+        if (history == null) log.debug("History lookup failed for '{}' [{}]", symbol, rangeKey);
+        historyCache.put(cacheKey, new Cached<>(history));
+        return Optional.ofNullable(history);
+    }
+
+    /**
+     * The one shared 1-year, daily-interval series backing the 1M/3M/6M/1Y ranges for every user —
+     * persisted so a restart doesn't re-trigger a fetch storm, and refreshed at most every
+     * {@link #DAILY_SERIES_TTL}. Falls back to whatever was last cached, however stale, if Yahoo
+     * can't be reached — better than nothing for a chart that changes little day to day anyway.
+     */
+    private Optional<MarketHistoryResponse> dailySeries(String symbol) {
+        Optional<MarketHistoryCache> cached = historyCacheRepo.findBySymbol(symbol);
+        if (cached.isPresent() && cached.get().getFetchedAt().isAfter(Instant.now().minus(DAILY_SERIES_TTL))) {
+            Optional<MarketHistoryResponse> fresh = toResponse(cached.get());
+            if (fresh.isPresent()) return fresh;
+        }
+        Optional<MarketHistoryResponse> fetched = fetchChart(symbol, "1y", "1d");
+        if (fetched.isPresent()) {
+            saveDailySeries(symbol, fetched.get());
+            return fetched;
+        }
+        return cached.flatMap(this::toResponse);
+    }
+
+    private void saveDailySeries(String symbol, MarketHistoryResponse series) {
         try {
-            String url = CHART_URL + URLEncoder.encode(symbol.trim().toUpperCase(), StandardCharsets.UTF_8)
-                    + "?range=" + params[0] + "&interval=" + params[1];
+            String pointsJson = sharedJson.writeValueAsString(series.points());
+            MarketHistoryCache row = historyCacheRepo.findBySymbol(symbol).orElseGet(MarketHistoryCache::new);
+            row.setSymbol(symbol);
+            row.setCurrency(series.currency());
+            row.setPointsJson(pointsJson);
+            row.setFetchedAt(Instant.now());
+            historyCacheRepo.save(row);
+        } catch (Exception e) {
+            log.debug("Failed to cache daily history for '{}': {}", symbol, e.toString());
+        }
+    }
+
+    private Optional<MarketHistoryResponse> toResponse(MarketHistoryCache row) {
+        try {
+            List<MarketHistoryResponse.Point> points = sharedJson.readValue(row.getPointsJson(), new TypeReference<List<MarketHistoryResponse.Point>>() { });
+            return Optional.of(new MarketHistoryResponse(row.getSymbol(), row.getCurrency(), points));
+        } catch (Exception e) {
+            log.debug("Corrupt cached history for '{}': {}", row.getSymbol(), e.toString());
+            return Optional.empty();
+        }
+    }
+
+    /** Never returns fewer than 2 points if the source series has them — falls back to the full
+     * series rather than showing an unusably sparse (or empty) chart at the edges. */
+    private MarketHistoryResponse sliceToRange(MarketHistoryResponse series, String rangeKey) {
+        int days = DERIVED_RANGE_DAYS.getOrDefault(rangeKey, DERIVED_RANGE_DAYS.get("1M"));
+        Instant cutoff = Instant.now().minus(days, ChronoUnit.DAYS);
+        List<MarketHistoryResponse.Point> sliced = series.points().stream().filter(p -> !p.timestamp().isBefore(cutoff)).toList();
+        return sliced.size() >= 2 ? new MarketHistoryResponse(series.symbol(), series.currency(), sliced) : series;
+    }
+
+    private Optional<MarketHistoryResponse> fetchChart(String symbol, String yahooRange, String yahooInterval) {
+        try {
+            String url = CHART_URL + URLEncoder.encode(symbol, StandardCharsets.UTF_8) + "?range=" + yahooRange + "&interval=" + yahooInterval;
             JsonNode result = get(url).path("chart").path("result").path(0);
             JsonNode meta = result.path("meta");
             JsonNode timestamps = result.path("timestamp");
@@ -157,17 +246,15 @@ public class MarketDataService {
                 if (!close.isNumber()) continue; // market-closed gaps come back null — skip rather than fabricate
                 points.add(new MarketHistoryResponse.Point(Instant.ofEpochSecond(timestamps.path(i).asLong()), close.decimalValue()));
             }
-            if (!points.isEmpty()) {
-                history = new MarketHistoryResponse(
-                        firstNonBlank(meta.path("symbol").asText(null), symbol.trim().toUpperCase()),
-                        firstNonBlank(meta.path("currency").asText(null), "USD"),
-                        points);
-            }
+            if (points.isEmpty()) return Optional.empty();
+            return Optional.of(new MarketHistoryResponse(
+                    firstNonBlank(meta.path("symbol").asText(null), symbol),
+                    firstNonBlank(meta.path("currency").asText(null), "USD"),
+                    points));
         } catch (Exception e) {
-            log.debug("History lookup failed for '{}' [{}]: {}", symbol, rangeKey, e.toString());
+            log.debug("Chart fetch failed for '{}' [{}/{}]: {}", symbol, yahooRange, yahooInterval, e.toString());
+            return Optional.empty();
         }
-        historyCache.put(key, new Cached<>(history));
-        return Optional.ofNullable(history);
     }
 
     private JsonNode get(String url) throws Exception {
