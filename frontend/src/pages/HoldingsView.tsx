@@ -300,6 +300,10 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit, reloa
   }
   const isLiab = holding.kind === 'LIABILITY'
   const repaid = Math.max(0, holding.investedValue - holding.currentValue)
+  const removeHolding = async () => {
+    if (!confirm(`Delete ${holding.name}?`)) return
+    await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload(); onClose()
+  }
   return <div className="modal-backdrop" onClick={onClose}><section className="modal drawer" onClick={e => e.stopPropagation()}>
     <div className="modal-header">
       <div><p className="eyebrow">{label(holding.kind)} · {holding.broker || (isLiab ? 'No lender' : 'Unassigned broker')}</p><h2>{holding.name}</h2><p className="drawer-ref">{holding.holdingId}</p></div>
@@ -352,9 +356,12 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit, reloa
           <span className="drawer-txn-amount">{money(t.amount, t.currency)}{t.type === 'REPAY' && t.principalPortion != null ? ` · ${money(t.principalPortion, t.currency)} principal` : t.quantity != null ? ` · qty ${t.quantity}` : ''}</span>
           {t.notes && <span className="drawer-txn-notes">{t.notes}</span>}
         </div>)}{visibleTxns < txns.length && <p className="hint drawer-txns-more">Scroll for {txns.length - visibleTxns} more</p>}</div>}
-    <button type="button" className="outline compact" onClick={() => setAddingTxn(true)}>+ Log transaction</button>
 
-    <div className="modal-actions"><button className="outline" onClick={onClose}>Close</button><button className="primary" onClick={() => onEdit(holding)}>Edit holding</button></div>
+    <div className="modal-actions">
+      <button type="button" className="outline compact push-start" onClick={() => setAddingTxn(true)}>+ Log transaction</button>
+      <button className="primary" onClick={() => onEdit(holding)}>Edit holding</button>
+      <button className="danger-btn" onClick={() => void removeHolding()}>Delete holding</button>
+    </div>
     {addingTxn && <TransactionModal transaction={null} holdings={[holding]} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); void reload() }} />}
   </section></div>
 }
