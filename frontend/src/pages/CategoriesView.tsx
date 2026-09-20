@@ -53,6 +53,11 @@ export function CategoriesView({ categories, onOpen, onEdit, onAdd, reload }: { 
     await reload()
   }
 
+  const removeCategory = async (c: Category) => {
+    if (!confirm(`Delete ${c.name} and its ${c.holdingCount} holding${c.holdingCount === 1 ? '' : 's'}? This also removes their transactions.`)) return
+    await api(`/api/categories/${c.id}`, { method: 'DELETE' }); await reload()
+  }
+
   return <>
     <section className="holdings-toolbar">
       <div className="search"><span>⌕</span><input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search categories" /></div>
@@ -84,7 +89,7 @@ export function CategoriesView({ categories, onOpen, onEdit, onAdd, reload }: { 
         <td>{c.holdingCount ? percent(c.weightagePercent) : '—'}</td>
         <td>{money(c.liquidAmount)}<small className="owner">{percent(c.liquidPercent)}</small></td>
         <td>{money(c.npaAmount)}<small className="owner">{percent(c.npaPercent)}</small></td>
-        <td className="actions"><button className="primary-link" onClick={e => { e.stopPropagation(); onEdit(c) }}>Edit</button></td>
+        <td className="actions actions-vertical"><button className="primary-link" onClick={e => { e.stopPropagation(); onEdit(c) }}>Edit</button><button className="danger-link" onClick={e => { e.stopPropagation(); void removeCategory(c) }}>Delete</button></td>
       </tr>) : <tr><td colSpan={10} className="empty"><strong>No categories yet</strong><span>Categories are simple buckets — "Growth Equity", "Emergency Fund" — that holdings get filed under.</span><button className="primary" onClick={onAdd}>Add category</button></td></tr>}</tbody>
     </table></section>
   </>
@@ -121,15 +126,16 @@ export function CategoryDrawer({ category, holdings, onClose, onEdit, onAddHoldi
       <div className="mapped-holding-name"><strong title={h.name}>{h.name}</strong><small>{h.broker || 'Unassigned broker'}{h.quantity != null ? ` · qty ${h.quantity}` : ''}</small></div>
       <div className="mapped-holding-value"><span>{money(h.currentValue, h.currency)}</span><small className={h.profitLoss >= 0 ? 'positive' : 'negative'}>{h.kind === 'LIABILITY' ? '—' : `${h.profitLoss >= 0 ? '+' : ''}${percent(h.profitLossPercentage)}`}</small></div>
     </button>)}</div> : <p className="hint">No holdings mapped yet — add one to record an actual position in this category.</p>}
-    <button className="outline compact" onClick={() => onAddHolding(category)}>+ Add a holding here</button>
 
-    <div className="modal-actions"><button className="danger-link-btn" onClick={() => void removeCategory()}>Delete category</button><button className="outline" onClick={onClose}>Close</button><button className="primary" onClick={() => onEdit(category)}>Edit category</button></div>
+    <div className="modal-actions">
+      <button className="outline compact push-start" onClick={() => onAddHolding(category)}>+ Add holding</button>
+      <button className="primary" onClick={() => onEdit(category)}>Edit category</button>
+      <button className="danger-btn" onClick={() => void removeCategory()}>Delete category</button>
+    </div>
   </section></div>
 }
 
-export function CategoryModal({ category, holdings, onClose, onSaved, onAddHolding }: {
-  category: Category | null; holdings: Holding[]; onClose: () => void; onSaved: () => void; onAddHolding?: (c: Category) => void
-}) {
+export function CategoryModal({ category, holdings, onClose, onSaved }: { category: Category | null; holdings: Holding[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState(() => category
     ? { name: category.name, kind: category.kind, description: category.description || '', allowedValuationMethods: category.allowedValuationMethods ?? [] }
     : blankCategoryForm())
@@ -152,7 +158,7 @@ export function CategoryModal({ category, holdings, onClose, onSaved, onAddHoldi
       onSaved()
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save category') } finally { setSaving(false) }
   }
-  return <div className="modal-backdrop"><section className="modal narrow"><div className="modal-header"><div><p className="eyebrow">{category ? 'EDIT CATEGORY' : 'NEW CATEGORY'}</p><h2>{category ? category.name : 'Add a category'}</h2></div>{category && onAddHolding && <button type="button" className="outline compact" onClick={() => onAddHolding(category)}>+ Add holding</button>}</div>
+  return <div className="modal-backdrop"><section className="modal narrow"><div className="modal-header"><div><p className="eyebrow">{category ? 'EDIT CATEGORY' : 'NEW CATEGORY'}</p><h2>{category ? category.name : 'Add a category'}</h2></div><button className="close" onClick={onClose}>×</button></div>
     <form onSubmit={submit}>
       <div className="form-grid">
         <Field label="Name" required wide><input required maxLength={128} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Growth Equity, Emergency Fund" /></Field>
