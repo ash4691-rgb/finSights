@@ -287,6 +287,11 @@ th.sortable:hover{color:var(--text)}
 .calc-panel .hint{margin:8px 0 0}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:23px}
 .modal-actions .push-start{margin-right:auto}
+.onboarding-tour p{color:var(--text-2);line-height:1.6}
+.onboarding-dots{display:flex;gap:6px;margin-top:18px}
+.onboarding-dot{width:7px;height:7px;border-radius:50%;background:var(--border-strong)}
+.onboarding-dot.active{background:var(--accent)}
+.onboarding-dismiss{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-3);cursor:pointer}
 .loading-screen{min-height:100vh;display:grid;place-content:center;text-align:center;gap:12px}
 .loading-screen .mark{margin:auto;width:44px;height:44px;font-size:22px}
 .loading-screen p{color:var(--text-3)}

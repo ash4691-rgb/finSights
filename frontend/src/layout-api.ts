@@ -10,3 +10,10 @@ export async function saveLayout(page: string, config: unknown): Promise<void> {
   try { await api(`/api/layouts/${page}`, { method: 'PUT', body: JSON.stringify({ config }) }) }
   catch { /* offline — localStorage mirror still holds it */ }
 }
+
+// "Don't show this again" for the Edit Layout onboarding tour. Best-effort: if this fails the
+// tour just replays next time, which is a fine fallback rather than blocking the user on it.
+export async function dismissEditLayoutOnboarding(): Promise<void> {
+  try { await api('/api/settings/edit-layout-onboarding/dismiss', { method: 'POST' }) }
+  catch { /* replays next time — not worth surfacing an error for */ }
+}

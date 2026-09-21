@@ -50,3 +50,11 @@ export function sectionsZoneKeyFor(page: string): string | undefined {
   const zones = PAGE_LAYOUT[page as keyof typeof PAGE_LAYOUT]
   return zones && Object.entries(zones).find(([, cfg]) => cfg.kind === 'sections')?.[0]
 }
+
+// Content for the Edit Layout onboarding tour's own demo section, used only on a page whose
+// widgets zone ships no seed of its own (today, just Insights — see PAGE_LAYOUT above). The
+// same attribute keys as Insights' old seeded "Demo section", before it moved here.
+export const ONBOARDING_DEMO_WIDGETS: Omit<Widget, 'id'>[] = [
+  { subType: 'histogram', title: 'Value by tag', query: { dimension: 'tag', measure: 'value' }, deletable: true },
+  { subType: 'counter', title: 'Portfolio P/L', query: { measure: 'totalProfitLoss' }, deletable: true },
+]
