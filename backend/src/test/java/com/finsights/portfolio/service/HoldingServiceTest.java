@@ -341,4 +341,78 @@ class HoldingServiceTest {
 
         verify(transactions, never()).save(any(Transaction.class));
     }
+
+    // The currency dropdown is disabled in the Edit Holding form, but that's cosmetic — the
+    // backend must refuse a currency change too, since existing transactions were booked in
+    // whatever currency the holding had at creation ("first entry defines the linked currency").
+    @Test
+    void updateCannotChangeCurrency() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForUpdate(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setInvestedValue(new BigDecimal("10000.00"));
+        holding.setCurrentValue(new BigDecimal("12000.00"));
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
+                txn(TransactionType.BUY, "10000", null)));
+
+        HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "USD",
+                null, new BigDecimal("10000.00"), new BigDecimal("12000.00"), null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null);
+
+        service.update("h-1", request);
+
+        assertThat(holding.getCurrency()).isEqualTo("INR");
+    }
+
+    private void stubForCreate(Category category) {
+        UserAccount user = new UserAccount("demo@finsights.local", "Demo");
+        when(currentUser.currentUser()).thenReturn(user);
+        when(categories.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(category));
+        when(holdings.findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(any(), any(), any())).thenReturn(Optional.empty());
+        when(holdings.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(fx.supports(any())).thenReturn(true);
+    }
+
+    // A market-linked holding's currency must come from its ticker (USD for AMZN), not from
+    // whatever the form happened to submit — closes the race where the client's own debounced
+    // quote fetch hasn't resolved yet when the holding is saved.
+    @Test
+    void createForMarketLinkedHoldingUsesTickerCurrency() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForCreate(category);
+        when(marketData.quote("AMZN")).thenReturn(Optional.of(
+                new MarketQuoteResponse("AMZN", "Amazon.com", new BigDecimal("145.32"), "USD", Instant.now())));
+
+        HoldingRequest request = new HoldingRequest("cat-1", "Amazon", ValuationMethod.MARKET_PRICE, "AMZN", "Zerodha", "INR",
+                new BigDecimal("5"), null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null);
+
+        service.create(request);
+
+        ArgumentCaptor<Holding> captor = ArgumentCaptor.forClass(Holding.class);
+        verify(holdings, times(2)).save(captor.capture()); // once for the holding, once inside syncFromTransactions
+        assertThat(captor.getAllValues().get(0).getCurrency()).isEqualTo("USD");
+    }
+
+    // If the market feed can't resolve the symbol right now, fall back to whatever the form
+    // submitted rather than failing the whole creation.
+    @Test
+    void createForMarketLinkedHoldingFallsBackToFormCurrencyWhenQuoteUnavailable() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForCreate(category);
+        when(marketData.quote("AMZN")).thenReturn(Optional.empty());
+
+        HoldingRequest request = new HoldingRequest("cat-1", "Amazon", ValuationMethod.MARKET_PRICE, "AMZN", "Zerodha", "USD",
+                new BigDecimal("5"), null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null);
+
+        service.create(request);
+
+        ArgumentCaptor<Holding> captor = ArgumentCaptor.forClass(Holding.class);
+        verify(holdings, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(0).getCurrency()).isEqualTo("USD");
+    }
 }

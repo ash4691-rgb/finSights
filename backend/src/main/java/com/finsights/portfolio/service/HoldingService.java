@@ -153,6 +153,20 @@ public class HoldingService {
         }
     }
 
+    /** A new market-linked holding's currency is authoritative from its ticker (e.g. USD for AMZN),
+     *  not whatever the form happened to submit — closes the race where a holding is saved before
+     *  the client's own debounced quote fetch resolves it. Falls back to the submitted currency,
+     *  already validated by copy() above, if the feed can't resolve the symbol right now. */
+    private void applyTickerCurrency(Holding holding) {
+        if (holding.getValuationMethod() != ValuationMethod.MARKET_PRICE) return;
+        String symbol = holding.getTickerSymbol();
+        if (symbol == null || symbol.isBlank()) return;
+        marketData.quote(symbol.trim().toUpperCase())
+                .map(MarketQuoteResponse::currency)
+                .filter(currency -> currency != null && !currency.isBlank() && fx.supports(currency))
+                .ifPresent(currency -> holding.setCurrency(currency.trim().toUpperCase()));
+    }
+
     private BigDecimal convertToHoldingCurrency(BigDecimal amount, String from, String to) {
         try {
             return fx.convert(amount, from, to);
@@ -221,6 +235,7 @@ public class HoldingService {
         holding.setUser(currentUser.currentUser());
         holding.setSortOrder((int) holdings.countByUser_Id(userId));
         copy(request, holding);
+        applyTickerCurrency(holding); // market-linked holdings take their currency from the ticker, not the form
         holding.setHoldingRef(generateHoldingRef(holding.getName()));
         Holding saved = holdings.save(holding);
         // Opening the position is itself a transaction; invested/quantity then flow from transactions.
@@ -271,8 +286,13 @@ public class HoldingService {
             ensureOpeningTransaction(holding); // must run before copy() rewrites investedValue/quantity below
         }
         String lockedBroker = holding.getBroker(); // broker is 1-1 with the holding and cannot be re-mapped
+        // The linked currency is fixed by the holding's first entry — manual/fixed-rate pick it at
+        // creation, market-linked ones take it from the ticker — so later edits can't redefine what
+        // currency its transactions are booked in, even though copy() below would happily accept one.
+        String lockedCurrency = holding.getCurrency();
         copy(request, holding);
         holding.setBroker(lockedBroker);
+        holding.setCurrency(lockedCurrency);
         requireUniqueNameAndBroker(currentUser.currentUser().getId(), holding.getName(), lockedBroker, id);
         if (investedDelta.signum() != 0) {
             Transaction adjustment = new Transaction();
