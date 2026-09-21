@@ -22,6 +22,10 @@ export type Category = {
 export type Holding = {
   id: string; holdingId: string; categoryId: string; categoryName: string; name: string; kind: HoldingKind; valuationMethod: ValuationMethod
   tickerSymbol?: string; broker?: string; currency: string
+  // The holding's own linked currency — set once at creation (from the ticker for market-linked,
+  // from the form for manual/fixed-rate) and never converted, unlike `currency` above which
+  // becomes the selected view currency on a display-currency-converted holdings list.
+  defaultCurrency: string
   investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; realisedProfitLoss: number; accruedIncome: number
   quantity?: number; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string; fixedRateEndDate?: string
   repaymentFrequency?: RepaymentFrequency; emiAmount?: number; emiDayOfMonth?: number; loanTermMonths?: number; repaymentDueDate?: string

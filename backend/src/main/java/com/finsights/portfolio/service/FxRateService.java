@@ -68,7 +68,7 @@ public class FxRateService {
         BigDecimal emi = holding.emiAmount() == null ? null : convert(holding.emiAmount(), holding.currency(), target);
         return new HoldingResponse(
                 holding.id(), holding.holdingId(), holding.categoryId(), holding.categoryName(), holding.name(), holding.kind(), holding.valuationMethod(),
-                holding.tickerSymbol(), holding.broker(), target,
+                holding.tickerSymbol(), holding.broker(), target, holding.defaultCurrency(),
                 invested, current, current.subtract(invested), holding.profitLossPercentage(), realised,
                 convert(holding.accruedIncome(), holding.currency(), target),
                 holding.quantity(), holding.fixedAnnualRate(), holding.compoundingFrequency(),

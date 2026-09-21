@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, API_URL } from '../api'
-import { money, rate, label, since, numeric, shortId, currencySymbol, transactionTypes, assetTxnTypes, liabilityTxnTypes } from '../util'
+import { money, rate, label, since, numeric, shortId, currencySymbol, convertAmount, transactionTypes, assetTxnTypes, liabilityTxnTypes } from '../util'
 import { Field, InfoTip, useEscToClose } from '../ui'
 import type { Transaction, Holding, TransactionType, ImportResult } from '../types'
 
@@ -12,7 +12,7 @@ import type { Transaction, Holding, TransactionType, ImportResult } from '../typ
 
 export type TransactionSortKey = 'date' | 'type' | 'holdingName' | 'broker' | 'amount' | 'quantity'
 
-export function TransactionsView({ holdings, displayCurrency, dataVersion, reload }: { holdings: Holding[]; displayCurrency: string; dataVersion: number; reload: () => Promise<void> }) {
+export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dataVersion, reload }: { holdings: Holding[]; displayCurrency: string; fxRatesToBase: Record<string, number>; dataVersion: number; reload: () => Promise<void> }) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -96,7 +96,7 @@ export function TransactionsView({ holdings, displayCurrency, dataVersion, reloa
         <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditing(t)}>Edit</button><button className="danger-link" onClick={() => void remove(t)}>Delete</button></td>
       </tr>) : <tr><td colSpan={8} className="empty"><strong>No transactions match</strong><span>Log a buy, sell, split, interest, or adjustment against a holding.</span>{holdings.length > 0 && <button className="primary" onClick={() => setCreating(true)}>Log transaction</button>}</td></tr>}</tbody>
     </table></section>
-    {(creating || editing) && <TransactionModal transaction={editing} holdings={holdings} onClose={() => { setCreating(false); setEditing(null) }} onSaved={() => { setCreating(false); setEditing(null); void reload() }} />}
+    {(creating || editing) && <TransactionModal transaction={editing} holdings={holdings} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => { setCreating(false); setEditing(null) }} onSaved={() => { setCreating(false); setEditing(null); void reload() }} />}
   </>
 }
 
@@ -109,7 +109,9 @@ export const txnTypeHint: Partial<Record<TransactionType, string>> = {
   REPAY: 'A loan repayment — interest for the period is settled first, the rest cuts the outstanding balance.',
 }
 
-export function TransactionModal({ transaction, holdings, onClose, onSaved }: { transaction: Transaction | null; holdings: Holding[]; onClose: () => void; onSaved: () => void }) {
+export function TransactionModal({ transaction, holdings, displayCurrency, fxRatesToBase, onClose, onSaved }: {
+  transaction: Transaction | null; holdings: Holding[]; displayCurrency?: string; fxRatesToBase?: Record<string, number>; onClose: () => void; onSaved: () => void
+}) {
   const holdingOf = (id: string) => holdings.find(h => h.id === id)
   const isLiab = (id: string) => holdingOf(id)?.kind === 'LIABILITY'
   const startHoldingId = transaction?.holdingId ?? holdings[0]?.id ?? ''
@@ -142,13 +144,21 @@ export function TransactionModal({ transaction, holdings, onClose, onSaved }: { 
   const typeHint = form.type === 'INTEREST'
     ? (form.interestPaid ? 'Cash received — adds to realised P/L.' : 'Accrues onto current value. No change to quantity or invested.')
     : (txnTypeHint[form.type] ?? '')
+  // The amount is always entered — and saved — in the holding's own linked currency, never the
+  // (possibly different) globally-selected view currency; a converted preview below the input
+  // keeps that from being confusing when the two differ.
+  const amountCurrency = holdingOf(form.holdingId)?.defaultCurrency ?? holdingOf(form.holdingId)?.currency
+  const amountValue = numeric(form.amount)
+  const fxHint = displayCurrency && fxRatesToBase && amountCurrency && displayCurrency !== amountCurrency && amountValue > 0
+    ? convertAmount(amountValue, amountCurrency, displayCurrency, fxRatesToBase) : null
   return <div className="modal-backdrop"><section className="modal"><div className="modal-header"><div><p className="eyebrow">{transaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}</p><h2>{transaction ? label(transaction.type) : 'Log a transaction'}</h2></div><button className="close" onClick={onClose}>×</button></div>
     <form onSubmit={submit}><div className="form-grid">
       <Field label="Holding" required wide><HoldingPicker holdings={holdings} value={form.holdingId} onChange={id => set('holdingId', id)} /></Field>
       <Field label={<>Type <InfoTip text={typeHint} /></>} required><select required value={form.type} onChange={e => set('type', e.target.value)}>{allowedTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
       {form.type !== 'SPLIT' && <Field label={form.type === 'SELL' ? 'Sale proceeds (total)' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'} required>
-        <div className="amount-input"><span className="amount-currency">{currencySymbol(holdingOf(form.holdingId)?.currency)}</span><input required type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></div>
+        <div className="amount-input"><span className="amount-currency">{currencySymbol(amountCurrency)}</span><input required type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></div>
+        {fxHint != null && <p className="amount-fx-hint">≈ {money(fxHint, displayCurrency)} at today's rate</p>}
       </Field>}
       {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'} required={form.type === 'SPLIT'}><input required={form.type === 'SPLIT'} type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
       {form.type === 'INTEREST' && <div className="check-row"><label><input type="checkbox" checked={form.interestPaid} onChange={e => set('interestPaid', e.target.checked)} /> Received in cash <InfoTip text="On: the income is booked as realised P/L. Off: it accrues onto the holding's current value." /></label></div>}

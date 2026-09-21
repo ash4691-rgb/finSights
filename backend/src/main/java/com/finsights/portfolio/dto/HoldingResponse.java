@@ -9,6 +9,12 @@ import java.util.Set;
 public record HoldingResponse(
         String id, String holdingId, String categoryId, String categoryName, String name, HoldingKind kind, ValuationMethod valuationMethod,
         String tickerSymbol, String broker, String currency,
+        /** The holding's own linked currency — set once, either by the ticker (market-linked) or
+         *  its first entry (manual/fixed-rate), and never converted. {@code currency} above IS this
+         *  same value on every response except a display-currency-converted list ({@link
+         *  FxRateService#convert}), where it becomes the view currency instead; this field stays the
+         *  true one throughout, for callers (like logging a transaction) that must never convert. */
+        String defaultCurrency,
         BigDecimal investedValue, BigDecimal currentValue, BigDecimal profitLoss, BigDecimal profitLossPercentage,
         BigDecimal realisedProfitLoss, BigDecimal accruedIncome,
         BigDecimal quantity, BigDecimal fixedAnnualRate, CompoundingFrequency compoundingFrequency,
@@ -26,7 +32,7 @@ public record HoldingResponse(
     public HoldingResponse withDataIssue(String message) {
         if (dataIssue) return this;
         return new HoldingResponse(id, holdingId, categoryId, categoryName, name, kind, valuationMethod,
-                tickerSymbol, broker, currency, investedValue, currentValue, profitLoss, profitLossPercentage,
+                tickerSymbol, broker, currency, defaultCurrency, investedValue, currentValue, profitLoss, profitLossPercentage,
                 realisedProfitLoss, accruedIncome, quantity, fixedAnnualRate, compoundingFrequency,
                 fixedRateStartDate, fixedRateEndDate, repaymentFrequency, emiAmount, emiDayOfMonth,
                 loanTermMonths, repaymentDueDate, liquidWithinSevenDays, blocked, description, notes, tags,

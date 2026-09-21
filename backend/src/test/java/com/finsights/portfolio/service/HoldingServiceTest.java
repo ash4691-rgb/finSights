@@ -372,6 +372,7 @@ class HoldingServiceTest {
         when(holdings.findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(any(), any(), any())).thenReturn(Optional.empty());
         when(holdings.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(fx.supports(any())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(valuations.currentValue(any())).thenAnswer(inv -> ((Holding) inv.getArgument(0)).getCurrentValue());
     }
 
     // A market-linked holding's currency must come from its ticker (USD for AMZN), not from
@@ -389,11 +390,13 @@ class HoldingServiceTest {
                 new BigDecimal("5"), null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null);
 
-        service.create(request);
+        var response = service.create(request);
 
         ArgumentCaptor<Holding> captor = ArgumentCaptor.forClass(Holding.class);
         verify(holdings, times(2)).save(captor.capture()); // once for the holding, once inside syncFromTransactions
         assertThat(captor.getAllValues().get(0).getCurrency()).isEqualTo("USD");
+        assertThat(response.currency()).isEqualTo("USD");
+        assertThat(response.defaultCurrency()).isEqualTo("USD");
     }
 
     // If the market feed can't resolve the symbol right now, fall back to whatever the form
