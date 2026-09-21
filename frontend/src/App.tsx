@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, API_URL } from './api'
-import { applyLocale, currencies, nav, downloadCsv, label, rate, THEME_KEY, initialTheme } from './util'
+import { applyLocale, currencies, nav, downloadCsv, label, rate, ago, THEME_KEY, initialTheme } from './util'
 import { clearPageLayout, createPanel, flushPageSave, hydrateLayouts, LayoutMenu } from './layout'
 import { fetchLayouts } from './layout-api'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
@@ -49,6 +49,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [displayCurrency, setDisplayCurrency] = useState('INR')
   const [fxCurrencies, setFxCurrencies] = useState<string[]>(currencies)
   const [fxRatesToBase, setFxRatesToBase] = useState<Record<string, number>>({})
+  const [fxAsOf, setFxAsOf] = useState<string | undefined>(undefined)
   const [countries, setCountries] = useState<Country[]>([])
   const [dataVersion, setDataVersion] = useState(0)
   const [showImport, setShowImport] = useState(false)
@@ -104,7 +105,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (settingsR.status === 'fulfilled') { nextSettings = settingsR.value; applyLocale(cur, nextSettings.numberFormat); setSettings(nextSettings) }
     else errors.settings = reason(settingsR)
 
-    if (fxR.status === 'fulfilled') { setFxCurrencies(Object.keys(fxR.value.ratesToBase).sort()); setFxRatesToBase(fxR.value.ratesToBase) }
+    if (fxR.status === 'fulfilled') { setFxCurrencies(Object.keys(fxR.value.ratesToBase).sort()); setFxRatesToBase(fxR.value.ratesToBase); setFxAsOf(fxR.value.asOf) }
     else errors.fx = reason(fxR)
 
     if (countriesR.status === 'fulfilled') setCountries(countriesR.value)
@@ -182,12 +183,12 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         <div><p className="eyebrow">PERSONAL WEALTH</p><h1>{titles[page]}</h1></div>
         <div className="header-actions">
           {page !== 'settings' && <>
-            <label className="currency-picker" title="Convert every figure on this page into another currency (static reference rates)">
+            <label className="currency-picker" title="Convert every figure on this page into another currency (live rate, refreshed at most every 20 minutes)">
               <span>View in</span>
               <select value={displayCurrency} onChange={e => void load(e.target.value)}>{fxCurrencies.map(c => <option key={c}>{c}</option>)}</select>
             </label>
             {settings && displayCurrency !== settings.baseCurrency && fxRatesToBase[displayCurrency] && fxRatesToBase[settings.baseCurrency] &&
-              <span className="fx-note" title="Static reference rate, not a live market feed — see Settings for your base currency">
+              <span className="fx-note" title={`Live market rate${fxAsOf ? `, updated ${ago(fxAsOf)}` : ''} — a currency the feed can't reach falls back to its last known rate`}>
                 1 {displayCurrency} ≈ {rate(fxRatesToBase[displayCurrency] / fxRatesToBase[settings.baseCurrency], settings.baseCurrency)}
               </span>}
           </>}

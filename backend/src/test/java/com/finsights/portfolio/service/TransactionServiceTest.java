@@ -2,6 +2,7 @@ package com.finsights.portfolio.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.domain.Category;
@@ -32,6 +33,7 @@ class TransactionServiceTest {
     @Mock CurrentUserService currentUserService;
     @Mock HoldingService holdingService;
     @Mock com.finsights.portfolio.repository.EmiPaymentRepository emiPaymentRepository;
+    @Mock MarketDataService marketData;
 
     private TransactionService service;
     private UserAccount user;
@@ -40,7 +42,8 @@ class TransactionServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new TransactionService(transactionRepository, holdingRepository, currentUserService, new FxRateService(), holdingService, emiPaymentRepository);
+        lenient().when(marketData.quotes(any())).thenReturn(java.util.Map.of());
+        service = new TransactionService(transactionRepository, holdingRepository, currentUserService, new FxRateService(marketData), holdingService, emiPaymentRepository);
         user = new UserAccount("demo@finsights.local", "Demo");
         setId(user, "u-1");
         when(currentUserService.currentUser()).thenReturn(user);
