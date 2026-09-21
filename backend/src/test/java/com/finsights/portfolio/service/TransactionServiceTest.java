@@ -102,6 +102,21 @@ class TransactionServiceTest {
         assertThat(response.currency()).isEqualTo("INR");
     }
 
+    // Edit Transaction must pre-fill the amount actually saved (the holding's own currency), never
+    // whatever the view-currency-converted list happened to show — get() takes no currency param
+    // for exactly that reason.
+    @Test
+    void getReturnsTheAmountUnconverted() throws Exception {
+        Transaction existing = txn(reliance, TransactionType.BUY, LocalDate.of(2026, 1, 15), "50000");
+        setId(existing, "t-1");
+        when(transactionRepository.findByIdAndUser_Id("t-1", "u-1")).thenReturn(java.util.Optional.of(existing));
+
+        var response = service.get("t-1");
+
+        assertThat(response.amount()).isEqualByComparingTo("50000");
+        assertThat(response.currency()).isEqualTo("INR");
+    }
+
     @Test
     void listFiltersByHoldingTypeAndDateRange() {
         List<Transaction> all = List.of(

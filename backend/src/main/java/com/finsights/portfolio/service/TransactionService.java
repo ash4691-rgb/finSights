@@ -42,6 +42,13 @@ public class TransactionService {
         this.emiPayments = emiPayments;
     }
 
+    /** Always in the holding's own linked currency, never display-converted — what Edit Transaction
+     *  must show/save against, regardless of which view currency the transactions list was loaded in. */
+    @Transactional(readOnly = true)
+    public TransactionResponse get(String id) {
+        return toResponse(findOwned(id), null);
+    }
+
     @Transactional(readOnly = true)
     public List<TransactionResponse> list(String holdingId, TransactionType type, String broker,
                                           LocalDate from, LocalDate to, String currency) {

@@ -64,6 +64,9 @@ public class TransactionController {
         return isXml ? xml.importXml(body) : csv.importCsv(body);
     }
 
+    @GetMapping("/{id}")
+    TransactionResponse get(@PathVariable String id) { return transactions.get(id); }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     TransactionResponse create(@Valid @RequestBody TransactionRequest request) { return transactions.create(request); }

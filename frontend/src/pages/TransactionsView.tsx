@@ -120,6 +120,19 @@ export function TransactionModal({ transaction, holdings, displayCurrency, fxRat
     : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', interestPaid: false, notes: '' })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  // The passed-in transaction may be from a view-currency-converted list — its amount is only
+  // safe to edit/resave once corrected back to what's actually stored, fetched fresh with no
+  // currency param. Blocks editing the amount (and submitting) until that lands, so a fast save
+  // can never resave a converted number into the ledger.
+  const [amountLoading, setAmountLoading] = useState(!!transaction)
+  useEffect(() => {
+    if (!transaction) return
+    setAmountLoading(true)
+    api<Transaction>(`/api/transactions/${transaction.id}`)
+      .then(native => setForm(current => ({ ...current, amount: String(native.amount) })))
+      .catch(() => { /* keep the possibly view-converted amount if this fails */ })
+      .finally(() => setAmountLoading(false))
+  }, [transaction?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const liability = isLiab(form.holdingId)
   const allowedTypes = liability ? liabilityTxnTypes : assetTxnTypes
   const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => {
@@ -149,7 +162,7 @@ export function TransactionModal({ transaction, holdings, displayCurrency, fxRat
   // keeps that from being confusing when the two differ.
   const amountCurrency = holdingOf(form.holdingId)?.defaultCurrency ?? holdingOf(form.holdingId)?.currency
   const amountValue = numeric(form.amount)
-  const fxHint = displayCurrency && fxRatesToBase && amountCurrency && displayCurrency !== amountCurrency && amountValue > 0
+  const fxHint = !amountLoading && displayCurrency && fxRatesToBase && amountCurrency && displayCurrency !== amountCurrency && amountValue > 0
     ? convertAmount(amountValue, amountCurrency, displayCurrency, fxRatesToBase) : null
   return <div className="modal-backdrop"><section className="modal"><div className="modal-header"><div><p className="eyebrow">{transaction ? 'EDIT TRANSACTION' : 'NEW TRANSACTION'}</p><h2>{transaction ? label(transaction.type) : 'Log a transaction'}</h2></div><button className="close" onClick={onClose}>×</button></div>
     <form onSubmit={submit}><div className="form-grid">
@@ -157,7 +170,7 @@ export function TransactionModal({ transaction, holdings, displayCurrency, fxRat
       <Field label={<>Type <InfoTip text={typeHint} /></>} required><select required value={form.type} onChange={e => set('type', e.target.value)}>{allowedTypes.map(t => <option key={t} value={t}>{label(t)}</option>)}</select></Field>
       <Field label="Date" required><input required type="date" value={form.date} onChange={e => set('date', e.target.value)} /></Field>
       {form.type !== 'SPLIT' && <Field label={form.type === 'SELL' ? 'Sale proceeds (total)' : form.type === 'REPAY' ? 'Repayment amount' : form.type === 'INTEREST' ? 'Income' : 'Amount'} required>
-        <div className="amount-input"><span className="amount-currency">{currencySymbol(amountCurrency)}</span><input required type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} /></div>
+        <div className="amount-input"><span className="amount-currency">{currencySymbol(amountCurrency)}</span><input required type="number" min="0" step="0.01" disabled={amountLoading} placeholder={amountLoading ? 'Loading…' : ''} value={amountLoading ? '' : form.amount} onChange={e => set('amount', e.target.value)} /></div>
         {fxHint != null && <p className="amount-fx-hint">≈ {money(fxHint, displayCurrency)} at today's rate</p>}
       </Field>}
       {showQuantity && <Field label={form.type === 'SPLIT' ? 'Split multiplier' : 'Quantity'} required={form.type === 'SPLIT'}><input required={form.type === 'SPLIT'} type="number" step="any" value={form.quantity} onChange={e => set('quantity', e.target.value)} /></Field>}
@@ -165,7 +178,7 @@ export function TransactionModal({ transaction, holdings, displayCurrency, fxRat
       <Field label="Notes" wide><textarea maxLength={1024} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" /></Field>
     </div>
     {error && <p className="form-error">{error}</p>}
-    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || !form.holdingId || (form.type !== 'SPLIT' && !form.amount) || (form.type === 'SPLIT' && !form.quantity)}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
+    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || amountLoading || !form.holdingId || (form.type !== 'SPLIT' && !form.amount) || (form.type === 'SPLIT' && !form.quantity)}>{saving ? 'Saving…' : transaction ? 'Save changes' : 'Log transaction'}</button></div>
     </form>
   </section></div>
 }
