@@ -63,7 +63,7 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
         <label>Country of residence</label>
         <select value={form.country} onChange={e => set('country', e.target.value)}>{countries.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select>
       </div>
-      <p className="hint">Your base currency follows your country: <b>{selectedCountry?.currency ?? settings.baseCurrency}</b>. Any page also has a "View in" dropdown for a one-off switch, using static reference rates.</p>
+      <p className="hint">Your base currency follows your country: <b>{selectedCountry?.currency ?? settings.baseCurrency}</b>. Any page also has a "View in" dropdown for a one-off switch, using live market rates (refreshed at most every 20 minutes).</p>
       {saveBar}
     </SettingsSection>
 
