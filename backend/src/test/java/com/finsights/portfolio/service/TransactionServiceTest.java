@@ -124,4 +124,72 @@ class TransactionServiceTest {
         assertThat(byBroker).hasSize(1);
         assertThat(byBroker.get(0).broker()).isEqualTo("HDFC Bank");
     }
+
+    // Regression: current value used to only ever move via a manual Edit Holding edit or the
+    // (throttled) market-price refresh, so a BUY/SELL logged from the Transactions page left it
+    // stale — most visibly a partial sell, where invested value dropped correctly but current
+    // value didn't, overstating what the remaining position was worth.
+    @Test
+    void createBuyIncreasesCurrentValueByTheAmount() {
+        reliance.setCurrentValue(new BigDecimal("100000"));
+        when(holdingRepository.findByIdAndUser_Id("h-1", "u-1")).thenReturn(java.util.Optional.of(reliance));
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(new TransactionRequest("h-1", TransactionType.BUY, LocalDate.of(2026, 1, 15),
+                new BigDecimal("20000"), new BigDecimal("5"), null, null));
+
+        assertThat(reliance.getCurrentValue()).isEqualByComparingTo("120000.00");
+    }
+
+    @Test
+    void createSellDecreasesCurrentValueByTheProceeds() {
+        reliance.setCurrentValue(new BigDecimal("120000"));
+        when(holdingRepository.findByIdAndUser_Id("h-1", "u-1")).thenReturn(java.util.Optional.of(reliance));
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(new TransactionRequest("h-1", TransactionType.SELL, LocalDate.of(2026, 3, 1),
+                new BigDecimal("20000"), new BigDecimal("5"), null, null));
+
+        assertThat(reliance.getCurrentValue()).isEqualByComparingTo("100000.00");
+    }
+
+    @Test
+    void updateChangingAmountAdjustsCurrentValueByTheDifference() throws Exception {
+        reliance.setCurrentValue(new BigDecimal("120000"));
+        Transaction existing = txn(reliance, TransactionType.BUY, LocalDate.of(2026, 1, 15), "20000");
+        setId(existing, "t-1");
+        when(transactionRepository.findByIdAndUser_Id("t-1", "u-1")).thenReturn(java.util.Optional.of(existing));
+        when(holdingRepository.findByIdAndUser_Id("h-1", "u-1")).thenReturn(java.util.Optional.of(reliance));
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.update("t-1", new TransactionRequest("h-1", TransactionType.BUY, LocalDate.of(2026, 1, 15),
+                new BigDecimal("30000"), new BigDecimal("5"), null, null));
+
+        // Old 20000 reversed, new 30000 applied — net +10000 on top of the starting 120000.
+        assertThat(reliance.getCurrentValue()).isEqualByComparingTo("130000.00");
+    }
+
+    @Test
+    void deleteReversesTheCurrentValueEffect() throws Exception {
+        reliance.setCurrentValue(new BigDecimal("120000"));
+        Transaction existing = txn(reliance, TransactionType.BUY, LocalDate.of(2026, 1, 15), "20000");
+        setId(existing, "t-1");
+        when(transactionRepository.findByIdAndUser_Id("t-1", "u-1")).thenReturn(java.util.Optional.of(existing));
+
+        service.delete("t-1");
+
+        assertThat(reliance.getCurrentValue()).isEqualByComparingTo("100000.00");
+    }
+
+    @Test
+    void adjustmentDoesNotTouchCurrentValue() {
+        reliance.setCurrentValue(new BigDecimal("100000"));
+        when(holdingRepository.findByIdAndUser_Id("h-1", "u-1")).thenReturn(java.util.Optional.of(reliance));
+        when(transactionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(new TransactionRequest("h-1", TransactionType.ADJUSTMENT, LocalDate.of(2026, 1, 15),
+                new BigDecimal("5000"), null, null, null));
+
+        assertThat(reliance.getCurrentValue()).isEqualByComparingTo("100000.00");
+    }
 }

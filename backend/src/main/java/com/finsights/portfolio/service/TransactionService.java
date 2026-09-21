@@ -71,6 +71,7 @@ public class TransactionService {
         transaction.setHolding(holding);
         copy(request, transaction);
         if (transaction.getType() == TransactionType.REPAY) applyRepay(holding, transaction);
+        else applyCurrentValueDelta(holding, transaction, 1);
         Transaction saved = transactions.save(transaction);
         holdingService.syncFromTransactions(holding);
         return toResponse(saved, null);
@@ -83,11 +84,13 @@ public class TransactionService {
         Holding holding = findOwnedHolding(request.holdingId());
         checkTypeAllowed(request.type(), holding);
         holdingService.ensureOpeningTransaction(holding);
-        reverseRepay(transaction);               // undo the old repayment's effect, if any
+        reverseRepay(transaction);                            // undo the old repayment's effect, if any
+        applyCurrentValueDelta(previousHolding, transaction, -1); // undo the old BUY/SELL's effect, if any
         transaction.setHolding(holding);
         transaction.setPrincipalPortion(null);
         copy(request, transaction);
         if (transaction.getType() == TransactionType.REPAY) applyRepay(holding, transaction);
+        else applyCurrentValueDelta(holding, transaction, 1);
         Transaction saved = transactions.save(transaction);
         holdingService.syncFromTransactions(holding);
         if (!previousHolding.getId().equals(holding.getId())) holdingService.syncFromTransactions(previousHolding);
@@ -99,6 +102,7 @@ public class TransactionService {
         Transaction transaction = findOwned(id);
         Holding holding = transaction.getHolding();
         reverseRepay(transaction);
+        applyCurrentValueDelta(holding, transaction, -1);
         // Deleting a repayment also un-marks the instalment it settled in the Action centre.
         if (transaction.getType() == TransactionType.REPAY) {
             emiPayments.deleteByHolding_IdAndPeriod(holding.getId(), transaction.getDate());
@@ -134,6 +138,20 @@ public class TransactionService {
         Holding holding = repay.getHolding();
         BigDecimal outstanding = holding.getCurrentValue() == null ? BigDecimal.ZERO : holding.getCurrentValue();
         holding.setCurrentValue(outstanding.add(repay.getPrincipalPortion()).setScale(2, RoundingMode.HALF_UP));
+    }
+
+    /** BUY/SELL nudges current value by the same cash amount that moved — money in on a BUY,
+     *  proceeds out on a SELL — so it doesn't drift out of step with a position the ledger
+     *  already knows grew or shrank (e.g. a partial sell). {@code sign} is -1 to reverse a
+     *  transaction being edited or deleted, +1 to (re)apply it. No-op for every other type;
+     *  REPAY's effect on current value is handled separately by {@link #applyRepay}. */
+    private void applyCurrentValueDelta(Holding holding, Transaction t, int sign) {
+        if (t.getType() != TransactionType.BUY && t.getType() != TransactionType.SELL) return;
+        BigDecimal amount = t.getAmount() == null ? BigDecimal.ZERO : t.getAmount();
+        BigDecimal delta = (t.getType() == TransactionType.BUY ? amount : amount.negate())
+                .multiply(BigDecimal.valueOf(sign));
+        BigDecimal current = holding.getCurrentValue() == null ? BigDecimal.ZERO : holding.getCurrentValue();
+        holding.setCurrentValue(current.add(delta).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP));
     }
 
     /** Slice of a year one repayment covers — used to settle the period's interest. */
