@@ -38,6 +38,10 @@ export function initialTheme(): Theme {
 }
 export const money = (value: number, currency = baseCurrency) => new Intl.NumberFormat(numberLocale, { style: 'currency', currency, maximumFractionDigits: 0 }).format(value ?? 0)
 export const rate = (value: number, currency: string) => new Intl.NumberFormat(numberLocale, { style: 'currency', currency, maximumFractionDigits: 2 }).format(value ?? 0)
+// Just the bare symbol ("₹", "$", …) for labelling a raw numeric input — money()/rate() always
+// format a full number, which an <input type="number"> can't hold alongside its value.
+export const currencySymbol = (currency = baseCurrency) => new Intl.NumberFormat(numberLocale, { style: 'currency', currency, maximumFractionDigits: 0 })
+  .formatToParts(0).find(p => p.type === 'currency')?.value ?? currency
 export const percent = (value: number) => `${(value ?? 0).toFixed(1)}%`
 export const label = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
 export const numeric = (value: string) => value === '' ? 0 : Number(value)
