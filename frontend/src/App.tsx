@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, API_URL } from './api'
 import { applyLocale, currencies, nav, downloadCsv, label, rate, ago, THEME_KEY, initialTheme } from './util'
-import { clearPageLayout, createPanel, flushPageSave, hydrateLayouts, LayoutMenu } from './layout'
+import { clearPageLayout, createPanel, flushPageSave, hasNoPersistedSections, hydrateLayouts, LayoutMenu } from './layout'
+import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layout-config'
 import { fetchLayouts } from './layout-api'
+import { EditLayoutOnboarding } from './onboarding'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
@@ -56,6 +58,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [exportingTransactions, setExportingTransactions] = useState(false)
   const [layoutEditing, setLayoutEditing] = useState(false)
   const [layoutNonce, setLayoutNonce] = useState(0)
+  const [showLayoutOnboarding, setShowLayoutOnboarding] = useState(false)
   const bootstrapped = useRef(false)
 
   // Leaving a page always drops out of layout-edit mode.
@@ -203,7 +206,21 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
               onCreatePanel={(title: string) => { createPanel(page, title); setLayoutNonce(n => n + 1) }}
               onSave={() => flushPageSave(page)}
               onReset={() => { clearPageLayout(page); setLayoutNonce(n => n + 1) }} />}
-            <button className="tool-action" onClick={() => setLayoutEditing(e => !e)}>{layoutEditing ? '✓ Done' : '⤢ Edit layout'}</button>
+            <button className="tool-action" onClick={() => setLayoutEditing(e => {
+              const next = !e
+              if (next) {
+                // A page whose widgets zone ships no seed (Insights, since it dropped its own —
+                // see layout-config.ts) gets the tour's own demo section, once ever.
+                const zoneKey = sectionsZoneKeyFor(page)
+                const config = zoneKey ? PAGE_LAYOUT[page as keyof typeof PAGE_LAYOUT]?.[zoneKey] : undefined
+                if (config?.kind === 'sections' && config.seed.length === 0 && hasNoPersistedSections(page)) {
+                  createPanel(page, 'Demo section', ONBOARDING_DEMO_WIDGETS)
+                  setLayoutNonce(n => n + 1)
+                }
+                if (settings && !settings.editLayoutOnboardingDismissed) setShowLayoutOnboarding(true)
+              }
+              return next
+            })}>{layoutEditing ? '✓ Done' : '⤢ Edit layout'}</button>
           </>}
         </div>
       </header>
@@ -231,5 +248,8 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {categoryDetail && <CategoryDrawer category={categoryDetail} holdings={holdings.filter(h => h.categoryId === categoryDetail.id)} onClose={() => setCategoryDetail(null)} onEdit={c => { setCategoryDetail(null); setEditingCategory(c) }} onAddHolding={c => { setCategoryDetail(null); setCreatingHoldingFor(c) }} onOpenHolding={h => { setCategoryDetail(null); setHoldingDetail(h) }} reload={load} />}
     {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
+    {showLayoutOnboarding && <EditLayoutOnboarding
+      onClose={() => setShowLayoutOnboarding(false)}
+      onDismissForever={() => setSettings(s => s ? { ...s, editLayoutOnboardingDismissed: true } : s)} />}
   </div>
 }

@@ -384,10 +384,12 @@ function useSectionList(zoneKey: string, seed: SectionSeed[], nonce: number) {
   return { order: state.order, sections: state.sections, removeSection, renameSection }
 }
 
-// Header-level "Create a panel" (page's Layout menu) — appends a fresh, deletable, empty panel
-// under the given name. A plain function (not a hook) so App.tsx can call it directly; pair with
-// a layoutNonce bump so the mounted SectionedZone re-reads storage, same mechanism Reset already uses.
-export function createPanel(page: string, title: string) {
+// Header-level "Create a panel" (page's Layout menu) — appends a fresh, deletable panel under
+// the given name, empty unless `widgets` seeds it with starting content (used by the Edit Layout
+// onboarding tour to create its own demo section on a page whose zone ships no seed of its own).
+// A plain function (not a hook) so App.tsx can call it directly; pair with a layoutNonce bump so
+// the mounted SectionedZone re-reads storage, same mechanism Reset already uses.
+export function createPanel(page: string, title: string, widgets: Omit<Widget, 'id'>[] = []) {
   const zoneKey = sectionsZoneKeyFor(page)
   const config = zoneKey ? PAGE_LAYOUT[page as keyof typeof PAGE_LAYOUT]?.[zoneKey] : undefined
   if (!zoneKey || config?.kind !== 'sections') return
@@ -397,8 +399,18 @@ export function createPanel(page: string, title: string) {
   const id = `${zoneKey}:section:${crypto.randomUUID()}`
   const name = title.trim() || `Panel ${current.order.length + 1}`
   all[zoneKey] = { order: [...current.order, id], spans: {}, sections: { ...current.sections, [id]: { title: name, deletable: true } } }
+  if (widgets.length) all[`${id}/widgets`] = seedWidgetPref(`${id}/widgets`, widgets)
   writeLayout(all)
   schedulePageSave(page)
+}
+
+// Does this page's sections zone have no persisted state at all yet — i.e. the user has never
+// created, renamed, or deleted a panel here? True only before the very first such edit, whether
+// or not the zone has starting content from `seed`. Used to fire a one-time action (like seeding
+// a demo section) exactly once, never again regardless of what the user does with it afterward.
+export function hasNoPersistedSections(page: string): boolean {
+  const zoneKey = sectionsZoneKeyFor(page)
+  return !zoneKey || !readLayout()[zoneKey]?.sections
 }
 
 function SectionedZone({ zoneKey, editing, nonce, dataSource, seed, className }: {

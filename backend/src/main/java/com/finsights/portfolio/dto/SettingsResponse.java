@@ -8,5 +8,5 @@ public record SettingsResponse(
         String numberFormat, Boolean notifyEmail, Boolean notifySms, Boolean notifyPush, BigDecimal notifyThresholdPercent,
         BigDecimal dailyThresholdPercent, BigDecimal weeklyThresholdPercent, BigDecimal monthlyThresholdPercent,
         BigDecimal quarterlyThresholdPercent, BigDecimal yearlyThresholdPercent,
-        boolean demoMode, int holdingCount, Instant memberSince
+        boolean demoMode, int holdingCount, Instant memberSince, boolean editLayoutOnboardingDismissed
 ) { }

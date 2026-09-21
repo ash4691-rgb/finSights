@@ -3,6 +3,7 @@ package com.finsights.portfolio.domain;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.Instant;
+import org.hibernate.annotations.ColumnDefault;
 
 @Entity
 @Table(name = "users", uniqueConstraints = @UniqueConstraint(columnNames = "email"))
@@ -42,6 +43,14 @@ public class UserAccount {
     private BigDecimal quarterlyThresholdPercent;
     @Column(precision = 6, scale = 2)
     private BigDecimal yearlyThresholdPercent;
+    /** "Don't show this again" for the Edit Layout onboarding tour — once true, the tour never
+     *  replays for this user; while false, it re-shows every time they enter Edit Layout mode.
+     *  Needs a SQL-level default (not just the Java-side one below): ddl-auto=update's ALTER
+     *  TABLE has to backfill this NOT NULL column for every existing row, and it only knows
+     *  how to do that from a column default, not from the entity's default field value. */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private Boolean editLayoutOnboardingDismissed = false;
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -84,5 +93,7 @@ public class UserAccount {
     public void setQuarterlyThresholdPercent(BigDecimal quarterlyThresholdPercent) { this.quarterlyThresholdPercent = quarterlyThresholdPercent; }
     public BigDecimal getYearlyThresholdPercent() { return yearlyThresholdPercent; }
     public void setYearlyThresholdPercent(BigDecimal yearlyThresholdPercent) { this.yearlyThresholdPercent = yearlyThresholdPercent; }
+    public Boolean getEditLayoutOnboardingDismissed() { return editLayoutOnboardingDismissed; }
+    public void setEditLayoutOnboardingDismissed(Boolean editLayoutOnboardingDismissed) { this.editLayoutOnboardingDismissed = editLayoutOnboardingDismissed; }
     public Instant getCreatedAt() { return createdAt; }
 }

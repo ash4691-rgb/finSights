@@ -145,7 +145,17 @@ public class SettingsService {
                 user.getNotifyPush(), user.getNotifyThresholdPercent(),
                 user.getDailyThresholdPercent(), user.getWeeklyThresholdPercent(), user.getMonthlyThresholdPercent(),
                 user.getQuarterlyThresholdPercent(), user.getYearlyThresholdPercent(),
-                CurrentUserService.DEMO_EMAIL.equalsIgnoreCase(user.getEmail()), holdingService.list().size(), user.getCreatedAt());
+                CurrentUserService.DEMO_EMAIL.equalsIgnoreCase(user.getEmail()), holdingService.list().size(), user.getCreatedAt(),
+                Boolean.TRUE.equals(user.getEditLayoutOnboardingDismissed()));
+    }
+
+    /** "Don't show this again" for the Edit Layout onboarding tour — a one-way flip, separate
+     *  from the main settings form since it's set from the tour itself, not a Settings field. */
+    @Transactional
+    public void dismissEditLayoutOnboarding() {
+        UserAccount user = currentUser.currentUser();
+        user.setEditLayoutOnboardingDismissed(true);
+        users.save(user);
     }
 
     private BigDecimal nonNegative(BigDecimal value, String field) {

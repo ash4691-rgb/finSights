@@ -23,6 +23,10 @@ public class SettingsController {
     @PutMapping("/settings")
     SettingsResponse update(@Valid @RequestBody SettingsRequest request) { return settings.update(request); }
 
+    @PostMapping("/settings/edit-layout-onboarding/dismiss")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void dismissEditLayoutOnboarding() { settings.dismissEditLayoutOnboarding(); }
+
     @GetMapping(value = "/account/export", produces = "application/json")
     ResponseEntity<Map<String, Object>> export() {
         return ResponseEntity.ok()
