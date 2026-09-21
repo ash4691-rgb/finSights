@@ -24,17 +24,10 @@ export const PAGE_LAYOUT: Record<'dashboard' | 'insights' | 'brokers', Record<st
       ] },
     ] },
   },
+  // No seeded sections — the demo/overview content used to live here, but onboarding new users
+  // into the widget system is Platform's to build, not seeded sample data baked into this page.
   insights: {
-    'insights/widgets': { kind: 'sections', seed: [
-      { title: 'Overview', deletable: false, widgets: [
-        { subType: '2d-graph', title: 'Net worth over time', query: { series: ['netWorth'] }, deletable: false },
-        { subType: 'histogram', title: 'Value by category', query: { dimension: 'category', measure: 'value' }, deletable: false },
-      ] },
-      { title: 'Demo section', deletable: true, widgets: [
-        { subType: 'histogram', title: 'Value by tag', query: { dimension: 'tag', measure: 'value' }, deletable: true },
-        { subType: 'counter', title: 'Portfolio P/L', query: { measure: 'totalProfitLoss' }, deletable: true },
-      ] },
-    ] },
+    'insights/widgets': { kind: 'sections', seed: [] },
   },
   brokers: {
     'brokers/widgets': { kind: 'sections', seed: [
