@@ -339,7 +339,7 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit, reloa
       {isLiab && holding.repaymentFrequency === 'ONE_TIME' && <span>Due date<b>{holding.repaymentDueDate ? since(holding.repaymentDueDate) : '—'}</b></span>}
       {isLiab && holding.repaymentFrequency !== 'ONE_TIME' && holding.repaymentFrequency && <span>Instalment<b>{holding.emiAmount != null ? money(holding.emiAmount, holding.currency) : holding.loanTermMonths ? `${holding.loanTermMonths} left` : '—'}{holding.emiDayOfMonth ? ` · day ${holding.emiDayOfMonth}` : ''}</b></span>}
       {!isLiab && holding.valuationMethod === 'MARKET_PRICE' && holding.tickerSymbol && <span>Live price
-        <b className="fact-with-icon"><span className="live-dot" />{holding.tickerSymbol} · {holding.priceUpdatedAt ? ago(holding.priceUpdatedAt) : 'pending'}</b></span>}
+        <b className="fact-with-icon"><span className="live-dot" />{holding.quantity ? `${rate(holding.currentValue / holding.quantity, holding.currency)} · ` : ''}{holding.tickerSymbol} · {holding.priceUpdatedAt ? ago(holding.priceUpdatedAt) : 'pending'}</b></span>}
     </div>
     {calcOpen && <div className="calc-panel">
       <div className="panel-heading"><h3>How this value is calculated</h3></div>
