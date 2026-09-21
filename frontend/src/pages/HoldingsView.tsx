@@ -116,7 +116,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
-    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.currency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
+    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
     : blankHoldingForm(startCategoryId))
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
@@ -281,8 +281,8 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   </section></div>
 }
 
-export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit, reload }: {
-  holding: Holding; displayCurrency: string; onClose: () => void; onEdit: (holding: Holding) => void; reload: () => Promise<void>
+export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose, onEdit, reload }: {
+  holding: Holding; displayCurrency: string; fxRatesToBase: Record<string, number>; onClose: () => void; onEdit: (holding: Holding) => void; reload: () => Promise<void>
 }) {
   const [detail, setDetail] = useState<ValuationDetail | null>(null)
   const [txns, setTxns] = useState<Transaction[] | null>(null)
@@ -362,6 +362,6 @@ export function HoldingDrawer({ holding, displayCurrency, onClose, onEdit, reloa
       <button className="primary" onClick={() => onEdit(holding)}>Edit holding</button>
       <button className="danger-btn" onClick={() => void removeHolding()}>Delete holding</button>
     </div>
-    {addingTxn && <TransactionModal transaction={null} holdings={[holding]} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); void reload() }} />}
+    {addingTxn && <TransactionModal transaction={null} holdings={[holding]} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); void reload() }} />}
   </section></div>
 }

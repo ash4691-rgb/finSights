@@ -42,6 +42,13 @@ export const rate = (value: number, currency: string) => new Intl.NumberFormat(n
 // format a full number, which an <input type="number"> can't hold alongside its value.
 export const currencySymbol = (currency = baseCurrency) => new Intl.NumberFormat(numberLocale, { style: 'currency', currency, maximumFractionDigits: 0 })
   .formatToParts(0).find(p => p.type === 'currency')?.value ?? currency
+// Cross-rate via each currency's rate-to-base (as /api/fx-rates returns it) — mirrors
+// FxRateService.convert() server-side. Null when either currency is missing a published rate.
+export const convertAmount = (amount: number, from: string, to: string, ratesToBase: Record<string, number>): number | null => {
+  const fromRate = ratesToBase[from], toRate = ratesToBase[to]
+  if (!fromRate || !toRate) return null
+  return from === to ? amount : amount * fromRate / toRate
+}
 export const percent = (value: number) => `${(value ?? 0).toFixed(1)}%`
 export const label = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
 export const numeric = (value: string) => value === '' ? 0 : Number(value)

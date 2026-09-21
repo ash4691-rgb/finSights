@@ -233,6 +233,7 @@ th.sortable:hover{color:var(--text)}
 .amount-input{position:relative}
 .amount-input input{padding-left:26px}
 .amount-currency{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-2);pointer-events:none}
+.amount-fx-hint{font-size:11px;color:var(--text-3);margin:5px 0 0}
 .check-row{grid-column:1/-1;display:flex;gap:20px;color:var(--text-2);font-size:12px}
 .check-row label{display:flex;gap:7px;align-items:center}
 .form-error{color:var(--error-text);font-size:12px;background:var(--error-bg);padding:9px;border-radius:6px;margin:16px 0 0}

@@ -506,7 +506,7 @@ public class HoldingService {
             HoldingResponse response = new HoldingResponse(
                     holding.getId(), holding.getHoldingRef(), category.getId(), category.getName(), holding.getName(), category.getKind(),
                     holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
-                    holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
+                    holding.getCurrency(), holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
                     zeroIfNull(holding.getAccruedIncome()),
                     holding.getQuantity(), holding.getFixedAnnualRate(),
                     holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
@@ -533,6 +533,7 @@ public class HoldingService {
                 category == null ? "Unknown category" : category.getName(), holding.getName(),
                 category == null ? HoldingKind.ASSET : category.getKind(),
                 holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
+                holding.getCurrency() == null ? "INR" : holding.getCurrency(),
                 holding.getCurrency() == null ? "INR" : holding.getCurrency(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 holding.getQuantity(), holding.getFixedAnnualRate(), holding.getCompoundingFrequency(),
