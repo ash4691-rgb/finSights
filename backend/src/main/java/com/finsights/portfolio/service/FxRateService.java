@@ -2,31 +2,36 @@ package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.dto.FxRatesResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
+import com.finsights.portfolio.dto.MarketQuoteResponse;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Converts between currencies for display purposes only. Rates below are a static,
- * hand-maintained reference table — NOT a live market feed. Swap this class for a real
- * FX provider before relying on it for anything beyond an approximate view; every
- * response carries {@link FxRatesResponse#asOf()} and a disclaimer so the UI can say so.
+ * Converts between currencies for display purposes only. INR crosses for every supported
+ * currency are pulled from the same live, best-effort feed {@link MarketDataService} already
+ * uses for holding prices, refreshed at most every {@link #RATE_MAX_AGE} — the same ~15-30
+ * minute staleness the rest of the app already accepts for market-linked assets (see
+ * {@code HoldingService.PRICE_MAX_AGE}). A currency the feed can't reach on a given refresh
+ * just keeps its last known-good rate (seeded from a hand-maintained fallback table on a cold
+ * start) instead of failing — a dead feed degrades the numbers shown, never the app. Every
+ * response carries {@link FxRatesResponse#asOf()} so the UI can say how fresh the rates are.
  */
 @Service
 public class FxRateService {
 
-    private static final Instant AS_OF = Instant.parse("2026-09-04T00:00:00Z");
-    private static final String NOTE = "Static reference rates for display only — not a live market feed. "
-            + "Update FxRateService.RATES_TO_INR (or wire in a live provider) to refresh them.";
-
-    // INR value of one unit of the given currency.
-    private static final Map<String, BigDecimal> RATES_TO_INR = Map.of(
+    /** INR value of one unit of the given currency — used to seed the live cache and as its
+     *  floor when the live feed has never returned a quote for that currency. */
+    private static final Map<String, BigDecimal> FALLBACK_RATES_TO_INR = Map.of(
             "INR", BigDecimal.ONE,
             "USD", new BigDecimal("88.50"),
             "EUR", new BigDecimal("95.00"),
@@ -34,14 +39,38 @@ public class FxRateService {
             "SGD", new BigDecimal("66.00"),
             "AED", new BigDecimal("24.10"));
 
+    // Yahoo Finance's symbol for "one unit of this currency, priced in INR" — the same
+    // "=X" cross-rate convention as any other quote MarketDataService already fetches.
+    private static final Map<String, String> CURRENCY_TICKERS = Map.of(
+            "USD", "USDINR=X",
+            "EUR", "EURINR=X",
+            "GBP", "GBPINR=X",
+            "SGD", "SGDINR=X",
+            "AED", "AEDINR=X");
+
+    /** Live rates are re-fetched no more often than this — mirrors {@code HoldingService}'s
+     *  own market-price refresh window. */
+    private static final Duration RATE_MAX_AGE = Duration.ofMinutes(20);
+
+    private final MarketDataService marketData;
+    private final Map<String, BigDecimal> liveRatesToInr = new ConcurrentHashMap<>(FALLBACK_RATES_TO_INR);
+    private final AtomicReference<Instant> lastRefreshedAt = new AtomicReference<>();
+
+    public FxRateService(MarketDataService marketData) {
+        this.marketData = marketData;
+    }
+
     public FxRatesResponse rates() {
+        refreshIfStale();
         Map<String, BigDecimal> ordered = new LinkedHashMap<>();
-        RATES_TO_INR.keySet().stream().sorted().forEach(c -> ordered.put(c, RATES_TO_INR.get(c)));
-        return new FxRatesResponse("INR", AS_OF, ordered, NOTE);
+        liveRatesToInr.keySet().stream().sorted().forEach(c -> ordered.put(c, liveRatesToInr.get(c)));
+        String note = "Rates refresh from a live market feed at most every " + RATE_MAX_AGE.toMinutes()
+                + " minutes; a currency the feed can't reach keeps its last known rate.";
+        return new FxRatesResponse("INR", lastRefreshedAt.get(), ordered, note);
     }
 
     public boolean supports(String currency) {
-        return currency != null && RATES_TO_INR.containsKey(normalize(currency));
+        return currency != null && FALLBACK_RATES_TO_INR.containsKey(normalize(currency));
     }
 
     public BigDecimal convert(BigDecimal amount, String from, String to) {
@@ -79,11 +108,32 @@ public class FxRateService {
                 holding.dataIssue(), holding.dataIssueMessage());
     }
 
+    /**
+     * Re-fetches INR crosses for every supported currency from the live feed, no more often
+     * than {@link #RATE_MAX_AGE}. A currency whose quote can't be fetched this round simply
+     * keeps whatever rate it already had (live or fallback) — the feed being down never blocks
+     * a caller, it only means the shown rate is up to {@link #RATE_MAX_AGE} plus one refresh
+     * cycle older than live.
+     */
+    private synchronized void refreshIfStale() {
+        Instant last = lastRefreshedAt.get();
+        if (last != null && last.plus(RATE_MAX_AGE).isAfter(Instant.now())) return;
+        Map<String, MarketQuoteResponse> quotes = marketData.quotes(CURRENCY_TICKERS.values());
+        for (Map.Entry<String, String> entry : CURRENCY_TICKERS.entrySet()) {
+            MarketQuoteResponse quote = quotes.get(entry.getValue());
+            if (quote != null && quote.price() != null && quote.price().signum() > 0) {
+                liveRatesToInr.put(entry.getKey(), quote.price());
+            }
+        }
+        lastRefreshedAt.set(Instant.now());
+    }
+
     private BigDecimal rateToInr(String currency) {
-        BigDecimal rate = RATES_TO_INR.get(currency);
+        refreshIfStale();
+        BigDecimal rate = liveRatesToInr.get(currency);
         if (rate == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported currency: " + currency
-                    + ". Supported: " + String.join(", ", RATES_TO_INR.keySet()));
+                    + ". Supported: " + String.join(", ", FALLBACK_RATES_TO_INR.keySet()));
         }
         return rate;
     }
