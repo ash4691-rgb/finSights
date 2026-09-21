@@ -325,7 +325,9 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
     </div>}
     <div className="drawer-facts">
       <span>{isLiab ? 'Lender' : 'Broker'}<b>{holding.broker || '—'}</b></span>
-      <span>Currency<b>{holding.currency}</b></span>
+      <span>Default currency<b className="fact-with-icon">{holding.defaultCurrency}
+        <InfoTip text="What this holding's transactions are actually booked in — set once, from the ticker for market-linked holdings or this holding's first entry otherwise, and never converted even when you're viewing the app in a different currency." />
+      </b></span>
       {!isLiab && <span>Valuation method<b className="fact-with-icon">{label(holding.valuationMethod)}
         <button type="button" className={`calc-toggle${calcOpen ? ' open' : ''}`} aria-expanded={calcOpen} aria-label="How this value is calculated" title="How this value is calculated" onClick={() => setCalcOpen(o => !o)}><i>i</i></button>
       </b></span>}
