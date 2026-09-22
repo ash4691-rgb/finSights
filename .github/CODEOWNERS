@@ -1,0 +1,9 @@
+# Every file in the repo needs a review from an owner before merging.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Note: this file alone only makes GitHub auto-request review from the owner below on every
+# PR — it does NOT block merging without that review. To make it a hard requirement, turn on
+# "Require review from Code Owners" under Settings -> Branches -> branch protection rule for
+# `main` (a one-time manual step; the GitHub API for this isn't reachable from here).
+
+* @ash4691-rgb

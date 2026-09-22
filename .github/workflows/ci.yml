@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # SonarCloud wants full history for blame/new-code analysis
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Test + coverage (JaCoCo)
+        working-directory: backend
+        run: ./mvnw -B test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: backend/target/site/jacoco/
+          retention-days: 14
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  # Free for public repos on sonarcloud.io. Needs a one-time setup that can't be done from here:
+  # 1. Sign in to https://sonarcloud.io with this GitHub account and import this repository.
+  # 2. Fill in the real sonar.organization / sonar.projectKey in sonar-project.properties.
+  # 3. Add a SONAR_TOKEN repo secret (Settings -> Secrets and variables -> Actions) from
+  #    sonarcloud.io -> My Account -> Security.
+  # Until SONAR_TOKEN exists, this job skips itself rather than failing CI for everyone.
+  sonarcloud:
+    needs: backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Check SONAR_TOKEN is configured
+        id: sonar-check
+        run: echo "configured=${{ secrets.SONAR_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Test + coverage (JaCoCo)
+        if: steps.sonar-check.outputs.configured == 'true'
+        working-directory: backend
+        run: ./mvnw -B test
+      - name: SonarCloud scan
+        if: steps.sonar-check.outputs.configured == 'true'
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Skipped — no SONAR_TOKEN secret yet
+        if: steps.sonar-check.outputs.configured != 'true'
+        run: echo "Add a SONAR_TOKEN repo secret to enable SonarCloud analysis (see comments in this file)."
