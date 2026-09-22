@@ -49,10 +49,13 @@ class MarketDataServiceTest {
 
     @Test
     void intradayRangesNeverConsultTheSharedDailySeriesCache() {
-        // No network in this sandbox, so this degrades to empty — the point is that 1D/1W never
-        // even look at the daily-series cache, since they need intraday granularity it can't give.
-        assertThat(service.history("RELIANCE.NS", "1D")).isEmpty();
-        assertThat(service.history("RELIANCE.NS", "1W")).isEmpty();
+        // Whatever the live feed does or doesn't return isn't the point, and isn't deterministic
+        // across environments — a sandbox with no egress degrades to empty, but a CI runner with
+        // real internet access gets real data back. What this test actually guarantees, regardless
+        // of network reachability, is that 1D/1W never even look at the daily-series cache, since
+        // they need intraday granularity it can't give.
+        service.history("RELIANCE.NS", "1D");
+        service.history("RELIANCE.NS", "1W");
         verify(historyCacheRepo, never()).findBySymbol(any());
     }
 
