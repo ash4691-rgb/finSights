@@ -6,4 +6,4 @@
 # "Require review from Code Owners" under Settings -> Branches -> branch protection rule for
 # `main` (a one-time manual step; the GitHub API for this isn't reachable from here).
 
-* @ash4691-rgb
+* @ash4691-rgb @goyal8693
