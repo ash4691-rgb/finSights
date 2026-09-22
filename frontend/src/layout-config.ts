@@ -12,20 +12,11 @@ export type ZoneConfig =
   | { kind: 'sections'; seed: SectionSeed[] }
 
 export const PAGE_LAYOUT: Record<'dashboard' | 'insights' | 'brokers', Record<string, ZoneConfig>> = {
+  // No seeded sections on either page — onboarding new users into the widget system with sample
+  // content is Platform's to build, not seed data baked into these pages.
   dashboard: {
-    'dashboard/widgets': { kind: 'sections', seed: [
-      { title: 'Overview', deletable: false, widgets: [
-        { subType: 'counter', title: 'Net worth', query: { measure: 'netWorth' }, deletable: false },
-        { subType: 'pie-chart', title: 'Allocation by category', query: { dimension: 'category', measure: 'value' }, deletable: false },
-      ] },
-      { title: 'Demo section', deletable: true, widgets: [
-        { subType: 'counter', title: 'Total liabilities', query: { measure: 'totalLiabilities' }, deletable: true },
-        { subType: 'pie-chart', title: 'Allocation by broker', query: { dimension: 'broker', measure: 'value' }, deletable: true },
-      ] },
-    ] },
+    'dashboard/widgets': { kind: 'sections', seed: [] },
   },
-  // No seeded sections — the demo/overview content used to live here, but onboarding new users
-  // into the widget system is Platform's to build, not seeded sample data baked into this page.
   insights: {
     'insights/widgets': { kind: 'sections', seed: [] },
   },

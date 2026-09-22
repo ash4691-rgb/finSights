@@ -10,10 +10,9 @@ import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, Mo
 
 // ---------------------------------------------------------------------------
 
-// Insights is deliberately not a second Overview: the shared breakdown/movers data that also
-// appears on the Dashboard lives in the collapsed "Portfolio overview" section at the bottom.
-// This page's own job is Hot Picks (market-linked holdings + watchlist symbols moving beyond a
-// configured threshold) and data-quality checks.
+// Insights is deliberately not a second Overview — that breakdown/KPI content lives on the
+// Dashboard. This page's own job is Hot Picks (market-linked holdings + watchlist symbols moving
+// beyond a configured threshold) and data-quality checks.
 export function InsightsView({ displayCurrency, dataVersion, settings, dashboard, reload, onOpen, layoutEditing, layoutNonce }: {
   displayCurrency: string; dataVersion: number; settings: Settings; dashboard: Dashboard; reload: () => Promise<void>; onOpen: (id: string) => void
   layoutEditing: boolean; layoutNonce: number
