@@ -8,10 +8,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
-@RestControllerAdvice
+// Scoped to @RestController beans only — an unscoped advice also intercepts exceptions from
+// routes that never reach a controller at all (e.g. NoResourceFoundException for an unmatched
+// static path like a disabled /h2-console), turning what should be a plain 404 into a
+// misleading 500 from this handler's own last-resort catch. Real /api/** errors are unaffected:
+// they all originate from an actual @RestController method either way.
+@RestControllerAdvice(annotations = RestController.class)
 public class ApiExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     // Render ResponseStatusException as a JSON body directly, so unauthenticated endpoints
