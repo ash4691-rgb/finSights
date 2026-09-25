@@ -85,5 +85,5 @@ export type FxRates = { base: string; asOf: string; ratesToBase: Record<string, 
 export type Theme = 'light' | 'dark'
 export type GokuConfig = { available: boolean }
 export type GokuRole = 'user' | 'assistant'
-export type GokuMessage = { role: GokuRole; content: string }
+export type GokuMessage = { id: string; role: GokuRole; content: string }
 export type GokuChatReply = { reply: string; queriesRemainingToday: number }

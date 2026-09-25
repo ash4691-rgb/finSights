@@ -23,14 +23,17 @@ export function useGoku() {
   const send = async () => {
     const text = draft.trim()
     if (!text || sending) return
-    const next: GokuMessage[] = [...messages, { role: 'user', content: text }]
+    const next: GokuMessage[] = [...messages, { id: crypto.randomUUID(), role: 'user', content: text }]
     setMessages(next)
     setDraft('')
     setError('')
     setSending(true)
     try {
-      const result = await api<GokuChatReply>('/api/goku/chat', { method: 'POST', body: JSON.stringify({ messages: next }) })
-      setMessages(m => [...m, { role: 'assistant', content: result.reply }])
+      const result = await api<GokuChatReply>('/api/goku/chat', {
+        method: 'POST',
+        body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })) }),
+      })
+      setMessages(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: result.reply }])
       setRemaining(result.queriesRemainingToday)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Goku is unavailable right now — try again shortly.')
@@ -47,14 +50,14 @@ export type Goku = ReturnType<typeof useGoku>
 // Sidebar nav entry — same shape as the page links above it (icon + label), so Goku reads as
 // part of the app's own navigation rather than a bolted-on widget. Only rendered once `available`
 // is true; hidden entirely for anyone off the allowlist.
-export function GokuNavButton({ goku }: { goku: Goku }) {
+export function GokuNavButton({ goku }: Readonly<{ goku: Goku }>) {
   return <button type="button" className={`goku-nav-btn${goku.open ? ' active' : ''}`}
     onClick={() => goku.setOpen(o => !o)} title="Ask Goku about your portfolio">
     <span className="goku-nav-icon" aria-hidden>⚡</span> Goku
   </button>
 }
 
-export function GokuPanel({ goku }: { goku: Goku }) {
+export function GokuPanel({ goku }: Readonly<{ goku: Goku }>) {
   const scrollRef = useRef<HTMLDivElement>(null)
   useEscToClose(() => goku.setOpen(false), false)
   useEffect(() => {
@@ -72,7 +75,7 @@ export function GokuPanel({ goku }: { goku: Goku }) {
         Ask things like "what's my net worth", "which holding is up the most this month", or "what EMIs are due soon".
         Goku only answers from your own data — it won't place trades or tell you what to buy or sell.
       </p>}
-      {goku.messages.map((m, i) => <div key={i} className={`goku-msg goku-msg-${m.role}`}>{m.content}</div>)}
+      {goku.messages.map(m => <div key={m.id} className={`goku-msg goku-msg-${m.role}`}>{m.content}</div>)}
       {goku.sending && <div className="goku-msg goku-msg-assistant goku-typing"><span /><span /><span /></div>}
       {goku.error && <div className="goku-msg goku-msg-error">{goku.error}</div>}
     </div>
