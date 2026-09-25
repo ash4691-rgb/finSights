@@ -2,7 +2,9 @@
 # there's no native JVM runtime the way there is for Node/Python/Go.
 FROM eclipse-temurin:17-jdk AS build
 WORKDIR /app
-COPY .mvn/ .mvn/
+# No .mvn/ here on purpose — it's gitignored (it holds a self-downloaded Maven binary, not
+# wrapper source) so a fresh clone never has it. mvnw bootstraps it itself via curl/tar,
+# both already present in this base image.
 COPY mvnw pom.xml ./
 RUN ./mvnw -q dependency:go-offline
 COPY src/ src/
