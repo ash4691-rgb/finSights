@@ -25,6 +25,13 @@ app:
   auth-mode: ${APP_AUTH_MODE:demo}
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   cors-origin: ${CORS_ORIGIN:http://localhost:5173}
+  goku:
+    # Phase 1 of the rollout plan: on, but gated to one account until it's earned wider access.
+    enabled: ${GOKU_ENABLED:true}
+    allowlist: ${GOKU_ALLOWLIST:ash4691@gmail.com}
+    anthropic-api-key: ${ANTHROPIC_API_KEY:}
+    model: ${GOKU_MODEL:claude-haiku-4-5-20251001}
+    daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
 
 ---
 # Google OAuth is only wired when the "google" profile is active, so the demo

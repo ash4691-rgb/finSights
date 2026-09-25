@@ -83,3 +83,7 @@ export type ValuationDetail = { method: ValuationMethod; investedValue: number; 
 export type ImportResult = { created: number; updated: number; skipped: number; errors: { row: number; message: string }[] }
 export type FxRates = { base: string; asOf: string; ratesToBase: Record<string, number>; note: string }
 export type Theme = 'light' | 'dark'
+export type GokuConfig = { available: boolean }
+export type GokuRole = 'user' | 'assistant'
+export type GokuMessage = { role: GokuRole; content: string }
+export type GokuChatReply = { reply: string; queriesRemainingToday: number }

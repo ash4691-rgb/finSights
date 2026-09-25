@@ -5,6 +5,7 @@ import { clearPageLayout, createPanel, flushPageSave, hasNoPersistedSections, hy
 import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layout-config'
 import { fetchLayouts } from './layout-api'
 import { EditLayoutOnboarding } from './onboarding'
+import { GokuWidget } from './goku'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
@@ -251,5 +252,6 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showLayoutOnboarding && <EditLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, editLayoutOnboardingDismissed: true } : s)} />}
+    <GokuWidget />
   </div>
 }
