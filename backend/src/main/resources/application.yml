@@ -69,5 +69,17 @@ spring:
     console:
       enabled: false
 
+# The frontend (Vercel) and this backend (Render) are on different domains, so this is a
+# genuinely cross-site setup. Without SameSite=None, the browser only sends the session
+# cookie back on same-site requests — a cross-site fetch() (every API call the SPA makes)
+# never carries it, so login appears to "succeed" but every following request looks signed
+# out. None requires Secure, which is fine since both sides are HTTPS in this profile.
+server:
+  servlet:
+    session:
+      cookie:
+        same-site: none
+        secure: true
+
 app:
   auth-mode: google
