@@ -57,6 +57,14 @@ spring:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
             scope: openid,profile,email
+  # The H2 console is a database admin UI — fine for local dev, never for a real deployment.
+  # It's mounted (and left permitAll in SecurityConfig) purely so demo mode can inspect the
+  # file-backed H2 database; production always runs this "google" profile, so disabling it here
+  # means the route doesn't exist at all once real users' data is involved, regardless of which
+  # database is actually configured.
+  h2:
+    console:
+      enabled: false
 
 app:
   auth-mode: google
