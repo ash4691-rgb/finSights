@@ -19,7 +19,7 @@ public class GokuAccessService {
     private final CurrentUserService currentUser;
 
     @Value("${app.goku.enabled:true}") private boolean enabled;
-    @Value("${app.goku.allowlist:ash4691@gmail.com}") private String allowlistRaw;
+    @Value("${app.goku.allowlist:ash4691@gmail.com,demo@finsights.local}") private String allowlistRaw;
     @Value("${app.goku.anthropic-api-key:}") private String apiKey;
 
     public GokuAccessService(CurrentUserService currentUser) { this.currentUser = currentUser; }

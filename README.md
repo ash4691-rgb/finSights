@@ -71,26 +71,30 @@ charts, currency conversion, Kite/Zerodha sync, PostgreSQL migrations, alerts, m
 
 ## Goku (portfolio chat assistant)
 
-A chat assistant, available as a floating bubble on every page, that answers questions over the
-signed-in user's own portfolio data by calling FinSights' existing read-only endpoints as
-[Claude](https://claude.com) tools — never a data dump, never a write. It follows the same rule
-the rest of the app does: it tracks wealth, it doesn't place trades or give investment advice.
+A chat assistant — a ⚡ **Goku** entry in the left-hand nav, opening a chat panel — that answers
+questions over the signed-in user's own portfolio data by calling FinSights' existing read-only
+endpoints as [Claude](https://claude.com) tools — never a data dump, never a write. It follows the
+same rule the rest of the app does: it tracks wealth, it doesn't place trades or give investment
+advice.
 
-It's off by default for everyone except an email allowlist (Phase 1 of the rollout: just one
-account). To try it locally:
+It's off by default for everyone except an email allowlist (Phase 1 of the rollout: just one real
+account, plus the demo account so it works out of the box locally). It only needs an API key to
+light up:
 
 ```bash
 cd backend
-ANTHROPIC_API_KEY=sk-ant-... \
-GOKU_ALLOWLIST=demo@finsights.local \
-./mvnw spring-boot:run
+ANTHROPIC_API_KEY=sk-ant-... ./mvnw spring-boot:run
 ```
 
-`GOKU_ALLOWLIST` is a comma-separated list of emails (case-insensitive); it defaults to the
-account this feature shipped for. Other env vars: `GOKU_ENABLED` (default `true`), `GOKU_MODEL`
-(default `claude-haiku-4-5-20251001`), `GOKU_DAILY_QUERY_LIMIT` (default `40`, per user per day).
-`GET /api/goku/config` tells the frontend whether to render the bubble at all; the backend
-re-checks the allowlist on every `POST /api/goku/chat` regardless of what the frontend shows.
+Without `ANTHROPIC_API_KEY` set, the nav entry stays hidden entirely — that's the one thing you
+have to provide yourself. `GOKU_ALLOWLIST` is a comma-separated list of emails (case-insensitive);
+it defaults to `ash4691@gmail.com,demo@finsights.local` — the account this shipped for, plus demo
+mode's fixed `demo@finsights.local` user (every local/undeployed request signs in as that account
+unless Google OAuth is configured — see above). Other env vars: `GOKU_ENABLED` (default `true`),
+`GOKU_MODEL` (default `claude-haiku-4-5-20251001`), `GOKU_DAILY_QUERY_LIMIT` (default `40`, per
+user per day). `GET /api/goku/config` tells the frontend whether to render the nav entry at all;
+the backend re-checks the allowlist on every `POST /api/goku/chat` regardless of what the frontend
+shows.
 
 ## Tests
 

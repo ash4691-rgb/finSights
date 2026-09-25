@@ -35,8 +35,11 @@ app:
   cors-origin: ${CORS_ORIGIN:http://localhost:5173}
   goku:
     # Phase 1 of the rollout plan: on, but gated to one account until it's earned wider access.
+    # demo@finsights.local is here too — the default demo-auth filter signs every local/undeployed
+    # request in as that account (see DemoAuthenticationFilter), so without it Goku would be
+    # invisible out of the box even to the one real account this shipped for.
     enabled: ${GOKU_ENABLED:true}
-    allowlist: ${GOKU_ALLOWLIST:ash4691@gmail.com}
+    allowlist: ${GOKU_ALLOWLIST:ash4691@gmail.com,demo@finsights.local}
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
     model: ${GOKU_MODEL:claude-haiku-4-5-20251001}
     daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
