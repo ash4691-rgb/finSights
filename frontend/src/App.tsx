@@ -5,7 +5,7 @@ import { clearPageLayout, createPanel, flushPageSave, hasNoPersistedSections, hy
 import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layout-config'
 import { fetchLayouts } from './layout-api'
 import { EditLayoutOnboarding } from './onboarding'
-import { GokuWidget } from './goku'
+import { GokuNavButton, GokuPanel, useGoku } from './goku'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
@@ -61,6 +61,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [layoutNonce, setLayoutNonce] = useState(0)
   const [showLayoutOnboarding, setShowLayoutOnboarding] = useState(false)
   const bootstrapped = useRef(false)
+  const goku = useGoku()
 
   // Leaving a page always drops out of layout-edit mode.
   useEffect(() => { setLayoutEditing(false) }, [page])
@@ -176,7 +177,10 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><div className="mark">F</div><span>FinSights</span></div>
-      <nav>{nav.map(([key, icon, text]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span>{icon}</span> {text}</button>)}</nav>
+      <nav>
+        {nav.map(([key, icon, text]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span>{icon}</span> {text}</button>)}
+        {goku.available && <GokuNavButton goku={goku} />}
+      </nav>
       <div className="sidebar-bottom">
         <div className="sync-note"><span className="dot" /> Manual tracking ready<br /><small>Broker sync is coming next</small></div>
         <div className="user"><div className="avatar">{user?.displayName?.slice(0, 1).toUpperCase()}</div><div><strong>{user?.displayName}</strong><small>{user?.demoMode ? 'Demo workspace' : user?.email}</small></div><button className="sign-out-link" onClick={() => void signOut()}>Sign out</button></div>
@@ -252,6 +256,6 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showLayoutOnboarding && <EditLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, editLayoutOnboardingDismissed: true } : s)} />}
-    <GokuWidget />
+    <GokuPanel goku={goku} />
   </div>
 }

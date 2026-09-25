@@ -4,6 +4,7 @@
   --text:#f1f4fc;--text-2:#c7d0e7;--text-3:#8b96b8;--text-4:#5c6690;
   --accent:#6571ff;--accent-2:#a45bff;--accent-soft:#212a4d;--accent-soft-text:#b5c0ff;--accent-glow:#6571ff45;
   --positive:#35d597;--negative:#fc7282;
+  --goku-gold:#f7c948;--goku-gold-soft:#3a2f12;--goku-gold-glow:#f7c94850;
   --chip-bg:#1d2847;--chip-text:#aebcff;
   --liability-bg:#472634;--liability-text:#f3adb9;
   --warn-bg:#4a2b32;--warn-text:#f4adb8;
@@ -33,6 +34,7 @@
   --text:#171b2e;--text-2:#4d5578;--text-3:#767ea3;--text-4:#a3a9c8;
   --accent:#5458e8;--accent-2:#8a46e0;--accent-soft:#edeeff;--accent-soft-text:#4649c9;--accent-glow:#5458e830;
   --positive:#148a5f;--negative:#d43a57;
+  --goku-gold:#b8790a;--goku-gold-soft:#fdf3dd;--goku-gold-glow:#f7c94840;
   --chip-bg:#eceffd;--chip-text:#4649c9;
   --liability-bg:#fde8ec;--liability-text:#b23355;
   --warn-bg:#fdeaec;--warn-text:#a52f4a;
@@ -603,11 +605,13 @@ th.sortable:hover{color:var(--text)}
 .link-back:hover{color:var(--text)}
 
 /* ---------- Goku chat widget ---------- */
-.goku-bubble{position:fixed;right:24px;bottom:24px;z-index:6;width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);
-  background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-size:22px;line-height:1;display:grid;place-items:center;
-  cursor:pointer;box-shadow:0 10px 26px var(--accent-glow)}
-.goku-bubble:hover{filter:brightness(1.08)}
-.goku-panel{position:fixed;right:24px;bottom:88px;z-index:6;width:min(360px,calc(100vw - 32px));height:min(520px,calc(100vh - 140px));
+/* Lives in the sidebar nav, styled like the page links above it but with its own gold "power up"
+   accent so it still reads as a different kind of thing (a chat trigger, not a page). */
+.goku-nav-btn{margin-top:10px;color:var(--goku-gold)!important}
+.goku-nav-btn:hover,.goku-nav-btn.active{background:var(--goku-gold-soft)!important;color:var(--goku-gold)!important}
+.goku-nav-btn.active{box-shadow:inset 3px 0 0 var(--goku-gold)!important}
+.goku-nav-icon{filter:drop-shadow(0 0 5px var(--goku-gold-glow))}
+.goku-panel{position:fixed;left:264px;bottom:24px;z-index:6;width:min(360px,calc(100vw - 32px));height:min(520px,calc(100vh - 140px));
   background:var(--surface);border:1px solid var(--border-strong);border-radius:15px;box-shadow:var(--shadow-modal);
   display:flex;flex-direction:column;overflow:hidden}
 .goku-panel-header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:16px 16px 12px;border-bottom:1px solid var(--border-soft)}
@@ -640,6 +644,7 @@ th.sortable:hover{color:var(--text)}
   /* Halve the layout grid; wide items just span the whole 6 and stack. */
   .layout-zone{grid-template-columns:repeat(6,minmax(0,1fr))}
   main{padding:30px 24px}
+  .goku-panel{left:90px}
 }
 @media(max-width:670px){
   .sidebar{display:none}
@@ -658,4 +663,5 @@ th.sortable:hover{color:var(--text)}
   .check-row{flex-direction:column;gap:10px}
   header{margin-bottom:18px;flex-wrap:wrap}
   .currency-picker span{display:none}
+  .goku-panel{left:16px;right:16px;width:auto}
 }
