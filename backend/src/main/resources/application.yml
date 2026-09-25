@@ -5,6 +5,14 @@ spring:
     url: ${DATABASE_URL:jdbc:h2:file:./data/finsights;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE}
     username: ${DATABASE_USERNAME:sa}
     password: ${DATABASE_PASSWORD:}
+    hikari:
+      # Small pool, connections allowed to close when idle — a single small backend doesn't
+      # need many, and on a serverless-billed Postgres (e.g. Neon) a connection held open
+      # forever is a connection that never lets the database's compute suspend, which quietly
+      # turns "pay only while active" into "pay always." Harmless against H2/dev too.
+      maximum-pool-size: 5
+      minimum-idle: 1
+      idle-timeout: 60000
   jpa:
     hibernate:
       ddl-auto: update
