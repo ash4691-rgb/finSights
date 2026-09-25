@@ -62,16 +62,40 @@ Only the `openid`, `profile`, `email` scopes are requested (no Gmail access).
 | Insights: breakdowns by class/broker/tag/currency/liquidity, movers, data-quality warnings | ✅ |
 | Brokers & sources screen (derived broker groups + connector roadmap) | ✅ |
 | Settings: base currency, display name, JSON export, account deletion | ✅ |
+| Goku: read-only portfolio chat assistant, gated to an allowlist | ✅ (Phase 1) |
 
 ### Not yet (later phases)
 
 Real Google OAuth verification, transaction-led cost basis, daily snapshots & historical
 charts, currency conversion, Kite/Zerodha sync, PostgreSQL migrations, alerts, mobile app.
 
+## Goku (portfolio chat assistant)
+
+A chat assistant, available as a floating bubble on every page, that answers questions over the
+signed-in user's own portfolio data by calling FinSights' existing read-only endpoints as
+[Claude](https://claude.com) tools — never a data dump, never a write. It follows the same rule
+the rest of the app does: it tracks wealth, it doesn't place trades or give investment advice.
+
+It's off by default for everyone except an email allowlist (Phase 1 of the rollout: just one
+account). To try it locally:
+
+```bash
+cd backend
+ANTHROPIC_API_KEY=sk-ant-... \
+GOKU_ALLOWLIST=demo@finsights.local \
+./mvnw spring-boot:run
+```
+
+`GOKU_ALLOWLIST` is a comma-separated list of emails (case-insensitive); it defaults to the
+account this feature shipped for. Other env vars: `GOKU_ENABLED` (default `true`), `GOKU_MODEL`
+(default `claude-haiku-4-5-20251001`), `GOKU_DAILY_QUERY_LIMIT` (default `40`, per user per day).
+`GET /api/goku/config` tells the frontend whether to render the bubble at all; the backend
+re-checks the allowlist on every `POST /api/goku/chat` regardless of what the frontend shows.
+
 ## Tests
 
 ```bash
-cd backend && ./mvnw test      # ValuationService + CsvService unit tests
+cd backend && ./mvnw test      # ValuationService, CsvService, Goku, and more — unit tests
 cd frontend && npm run build   # type-checks and bundles
 ```
 
