@@ -147,7 +147,8 @@ public class SettingsService {
                 user.getQuarterlyThresholdPercent(), user.getYearlyThresholdPercent(),
                 CurrentUserService.DEMO_EMAIL.equalsIgnoreCase(user.getEmail()), holdingService.list().size(), user.getCreatedAt(),
                 Boolean.TRUE.equals(user.getCustomLayoutOnboardingDismissed()),
-                Boolean.TRUE.equals(user.getUserOnboardingDismissed()));
+                Boolean.TRUE.equals(user.getUserOnboardingDismissed()),
+                Boolean.TRUE.equals(user.getPersonaOnboardingDismissed()));
     }
 
     /** "Don't show this again" for the CustomLayoutOnboarding tour — a one-way flip, separate

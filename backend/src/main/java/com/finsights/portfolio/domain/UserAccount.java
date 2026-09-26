@@ -66,6 +66,12 @@ public class UserAccount {
     @Column(nullable = false)
     @ColumnDefault("false")
     private Boolean userOnboardingDismissed = false;
+    /** Set by PersonaService once the persona questionnaire is either completed or skipped with
+     *  "don't show again" — either way a UserPersona row exists by then (real answers, or a
+     *  MODERATE default), so this alone is enough to know not to show the widget again. */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private Boolean personaOnboardingDismissed = false;
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -118,5 +124,7 @@ public class UserAccount {
     public void setCustomLayoutOnboardingDismissed(Boolean customLayoutOnboardingDismissed) { this.customLayoutOnboardingDismissed = customLayoutOnboardingDismissed; }
     public Boolean getUserOnboardingDismissed() { return userOnboardingDismissed; }
     public void setUserOnboardingDismissed(Boolean userOnboardingDismissed) { this.userOnboardingDismissed = userOnboardingDismissed; }
+    public Boolean getPersonaOnboardingDismissed() { return personaOnboardingDismissed; }
+    public void setPersonaOnboardingDismissed(Boolean personaOnboardingDismissed) { this.personaOnboardingDismissed = personaOnboardingDismissed; }
     public Instant getCreatedAt() { return createdAt; }
 }

@@ -6,6 +6,7 @@ import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layo
 import { fetchLayouts } from './layout-api'
 import { CustomLayoutOnboarding } from './custom-layout-onboarding'
 import { UserOnboarding } from './user-onboarding'
+import { PersonaOnboarding } from './persona-onboarding'
 import { GokuNavButton, GokuPanel, useGoku } from './goku'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
@@ -62,6 +63,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [layoutNonce, setLayoutNonce] = useState(0)
   const [showLayoutOnboarding, setShowLayoutOnboarding] = useState(false)
   const [showUserOnboarding, setShowUserOnboarding] = useState(false)
+  const [showPersonaOnboarding, setShowPersonaOnboarding] = useState(false)
   const bootstrapped = useRef(false)
   const goku = useGoku()
 
@@ -136,7 +138,11 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (isFirstLoad) {
       bootstrapped.current = true
       setLoading(false)
+      // UserOnboarding comes first for a brand-new user; PersonaOnboarding follows once it's
+      // closed (see its onClose below) rather than both popping up on top of each other. A
+      // returning user who's only dismissed one of the two still gets the other directly.
       if (nextSettings && !nextSettings.userOnboardingDismissed) setShowUserOnboarding(true)
+      else if (nextSettings && !nextSettings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
       if (!currency && nextSettings?.baseCurrency && nextSettings.baseCurrency !== cur) {
         void load(nextSettings.baseCurrency)
       }
@@ -260,8 +266,14 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}
     {showUserOnboarding && <UserOnboarding
-      onClose={() => setShowUserOnboarding(false)}
+      onClose={() => {
+        setShowUserOnboarding(false)
+        if (settings && !settings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
+      }}
       onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}
+    {showPersonaOnboarding && <PersonaOnboarding
+      onClose={() => setShowPersonaOnboarding(false)}
+      onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
     <GokuPanel goku={goku} />
   </div>
 }

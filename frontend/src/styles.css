@@ -295,6 +295,13 @@ th.sortable:hover{color:var(--text)}
 .onboarding-dot{width:7px;height:7px;border-radius:50%;background:var(--border-strong)}
 .onboarding-dot.active{background:var(--accent)}
 .onboarding-dismiss{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-3);cursor:pointer}
+.persona-fields{display:grid;gap:14px}
+.persona-fields label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--text-2)}
+.persona-fields input,.persona-fields select{background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px;font-weight:400}
+.persona-instruments{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.persona-scenario p{font-weight:700;color:var(--text);margin-bottom:12px}
+.persona-scenario{display:grid;gap:2px}
+.persona-checkbox{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);cursor:pointer;padding:6px 0}
 .loading-screen{min-height:100vh;display:grid;place-content:center;text-align:center;gap:12px}
 .loading-screen .mark{margin:auto;width:44px;height:44px;font-size:22px}
 .loading-screen p{color:var(--text-3)}
