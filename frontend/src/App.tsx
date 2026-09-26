@@ -7,7 +7,7 @@ import { fetchLayouts } from './layout-api'
 import { CustomLayoutOnboarding } from './custom-layout-onboarding'
 import { UserOnboarding } from './user-onboarding'
 import { PersonaOnboarding } from './persona-onboarding'
-import { GokuNavButton, GokuPanel, useGoku } from './goku'
+import { GokuAdminButton, GokuAdminModal, GokuNavButton, GokuPanel, useGoku } from './goku'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
@@ -189,6 +189,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       <nav>
         {nav.map(([key, icon, text]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span>{icon}</span> {text}</button>)}
         {goku.available && <GokuNavButton goku={goku} />}
+        {goku.admin && <GokuAdminButton goku={goku} />}
       </nav>
       <div className="sidebar-bottom">
         <div className="sync-note"><span className="dot" /> Manual tracking ready<br /><small>Broker sync is coming next</small></div>
@@ -275,5 +276,6 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       onClose={() => setShowPersonaOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
     <GokuPanel goku={goku} />
+    <GokuAdminModal goku={goku} />
   </div>
 }

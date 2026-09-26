@@ -26,7 +26,7 @@ public class GokuController {
     /** Whether the signed-in user should see the chat bubble at all — checked before rendering it. */
     @GetMapping("/config")
     GokuConfigResponse config() {
-        return new GokuConfigResponse(access.isAvailable());
+        return new GokuConfigResponse(access.isAvailable(), access.isAdmin());
     }
 
     @PostMapping("/chat")
