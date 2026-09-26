@@ -36,9 +36,23 @@ export function Root() {
   const goToLogin = (mode: 'login' | 'signup') => { setLoginMode(mode); setPhase('login') }
 
   // A real (non-demo) session means the user is already signed in — skip straight into the app,
-  // e.g. after returning from the Google redirect.
+  // e.g. after returning from the Google redirect. Retries a couple of times on failure before
+  // concluding "not signed in": Render's free tier cold-starts after a fresh deploy or a period
+  // of inactivity, and Neon's database can take a few seconds to wake from suspension — the
+  // very first request right after either can transiently fail (timeout/5xx) even though the
+  // session itself is perfectly valid, which would otherwise strand a just-logged-in user back
+  // on the landing page.
   useEffect(() => {
-    api<User>('/api/auth/me').then(me => { if (!me.demoMode) enterApp() }).catch(() => { /* not signed in */ })
+    let cancelled = false
+    const checkSignedIn = (attempt: number) => {
+      api<User>('/api/auth/me')
+        .then(me => { if (!cancelled && !me.demoMode) enterApp() })
+        .catch(() => {
+          if (!cancelled && attempt < 2) setTimeout(() => checkSignedIn(attempt + 1), 1500 * (attempt + 1))
+        })
+    }
+    checkSignedIn(0)
+    return () => { cancelled = true }
   }, [])
 
   // Consume a `?verify=<token>` link from the activation email. Strips the token from the URL
