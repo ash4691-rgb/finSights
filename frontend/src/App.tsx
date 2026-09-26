@@ -4,7 +4,9 @@ import { applyLocale, currencies, nav, downloadCsv, label, rate, ago, THEME_KEY,
 import { clearPageLayout, createPanel, flushPageSave, hasNoPersistedSections, hydrateLayouts, LayoutMenu } from './layout'
 import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layout-config'
 import { fetchLayouts } from './layout-api'
-import { EditLayoutOnboarding } from './onboarding'
+import { CustomLayoutOnboarding } from './custom-layout-onboarding'
+import { UserOnboarding } from './user-onboarding'
+import { PersonaOnboarding } from './persona-onboarding'
 import { GokuNavButton, GokuPanel, useGoku } from './goku'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
@@ -60,6 +62,8 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [layoutEditing, setLayoutEditing] = useState(false)
   const [layoutNonce, setLayoutNonce] = useState(0)
   const [showLayoutOnboarding, setShowLayoutOnboarding] = useState(false)
+  const [showUserOnboarding, setShowUserOnboarding] = useState(false)
+  const [showPersonaOnboarding, setShowPersonaOnboarding] = useState(false)
   const bootstrapped = useRef(false)
   const goku = useGoku()
 
@@ -134,6 +138,11 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (isFirstLoad) {
       bootstrapped.current = true
       setLoading(false)
+      // UserOnboarding comes first for a brand-new user; PersonaOnboarding follows once it's
+      // closed (see its onClose below) rather than both popping up on top of each other. A
+      // returning user who's only dismissed one of the two still gets the other directly.
+      if (nextSettings && !nextSettings.userOnboardingDismissed) setShowUserOnboarding(true)
+      else if (nextSettings && !nextSettings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
       if (!currency && nextSettings?.baseCurrency && nextSettings.baseCurrency !== cur) {
         void load(nextSettings.baseCurrency)
       }
@@ -222,7 +231,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
                   createPanel(page, 'Demo section', ONBOARDING_DEMO_WIDGETS)
                   setLayoutNonce(n => n + 1)
                 }
-                if (settings && !settings.editLayoutOnboardingDismissed) setShowLayoutOnboarding(true)
+                if (settings && !settings.customLayoutOnboardingDismissed) setShowLayoutOnboarding(true)
               }
               return next
             })}>{layoutEditing ? '✓ Done' : '⤢ Edit layout'}</button>
@@ -253,9 +262,18 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {categoryDetail && <CategoryDrawer category={categoryDetail} holdings={holdings.filter(h => h.categoryId === categoryDetail.id)} onClose={() => setCategoryDetail(null)} onEdit={c => { setCategoryDetail(null); setEditingCategory(c) }} onAddHolding={c => { setCategoryDetail(null); setCreatingHoldingFor(c) }} onOpenHolding={h => { setCategoryDetail(null); setHoldingDetail(h) }} reload={load} />}
     {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
-    {showLayoutOnboarding && <EditLayoutOnboarding
+    {showLayoutOnboarding && <CustomLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
-      onDismissForever={() => setSettings(s => s ? { ...s, editLayoutOnboardingDismissed: true } : s)} />}
+      onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}
+    {showUserOnboarding && <UserOnboarding
+      onClose={() => {
+        setShowUserOnboarding(false)
+        if (settings && !settings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
+      }}
+      onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}
+    {showPersonaOnboarding && <PersonaOnboarding
+      onClose={() => setShowPersonaOnboarding(false)}
+      onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
     <GokuPanel goku={goku} />
   </div>
 }

@@ -50,8 +50,11 @@ export type Settings = {
   notifyThresholdPercent: number
   dailyThresholdPercent?: number; weeklyThresholdPercent?: number; monthlyThresholdPercent?: number
   quarterlyThresholdPercent?: number; yearlyThresholdPercent?: number
-  demoMode: boolean; holdingCount: number; memberSince: string; editLayoutOnboardingDismissed: boolean
+  demoMode: boolean; holdingCount: number; memberSince: string; customLayoutOnboardingDismissed: boolean
+  userOnboardingDismissed: boolean; personaOnboardingDismissed: boolean
 }
+export type SalaryRange = 'UNDER_5L' | 'L5_TO_10L' | 'L10_TO_25L' | 'L25_TO_50L' | 'ABOVE_50L' | 'PREFER_NOT_TO_SAY'
+export type InstrumentType = 'INDIAN_STOCKS' | 'FOREIGN_STOCKS' | 'MUTUAL_FUNDS' | 'CRYPTO' | 'COMMODITIES' | 'FIXED_RETURN' | 'REAL_ESTATE'
 export type Country = { code: string; name: string; currency: string }
 export type Transaction = {
   id: string; holdingId: string; holdingName: string; categoryId: string; categoryName: string; broker?: string

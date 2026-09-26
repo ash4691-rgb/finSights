@@ -3,6 +3,8 @@ package com.finsights.portfolio.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.domain.UserAccount;
@@ -20,15 +22,16 @@ import org.springframework.web.server.ResponseStatusException;
 class LocalAuthServiceTest {
 
     @Mock UserAccountRepository users;
+    @Mock MailService mail;
     private LocalAuthService service;
 
     @BeforeEach
     void setUp() {
-        service = new LocalAuthService(users, new BCryptPasswordEncoder());
+        service = new LocalAuthService(users, new BCryptPasswordEncoder(), mail);
     }
 
     @Test
-    void registerHashesThePasswordAndKeepsIt() {
+    void registerHashesThePasswordAndKeepsItUnverifiedUntilTheEmailLinkIsClicked() {
         when(users.findByEmail("sam@example.com")).thenReturn(Optional.empty());
         when(users.save(any(UserAccount.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -37,6 +40,10 @@ class LocalAuthServiceTest {
         assertThat(user.getEmail()).isEqualTo("sam@example.com");
         assertThat(user.getDisplayName()).isEqualTo("Sam");
         assertThat(user.getPasswordHash()).isNotNull().isNotEqualTo("hunter2horse");
+        assertThat(user.getEmailVerified()).isFalse();
+        assertThat(user.getVerificationToken()).isNotBlank();
+        assertThat(user.getVerificationTokenExpiresAt()).isNotNull();
+        verify(mail).sendVerificationEmail(org.mockito.ArgumentMatchers.eq("sam@example.com"), anyString());
     }
 
     @Test
@@ -81,6 +88,55 @@ class LocalAuthServiceTest {
         when(users.findByEmail("g@example.com")).thenReturn(Optional.of(googleUser));
 
         assertThatThrownBy(() -> service.login("g@example.com", "anything"))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void loginFailsForAnUnverifiedLocalAccount() {
+        UserAccount stored = new UserAccount("sam@example.com", "Sam");
+        stored.setPasswordHash(new BCryptPasswordEncoder().encode("hunter2horse"));
+        stored.setEmailVerified(false);
+        when(users.findByEmail("sam@example.com")).thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> service.login("sam@example.com", "hunter2horse"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("verify your email");
+    }
+
+    @Test
+    void verifyEmailActivatesTheAccountAndClearsTheToken() {
+        UserAccount stored = new UserAccount("sam@example.com", "Sam");
+        stored.setEmailVerified(false);
+        stored.setVerificationToken("abc123");
+        stored.setVerificationTokenExpiresAt(java.time.Instant.now().plusSeconds(3600));
+        when(users.findByVerificationToken("abc123")).thenReturn(Optional.of(stored));
+        when(users.save(any(UserAccount.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.verifyEmail("abc123");
+
+        assertThat(stored.getEmailVerified()).isTrue();
+        assertThat(stored.getVerificationToken()).isNull();
+        assertThat(stored.getVerificationTokenExpiresAt()).isNull();
+    }
+
+    @Test
+    void verifyEmailRejectsAnExpiredToken() {
+        UserAccount stored = new UserAccount("sam@example.com", "Sam");
+        stored.setEmailVerified(false);
+        stored.setVerificationToken("abc123");
+        stored.setVerificationTokenExpiresAt(java.time.Instant.now().minusSeconds(1));
+        when(users.findByVerificationToken("abc123")).thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> service.verifyEmail("abc123"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("expired");
+    }
+
+    @Test
+    void verifyEmailRejectsAnUnknownToken() {
+        when(users.findByVerificationToken("nope")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.verifyEmail("nope"))
                 .isInstanceOf(ResponseStatusException.class);
     }
 }

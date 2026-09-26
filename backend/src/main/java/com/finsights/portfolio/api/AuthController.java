@@ -5,6 +5,8 @@ import com.finsights.portfolio.dto.AuthConfigResponse;
 import com.finsights.portfolio.dto.CurrentUserResponse;
 import com.finsights.portfolio.dto.LoginRequest;
 import com.finsights.portfolio.dto.RegisterRequest;
+import com.finsights.portfolio.dto.RegisterResponse;
+import com.finsights.portfolio.dto.VerifyRequest;
 import com.finsights.portfolio.service.CurrentUserService;
 import com.finsights.portfolio.service.LocalAuthService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -47,11 +49,15 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    CurrentUserResponse register(@Valid @RequestBody RegisterRequest request,
-                                 HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+    RegisterResponse register(@Valid @RequestBody RegisterRequest request) {
         UserAccount user = localAuth.register(request.email(), request.displayName(), request.password());
-        establishSession(user.getEmail(), httpRequest, httpResponse);
-        return toResponse(user);
+        return new RegisterResponse(user.getEmail(), "Account created. Check your email for a link to verify it before logging in.");
+    }
+
+    @PostMapping("/verify")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void verify(@Valid @RequestBody VerifyRequest request) {
+        localAuth.verifyEmail(request.token());
     }
 
     @PostMapping("/login")

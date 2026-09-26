@@ -146,15 +146,25 @@ public class SettingsService {
                 user.getDailyThresholdPercent(), user.getWeeklyThresholdPercent(), user.getMonthlyThresholdPercent(),
                 user.getQuarterlyThresholdPercent(), user.getYearlyThresholdPercent(),
                 CurrentUserService.DEMO_EMAIL.equalsIgnoreCase(user.getEmail()), holdingService.list().size(), user.getCreatedAt(),
-                Boolean.TRUE.equals(user.getEditLayoutOnboardingDismissed()));
+                Boolean.TRUE.equals(user.getCustomLayoutOnboardingDismissed()),
+                Boolean.TRUE.equals(user.getUserOnboardingDismissed()),
+                Boolean.TRUE.equals(user.getPersonaOnboardingDismissed()));
     }
 
-    /** "Don't show this again" for the Edit Layout onboarding tour — a one-way flip, separate
+    /** "Don't show this again" for the CustomLayoutOnboarding tour — a one-way flip, separate
      *  from the main settings form since it's set from the tour itself, not a Settings field. */
     @Transactional
-    public void dismissEditLayoutOnboarding() {
+    public void dismissCustomLayoutOnboarding() {
         UserAccount user = currentUser.currentUser();
-        user.setEditLayoutOnboardingDismissed(true);
+        user.setCustomLayoutOnboardingDismissed(true);
+        users.save(user);
+    }
+
+    /** "Don't show this again" for the UserOnboarding tour — same one-way flip as above. */
+    @Transactional
+    public void dismissUserOnboarding() {
+        UserAccount user = currentUser.currentUser();
+        user.setUserOnboardingDismissed(true);
         users.save(user);
     }
 

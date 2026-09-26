@@ -15,6 +15,16 @@ public class UserAccount {
     private String displayName;
     /** BCrypt hash for email/password sign-in. Null for the demo account and for Google users. */
     private String passwordHash;
+    /** True for the demo account and Google users (never asked to verify); false from creation
+     *  for a local email/password signup until the emailed link is clicked. LocalAuthService
+     *  blocks {@code login()} while this is false — Google's own login path never checks it,
+     *  since Google has already verified the address before handing it to us. */
+    @Column(nullable = false)
+    @ColumnDefault("true")
+    private Boolean emailVerified = true;
+    /** Set alongside emailVerified=false at local registration; cleared once verified. */
+    private String verificationToken;
+    private Instant verificationTokenExpiresAt;
     private String phone;
     /** ISO-3166 alpha-2 country of residence; drives {@link #baseCurrency} via CountryCurrencyService. */
     @Column(nullable = false)
@@ -43,14 +53,25 @@ public class UserAccount {
     private BigDecimal quarterlyThresholdPercent;
     @Column(precision = 6, scale = 2)
     private BigDecimal yearlyThresholdPercent;
-    /** "Don't show this again" for the Edit Layout onboarding tour — once true, the tour never
+    /** "Don't show this again" for the CustomLayoutOnboarding tour — once true, the tour never
      *  replays for this user; while false, it re-shows every time they enter Edit Layout mode.
      *  Needs a SQL-level default (not just the Java-side one below): ddl-auto=update's ALTER
      *  TABLE has to backfill this NOT NULL column for every existing row, and it only knows
      *  how to do that from a column default, not from the entity's default field value. */
     @Column(nullable = false)
     @ColumnDefault("false")
-    private Boolean editLayoutOnboardingDismissed = false;
+    private Boolean customLayoutOnboardingDismissed = false;
+    /** "Don't show this again" for the UserOnboarding tour (the app-concepts walkthrough shown
+     *  on first entering the app) — same one-way-flip semantics as customLayoutOnboardingDismissed. */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private Boolean userOnboardingDismissed = false;
+    /** Set by PersonaService once the persona questionnaire is either completed or skipped with
+     *  "don't show again" — either way a UserPersona row exists by then (real answers, or a
+     *  MODERATE default), so this alone is enough to know not to show the widget again. */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private Boolean personaOnboardingDismissed = false;
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -67,6 +88,12 @@ public class UserAccount {
     public void setDisplayName(String displayName) { this.displayName = displayName; }
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+    public Boolean getEmailVerified() { return emailVerified; }
+    public void setEmailVerified(Boolean emailVerified) { this.emailVerified = emailVerified; }
+    public String getVerificationToken() { return verificationToken; }
+    public void setVerificationToken(String verificationToken) { this.verificationToken = verificationToken; }
+    public Instant getVerificationTokenExpiresAt() { return verificationTokenExpiresAt; }
+    public void setVerificationTokenExpiresAt(Instant verificationTokenExpiresAt) { this.verificationTokenExpiresAt = verificationTokenExpiresAt; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
     public String getCountry() { return country; }
@@ -93,7 +120,11 @@ public class UserAccount {
     public void setQuarterlyThresholdPercent(BigDecimal quarterlyThresholdPercent) { this.quarterlyThresholdPercent = quarterlyThresholdPercent; }
     public BigDecimal getYearlyThresholdPercent() { return yearlyThresholdPercent; }
     public void setYearlyThresholdPercent(BigDecimal yearlyThresholdPercent) { this.yearlyThresholdPercent = yearlyThresholdPercent; }
-    public Boolean getEditLayoutOnboardingDismissed() { return editLayoutOnboardingDismissed; }
-    public void setEditLayoutOnboardingDismissed(Boolean editLayoutOnboardingDismissed) { this.editLayoutOnboardingDismissed = editLayoutOnboardingDismissed; }
+    public Boolean getCustomLayoutOnboardingDismissed() { return customLayoutOnboardingDismissed; }
+    public void setCustomLayoutOnboardingDismissed(Boolean customLayoutOnboardingDismissed) { this.customLayoutOnboardingDismissed = customLayoutOnboardingDismissed; }
+    public Boolean getUserOnboardingDismissed() { return userOnboardingDismissed; }
+    public void setUserOnboardingDismissed(Boolean userOnboardingDismissed) { this.userOnboardingDismissed = userOnboardingDismissed; }
+    public Boolean getPersonaOnboardingDismissed() { return personaOnboardingDismissed; }
+    public void setPersonaOnboardingDismissed(Boolean personaOnboardingDismissed) { this.personaOnboardingDismissed = personaOnboardingDismissed; }
     public Instant getCreatedAt() { return createdAt; }
 }

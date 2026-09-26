@@ -16,11 +16,14 @@ import type { User } from './types'
 export const ENTERED_KEY = 'finsights-entered-app'
 export type Phase = 'home' | 'login' | 'app'
 
+export type Banner = { kind: 'success' | 'error'; message: string }
+
 export function Root() {
   const [phase, setPhase] = useState<Phase>(() => {
     try { return localStorage.getItem(ENTERED_KEY) === 'true' ? 'app' : 'home' } catch { return 'home' }
   })
   const [loginMode, setLoginMode] = useState<'login' | 'signup'>('signup')
+  const [verifyBanner, setVerifyBanner] = useState<Banner | null>(null)
 
   const enterApp = () => {
     try { localStorage.setItem(ENTERED_KEY, 'true') } catch { /* storage unavailable */ }
@@ -38,8 +41,22 @@ export function Root() {
     api<User>('/api/auth/me').then(me => { if (!me.demoMode) enterApp() }).catch(() => { /* not signed in */ })
   }, [])
 
+  // Consume a `?verify=<token>` link from the activation email. Strips the token from the URL
+  // immediately (before the API call even resolves) so a refresh can't redeem the same one-time
+  // token twice and get a confusing "already used" error on a link that actually worked.
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('verify')
+    if (!token) return
+    window.history.replaceState(null, '', window.location.pathname)
+    setLoginMode('login')
+    setPhase('login')
+    api('/api/auth/verify', { method: 'POST', body: JSON.stringify({ token }) })
+      .then(() => setVerifyBanner({ kind: 'success', message: 'Email verified — you can now log in.' }))
+      .catch(err => setVerifyBanner({ kind: 'error', message: err instanceof Error ? err.message : 'That verification link is invalid or has expired.' }))
+  }, [])
+
   if (phase === 'home') return <Homepage onGetStarted={() => goToLogin('signup')} onSignIn={() => goToLogin('login')} />
-  if (phase === 'login') return <LoginScreen initialMode={loginMode} onBack={() => setPhase('home')} onEnter={enterApp} />
+  if (phase === 'login') return <LoginScreen initialMode={loginMode} onBack={() => setPhase('home')} onEnter={enterApp} banner={verifyBanner} />
   return <App onSignOut={exitApp} />
 }
 
@@ -126,12 +143,16 @@ export function Homepage({ onGetStarted, onSignIn }: { onGetStarted: () => void;
   </div>
 }
 
-export function LoginScreen({ initialMode, onBack, onEnter }: { initialMode: 'login' | 'signup'; onBack: () => void; onEnter: () => void }) {
+export function LoginScreen({ initialMode, onBack, onEnter, banner }: { initialMode: 'login' | 'signup'; onBack: () => void; onEnter: () => void; banner?: Banner | null }) {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode)
   const [googleEnabled, setGoogleEnabled] = useState(false)
   const [demoEnabled, setDemoEnabled] = useState(false)
   const [form, setForm] = useState({ email: '', password: '', displayName: '' })
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
+  // Set once a signup call succeeds — holds the backend's "check your email" message. A local
+  // signup no longer logs straight in: the account exists but can't authenticate until the
+  // emailed activation link is clicked, so there's nothing to enter yet.
+  const [signupMessage, setSignupMessage] = useState('')
   const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
 
   useEffect(() => {
@@ -143,22 +164,37 @@ export function LoginScreen({ initialMode, onBack, onEnter }: { initialMode: 'lo
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError('')
     try {
-      await api(mode === 'signup' ? '/api/auth/register' : '/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify(mode === 'signup'
-          ? { email: form.email, displayName: form.displayName || null, password: form.password }
-          : { email: form.email, password: form.password }),
-      })
-      onEnter()
+      if (mode === 'signup') {
+        const result = await api<{ message: string }>('/api/auth/register', {
+          method: 'POST',
+          body: JSON.stringify({ email: form.email, displayName: form.displayName || null, password: form.password }),
+        })
+        setSignupMessage(result.message)
+      } else {
+        await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: form.email, password: form.password }) })
+        onEnter()
+      }
     } catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong') } finally { setBusy(false) }
   }
   const continueWithGoogle = () => { window.location.href = `${API_URL}/oauth2/authorization/google` }
+
+  if (signupMessage) return <div className="public-page login-page">
+    <header className="public-nav"><button className="brand brand-btn" onClick={onBack}><div className="mark">F</div><span>FinSights</span></button></header>
+    <div className="login-center">
+      <section className="modal narrow login-card">
+        <h2>Check your email</h2>
+        <p>{signupMessage}</p>
+        <button type="button" className="primary" onClick={() => { setSignupMessage(''); setMode('login') }}>Back to log in</button>
+      </section>
+    </div>
+  </div>
 
   return <div className="public-page login-page">
     <header className="public-nav"><button className="brand brand-btn" onClick={onBack}><div className="mark">F</div><span>FinSights</span></button></header>
     <div className="login-center">
       <section className="modal narrow login-card">
         <h2>{mode === 'signup' ? 'Create your account' : 'Log in'}</h2>
+        {banner && <p className={banner.kind === 'success' ? 'form-success' : 'form-error'}>{banner.message}</p>}
         <form onSubmit={submit} className="auth-form">
           {mode === 'signup' && <Field label="Name"><input value={form.displayName} onChange={e => set('displayName', e.target.value)} placeholder="Your name" autoComplete="name" /></Field>}
           <Field label="Email" required><input type="email" required value={form.email} onChange={e => set('email', e.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>

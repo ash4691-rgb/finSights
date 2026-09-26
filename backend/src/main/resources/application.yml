@@ -25,6 +25,21 @@ spring:
     console:
       enabled: true
       path: /h2-console
+  # Gmail SMTP via an App Password — free, no extra service to sign up for. Blank
+  # username/password (the default) is a valid, supported state: MailService checks for that
+  # itself and logs the verification link instead of sending, so local dev/CI never needs real
+  # credentials.
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_USERNAME:}
+    password: ${GMAIL_APP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 server:
   port: ${PORT:8080}

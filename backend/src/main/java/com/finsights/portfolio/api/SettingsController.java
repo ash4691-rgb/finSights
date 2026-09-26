@@ -23,9 +23,13 @@ public class SettingsController {
     @PutMapping("/settings")
     SettingsResponse update(@Valid @RequestBody SettingsRequest request) { return settings.update(request); }
 
-    @PostMapping("/settings/edit-layout-onboarding/dismiss")
+    @PostMapping("/settings/custom-layout-onboarding/dismiss")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    void dismissEditLayoutOnboarding() { settings.dismissEditLayoutOnboarding(); }
+    void dismissCustomLayoutOnboarding() { settings.dismissCustomLayoutOnboarding(); }
+
+    @PostMapping("/settings/user-onboarding/dismiss")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void dismissUserOnboarding() { settings.dismissUserOnboarding(); }
 
     @GetMapping(value = "/account/export", produces = "application/json")
     ResponseEntity<Map<String, Object>> export() {
