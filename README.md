@@ -87,14 +87,22 @@ ANTHROPIC_API_KEY=sk-ant-... ./mvnw spring-boot:run
 ```
 
 Without `ANTHROPIC_API_KEY` set, the nav entry stays hidden entirely — that's the one thing you
-have to provide yourself. `GOKU_ALLOWLIST` is a comma-separated list of emails (case-insensitive);
-it defaults to `ash4691@gmail.com,demo@finsights.local` — the account this shipped for, plus demo
-mode's fixed `demo@finsights.local` user (every local/undeployed request signs in as that account
-unless Google OAuth is configured — see above). Other env vars: `GOKU_ENABLED` (default `true`),
-`GOKU_MODEL` (default `claude-haiku-4-5-20251001`), `GOKU_DAILY_QUERY_LIMIT` (default `40`, per
-user per day). `GET /api/goku/config` tells the frontend whether to render the nav entry at all;
-the backend re-checks the allowlist on every `POST /api/goku/chat` regardless of what the frontend
-shows.
+have to provide yourself.
+
+Who can chat with Goku is **database-backed**, not config: an admin adds/removes emails from a
+"⚙ Goku access" panel (its own nav entry, next to Goku's) instead of editing an env var and
+redeploying. `GOKU_SEED_ALLOWLIST` (comma-separated emails, defaults to
+`ash4691@gmail.com,demo@finsights.local`) only ever runs once, to populate that table on first
+boot against an otherwise-empty database — after that, every change goes through the admin panel.
+Who can *see* the admin panel is a separate, much smaller, config-only allowlist —
+`GOKU_ADMIN_ALLOWLIST` (defaults to `ash4691@gmail.com`) — kept out of the database on purpose,
+since granting admin access is a higher-trust action than granting chat access. Other env vars:
+`GOKU_ENABLED` (default `true`), `GOKU_MODEL` (default `claude-haiku-4-5-20251001`),
+`GOKU_DAILY_QUERY_LIMIT` (default `40`, per user per day).
+
+`GET /api/goku/config` tells the frontend whether to render the chat entry and/or the admin entry;
+the backend re-checks both independently on every call to `/api/goku/chat` and
+`/api/goku/admin/allowlist`, regardless of what the frontend shows.
 
 ## Tests
 

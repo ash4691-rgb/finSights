@@ -16,11 +16,12 @@ import org.springframework.web.server.ResponseStatusException;
 class GokuAccessServiceTest {
 
     @Mock CurrentUserService currentUserService;
+    @Mock GokuAllowlistService allowlistService;
 
-    private GokuAccessService access(boolean enabled, String allowlist, String apiKey) throws Exception {
-        GokuAccessService service = new GokuAccessService(currentUserService);
+    private GokuAccessService access(boolean enabled, String adminAllowlist, String apiKey) throws Exception {
+        GokuAccessService service = new GokuAccessService(currentUserService, allowlistService);
         set(service, "enabled", enabled);
-        set(service, "allowlistRaw", allowlist);
+        set(service, "adminAllowlistRaw", adminAllowlist);
         set(service, "apiKey", apiKey);
         return service;
     }
@@ -36,17 +37,19 @@ class GokuAccessServiceTest {
     }
 
     @Test
-    void availableForAnAllowlistedEmailCaseInsensitively() throws Exception {
-        GokuAccessService service = access(true, "ash4691@gmail.com, other@x.com", "sk-test");
-        userIs("Ash4691@Gmail.com");
+    void availableWhenTheAllowlistServiceSaysYes() throws Exception {
+        GokuAccessService service = access(true, "ash4691@gmail.com", "sk-test");
+        userIs("someone@gmail.com");
+        when(allowlistService.isAllowed("someone@gmail.com")).thenReturn(true);
 
         assertThat(service.isAvailable()).isTrue();
     }
 
     @Test
-    void notAvailableForAnEmailOutsideTheAllowlist() throws Exception {
+    void notAvailableWhenTheAllowlistServiceSaysNo() throws Exception {
         GokuAccessService service = access(true, "ash4691@gmail.com", "sk-test");
-        userIs("someone-else@gmail.com");
+        userIs("someone@gmail.com");
+        when(allowlistService.isAllowed("someone@gmail.com")).thenReturn(false);
 
         assertThat(service.isAvailable()).isFalse();
     }
@@ -66,18 +69,43 @@ class GokuAccessServiceTest {
     }
 
     @Test
-    void requireAvailableThrowsForbiddenWhenNotAvailable() throws Exception {
+    void adminAllowlistIsSeparateFromTheChatAllowlist() throws Exception {
+        GokuAccessService service = access(true, "ash4691@gmail.com, Other@Example.com", "sk-test");
+        userIs("other@example.com");
+
+        assertThat(service.isAdmin()).isTrue();
+    }
+
+    @Test
+    void notAdminForAnEmailOutsideTheAdminAllowlist() throws Exception {
         GokuAccessService service = access(true, "ash4691@gmail.com", "sk-test");
         userIs("someone-else@gmail.com");
+
+        assertThat(service.isAdmin()).isFalse();
+    }
+
+    @Test
+    void requireAvailableThrowsForbiddenWhenNotAvailable() throws Exception {
+        GokuAccessService service = access(true, "ash4691@gmail.com", "sk-test");
+        userIs("someone@gmail.com");
+        when(allowlistService.isAllowed("someone@gmail.com")).thenReturn(false);
 
         assertThatThrownBy(service::requireAvailable).isInstanceOf(ResponseStatusException.class);
     }
 
     @Test
-    void requireAvailableDoesNotThrowWhenAvailable() throws Exception {
+    void requireAdminThrowsForbiddenWhenNotAdmin() throws Exception {
+        GokuAccessService service = access(true, "ash4691@gmail.com", "sk-test");
+        userIs("someone-else@gmail.com");
+
+        assertThatThrownBy(service::requireAdmin).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void requireAdminDoesNotThrowForAnAdmin() throws Exception {
         GokuAccessService service = access(true, "ash4691@gmail.com", "sk-test");
         userIs("ash4691@gmail.com");
 
-        service.requireAvailable();
+        service.requireAdmin();
     }
 }
