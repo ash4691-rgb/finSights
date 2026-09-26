@@ -13,6 +13,16 @@ spring:
       maximum-pool-size: 5
       minimum-idle: 1
       idle-timeout: 60000
+      # Neon's pooled connection string routes through PgBouncer in transaction mode, which
+      # reuses one physical Postgres backend connection across many unrelated logical sessions.
+      # The JDBC driver's server-side prepared-statement cache lives on that physical connection,
+      # so a plan cached before a DDL change (e.g. ddl-auto=update's ALTER TABLE for a new column)
+      # can still be sitting there when a different session reuses the same connection afterward
+      # — Postgres then rejects it outright ("cached plan must not change result type") rather
+      # than risk returning wrong-shaped data. prepareThreshold=0 disables server-side prepared
+      # statements entirely, which is the documented fix for this PgBouncer/Postgres interaction.
+      data-source-properties:
+        prepareThreshold: 0
   jpa:
     hibernate:
       ddl-auto: update
