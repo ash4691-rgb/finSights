@@ -3,6 +3,7 @@ package com.finsights.portfolio.service;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.repository.UserAccountRepository;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class LocalAuthService {
     private static final int VERIFICATION_TOKEN_VALID_HOURS = 24;
+    private static final int MAX_VERIFICATION_RESENDS_PER_DAY = 5;
 
     private final UserAccountRepository users;
     private final PasswordEncoder passwordEncoder;
@@ -55,9 +57,44 @@ public class LocalAuthService {
                 .filter(u -> u.getPasswordHash() != null && passwordEncoder.matches(rawPassword, u.getPasswordHash()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Please verify your email before logging in — check your inbox for the activation link.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your account isn't verified yet. Pending verification email? Resend it below.");
         }
         return user;
+    }
+
+    /** Explicit, user-initiated "resend the activation link" — offered as a button once login
+     *  fails with the "not verified" message above. Capped at MAX_VERIFICATION_RESENDS_PER_DAY
+     *  so repeated clicks can't be used to spam a mailbox indefinitely.
+     *  @return a message describing the outcome, meant to be shown to the user as-is */
+    @Transactional
+    public String resendVerification(String email) {
+        UserAccount user = users.findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No account found for that email."));
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            return "This account is already verified — you can log in.";
+        }
+        return resendVerificationIfAllowed(user)
+                ? "A new verification email has been sent — check your inbox."
+                : "You've reached today's resend limit. Check your inbox (including spam) for a previous link, or try again tomorrow.";
+    }
+
+    private boolean resendVerificationIfAllowed(UserAccount user) {
+        LocalDate today = LocalDate.now();
+        if (!today.equals(user.getVerificationResendDate())) {
+            user.setVerificationResendDate(today);
+            user.setVerificationResendCount(0);
+        }
+        if (user.getVerificationResendCount() >= MAX_VERIFICATION_RESENDS_PER_DAY) {
+            users.save(user);
+            return false;
+        }
+        String token = UUID.randomUUID().toString();
+        user.setVerificationToken(token);
+        user.setVerificationTokenExpiresAt(Instant.now().plus(VERIFICATION_TOKEN_VALID_HOURS, ChronoUnit.HOURS));
+        user.setVerificationResendCount(user.getVerificationResendCount() + 1);
+        users.save(user);
+        mail.sendVerificationEmail(user.getEmail(), token);
+        return true;
     }
 
     @Transactional
