@@ -50,7 +50,8 @@ export type Settings = {
   notifyThresholdPercent: number
   dailyThresholdPercent?: number; weeklyThresholdPercent?: number; monthlyThresholdPercent?: number
   quarterlyThresholdPercent?: number; yearlyThresholdPercent?: number
-  demoMode: boolean; holdingCount: number; memberSince: string; editLayoutOnboardingDismissed: boolean
+  demoMode: boolean; holdingCount: number; memberSince: string; customLayoutOnboardingDismissed: boolean
+  userOnboardingDismissed: boolean
 }
 export type Country = { code: string; name: string; currency: string }
 export type Transaction = {

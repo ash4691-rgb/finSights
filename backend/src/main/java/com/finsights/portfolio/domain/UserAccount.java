@@ -43,14 +43,19 @@ public class UserAccount {
     private BigDecimal quarterlyThresholdPercent;
     @Column(precision = 6, scale = 2)
     private BigDecimal yearlyThresholdPercent;
-    /** "Don't show this again" for the Edit Layout onboarding tour — once true, the tour never
+    /** "Don't show this again" for the CustomLayoutOnboarding tour — once true, the tour never
      *  replays for this user; while false, it re-shows every time they enter Edit Layout mode.
      *  Needs a SQL-level default (not just the Java-side one below): ddl-auto=update's ALTER
      *  TABLE has to backfill this NOT NULL column for every existing row, and it only knows
      *  how to do that from a column default, not from the entity's default field value. */
     @Column(nullable = false)
     @ColumnDefault("false")
-    private Boolean editLayoutOnboardingDismissed = false;
+    private Boolean customLayoutOnboardingDismissed = false;
+    /** "Don't show this again" for the UserOnboarding tour (the app-concepts walkthrough shown
+     *  on first entering the app) — same one-way-flip semantics as customLayoutOnboardingDismissed. */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private Boolean userOnboardingDismissed = false;
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -93,7 +98,9 @@ public class UserAccount {
     public void setQuarterlyThresholdPercent(BigDecimal quarterlyThresholdPercent) { this.quarterlyThresholdPercent = quarterlyThresholdPercent; }
     public BigDecimal getYearlyThresholdPercent() { return yearlyThresholdPercent; }
     public void setYearlyThresholdPercent(BigDecimal yearlyThresholdPercent) { this.yearlyThresholdPercent = yearlyThresholdPercent; }
-    public Boolean getEditLayoutOnboardingDismissed() { return editLayoutOnboardingDismissed; }
-    public void setEditLayoutOnboardingDismissed(Boolean editLayoutOnboardingDismissed) { this.editLayoutOnboardingDismissed = editLayoutOnboardingDismissed; }
+    public Boolean getCustomLayoutOnboardingDismissed() { return customLayoutOnboardingDismissed; }
+    public void setCustomLayoutOnboardingDismissed(Boolean customLayoutOnboardingDismissed) { this.customLayoutOnboardingDismissed = customLayoutOnboardingDismissed; }
+    public Boolean getUserOnboardingDismissed() { return userOnboardingDismissed; }
+    public void setUserOnboardingDismissed(Boolean userOnboardingDismissed) { this.userOnboardingDismissed = userOnboardingDismissed; }
     public Instant getCreatedAt() { return createdAt; }
 }

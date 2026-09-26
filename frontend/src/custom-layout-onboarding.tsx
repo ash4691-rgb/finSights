@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useEscToClose } from './ui'
-import { dismissEditLayoutOnboarding } from './layout-api'
+import { dismissCustomLayoutOnboarding } from './layout-api'
 
 // A short, one-time (replays until dismissed) walkthrough of Edit Layout mode. Every
 // edit-layout-capable page (dashboard/insights/brokers) already ships a seeded, deletable
@@ -32,13 +32,13 @@ const STEPS: { title: string; body: string }[] = [
   },
 ]
 
-export function EditLayoutOnboarding({ onClose, onDismissForever }: { onClose: () => void; onDismissForever: () => void }) {
+export function CustomLayoutOnboarding({ onClose, onDismissForever }: { onClose: () => void; onDismissForever: () => void }) {
   const [step, setStep] = useState(0)
   const [dontShowAgain, setDontShowAgain] = useState(false)
   useEscToClose(onClose)
 
   const finish = () => {
-    if (dontShowAgain) { onDismissForever(); void dismissEditLayoutOnboarding() }
+    if (dontShowAgain) { onDismissForever(); void dismissCustomLayoutOnboarding() }
     onClose()
   }
   const isLast = step === STEPS.length - 1
