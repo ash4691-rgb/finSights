@@ -27,3 +27,7 @@ services:
         sync: false   # your Vercel domain, e.g. https://finsights.vercel.app
       - key: CORS_ORIGIN
         sync: false   # same as FRONTEND_URL
+      - key: GMAIL_USERNAME
+        sync: false   # the Gmail address account-activation emails are sent from
+      - key: GMAIL_APP_PASSWORD
+        sync: false   # a 16-character Google Account App Password, not the account's login password

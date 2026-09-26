@@ -15,6 +15,16 @@ public class UserAccount {
     private String displayName;
     /** BCrypt hash for email/password sign-in. Null for the demo account and for Google users. */
     private String passwordHash;
+    /** True for the demo account and Google users (never asked to verify); false from creation
+     *  for a local email/password signup until the emailed link is clicked. LocalAuthService
+     *  blocks {@code login()} while this is false — Google's own login path never checks it,
+     *  since Google has already verified the address before handing it to us. */
+    @Column(nullable = false)
+    @ColumnDefault("true")
+    private Boolean emailVerified = true;
+    /** Set alongside emailVerified=false at local registration; cleared once verified. */
+    private String verificationToken;
+    private Instant verificationTokenExpiresAt;
     private String phone;
     /** ISO-3166 alpha-2 country of residence; drives {@link #baseCurrency} via CountryCurrencyService. */
     @Column(nullable = false)
@@ -72,6 +82,12 @@ public class UserAccount {
     public void setDisplayName(String displayName) { this.displayName = displayName; }
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+    public Boolean getEmailVerified() { return emailVerified; }
+    public void setEmailVerified(Boolean emailVerified) { this.emailVerified = emailVerified; }
+    public String getVerificationToken() { return verificationToken; }
+    public void setVerificationToken(String verificationToken) { this.verificationToken = verificationToken; }
+    public Instant getVerificationTokenExpiresAt() { return verificationTokenExpiresAt; }
+    public void setVerificationTokenExpiresAt(Instant verificationTokenExpiresAt) { this.verificationTokenExpiresAt = verificationTokenExpiresAt; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
     public String getCountry() { return country; }

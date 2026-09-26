@@ -6,5 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface UserAccountRepository extends JpaRepository<UserAccount, String> {
     Optional<UserAccount> findByEmail(String email);
+    Optional<UserAccount> findByVerificationToken(String verificationToken);
 }
 

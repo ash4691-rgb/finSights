@@ -239,6 +239,7 @@ th.sortable:hover{color:var(--text)}
 .check-row{grid-column:1/-1;display:flex;gap:20px;color:var(--text-2);font-size:12px}
 .check-row label{display:flex;gap:7px;align-items:center}
 .form-error{color:var(--error-text);font-size:12px;background:var(--error-bg);padding:9px;border-radius:6px;margin:16px 0 0}
+.form-success{color:var(--success-text);font-size:12px;background:var(--success-bg);padding:9px;border-radius:6px;margin:0 0 16px}
 /* Page-scoped fetch failure — stands in for one page's data without blocking the rest of the app. */
 .section-error{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin:16px 0;padding:20px;border:1px solid var(--error-text);border-radius:13px;background:var(--error-bg);color:var(--text)}
 .section-error p{margin:0;font-size:13px;color:var(--text-2)}
