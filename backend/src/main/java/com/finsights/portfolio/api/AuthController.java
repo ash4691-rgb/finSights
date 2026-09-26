@@ -4,8 +4,10 @@ import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.AuthConfigResponse;
 import com.finsights.portfolio.dto.CurrentUserResponse;
 import com.finsights.portfolio.dto.LoginRequest;
+import com.finsights.portfolio.dto.MessageResponse;
 import com.finsights.portfolio.dto.RegisterRequest;
 import com.finsights.portfolio.dto.RegisterResponse;
+import com.finsights.portfolio.dto.ResendVerificationRequest;
 import com.finsights.portfolio.dto.VerifyRequest;
 import com.finsights.portfolio.service.CurrentUserService;
 import com.finsights.portfolio.service.LocalAuthService;
@@ -58,6 +60,11 @@ public class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void verify(@Valid @RequestBody VerifyRequest request) {
         localAuth.verifyEmail(request.token());
+    }
+
+    @PostMapping("/resend-verification")
+    MessageResponse resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        return new MessageResponse(localAuth.resendVerification(request.email()));
     }
 
     @PostMapping("/login")

@@ -4,11 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.repository.UserAccountRepository;
+import java.time.LocalDate;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -92,7 +96,7 @@ class LocalAuthServiceTest {
     }
 
     @Test
-    void loginFailsForAnUnverifiedLocalAccount() {
+    void loginFailsForAnUnverifiedLocalAccountWithoutSendingAnything() {
         UserAccount stored = new UserAccount("sam@example.com", "Sam");
         stored.setPasswordHash(new BCryptPasswordEncoder().encode("hunter2horse"));
         stored.setEmailVerified(false);
@@ -100,7 +104,76 @@ class LocalAuthServiceTest {
 
         assertThatThrownBy(() -> service.login("sam@example.com", "hunter2horse"))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("verify your email");
+                .hasMessageContaining("isn't verified")
+                .hasMessageContaining("Resend");
+        verify(mail, never()).sendVerificationEmail(anyString(), anyString());
+    }
+
+    @Test
+    void resendVerificationSendsANewEmailAndIncrementsTheCounter() {
+        UserAccount stored = new UserAccount("sam@example.com", "Sam");
+        stored.setEmailVerified(false);
+        String originalToken = stored.getVerificationToken();
+        when(users.findByEmail("sam@example.com")).thenReturn(Optional.of(stored));
+
+        String message = service.resendVerification("sam@example.com");
+
+        assertThat(message).contains("has been sent");
+        assertThat(stored.getVerificationToken()).isNotBlank().isNotEqualTo(originalToken);
+        assertThat(stored.getVerificationResendCount()).isEqualTo(1);
+        verify(mail).sendVerificationEmail(eq("sam@example.com"), anyString());
+    }
+
+    @Test
+    void resendVerificationStopsOnceTheDailyLimitIsReached() {
+        UserAccount stored = new UserAccount("sam@example.com", "Sam");
+        stored.setEmailVerified(false);
+        stored.setVerificationResendDate(LocalDate.now());
+        stored.setVerificationResendCount(5);
+        when(users.findByEmail("sam@example.com")).thenReturn(Optional.of(stored));
+
+        String message = service.resendVerification("sam@example.com");
+
+        assertThat(message).contains("resend limit");
+        assertThat(stored.getVerificationResendCount()).isEqualTo(5);
+        verify(mail, never()).sendVerificationEmail(anyString(), anyString());
+    }
+
+    @Test
+    void resendVerificationResetsTheCounterOnANewDay() {
+        UserAccount stored = new UserAccount("sam@example.com", "Sam");
+        stored.setEmailVerified(false);
+        stored.setVerificationResendDate(LocalDate.now().minusDays(1));
+        stored.setVerificationResendCount(5);
+        when(users.findByEmail("sam@example.com")).thenReturn(Optional.of(stored));
+
+        String message = service.resendVerification("sam@example.com");
+
+        assertThat(message).contains("has been sent");
+        assertThat(stored.getVerificationResendDate()).isEqualTo(LocalDate.now());
+        assertThat(stored.getVerificationResendCount()).isEqualTo(1);
+        verify(mail, times(1)).sendVerificationEmail(eq("sam@example.com"), anyString());
+    }
+
+    @Test
+    void resendVerificationRejectsAnUnknownEmail() {
+        when(users.findByEmail("nobody@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.resendVerification("nobody@example.com"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("No account found");
+    }
+
+    @Test
+    void resendVerificationTellsAnAlreadyVerifiedUserToJustLogIn() {
+        UserAccount stored = new UserAccount("sam@example.com", "Sam");
+        stored.setEmailVerified(true);
+        when(users.findByEmail("sam@example.com")).thenReturn(Optional.of(stored));
+
+        String message = service.resendVerification("sam@example.com");
+
+        assertThat(message).contains("already verified");
+        verify(mail, never()).sendVerificationEmail(anyString(), anyString());
     }
 
     @Test

@@ -25,6 +25,12 @@ public class UserAccount {
     /** Set alongside emailVerified=false at local registration; cleared once verified. */
     private String verificationToken;
     private Instant verificationTokenExpiresAt;
+    /** Resend-verification-email rate limit: reset to 0 whenever verificationResendDate isn't
+     *  today, so this only ever tracks "how many resends today" — see LocalAuthService.login(). */
+    @Column(nullable = false)
+    @ColumnDefault("0")
+    private int verificationResendCount = 0;
+    private java.time.LocalDate verificationResendDate;
     private String phone;
     /** ISO-3166 alpha-2 country of residence; drives {@link #baseCurrency} via CountryCurrencyService. */
     @Column(nullable = false)
@@ -94,6 +100,10 @@ public class UserAccount {
     public void setVerificationToken(String verificationToken) { this.verificationToken = verificationToken; }
     public Instant getVerificationTokenExpiresAt() { return verificationTokenExpiresAt; }
     public void setVerificationTokenExpiresAt(Instant verificationTokenExpiresAt) { this.verificationTokenExpiresAt = verificationTokenExpiresAt; }
+    public int getVerificationResendCount() { return verificationResendCount; }
+    public void setVerificationResendCount(int verificationResendCount) { this.verificationResendCount = verificationResendCount; }
+    public java.time.LocalDate getVerificationResendDate() { return verificationResendDate; }
+    public void setVerificationResendDate(java.time.LocalDate verificationResendDate) { this.verificationResendDate = verificationResendDate; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
     public String getCountry() { return country; }

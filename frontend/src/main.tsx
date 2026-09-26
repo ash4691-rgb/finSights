@@ -167,7 +167,12 @@ export function LoginScreen({ initialMode, onBack, onEnter, banner }: { initialM
   // signup no longer logs straight in: the account exists but can't authenticate until the
   // emailed activation link is clicked, so there's nothing to enter yet.
   const [signupMessage, setSignupMessage] = useState('')
-  const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }))
+  // A failed login against an unverified account offers a "Resend" button right there, rather
+  // than leaving the user stuck if the original email never arrived — see LocalAuthService's
+  // exact wording, matched here to decide when to show it.
+  const [resendBusy, setResendBusy] = useState(false)
+  const [resendMessage, setResendMessage] = useState('')
+  const set = (key: string, value: string) => { setForm(current => ({ ...current, [key]: value })); setResendMessage('') }
 
   useEffect(() => {
     api<{ googleEnabled: boolean; demoEnabled: boolean }>('/api/auth/config')
@@ -176,7 +181,7 @@ export function LoginScreen({ initialMode, onBack, onEnter, banner }: { initialM
   }, [])
 
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setError('')
+    event.preventDefault(); setBusy(true); setError(''); setResendMessage('')
     try {
       if (mode === 'signup') {
         const result = await api<{ message: string }>('/api/auth/register', {
@@ -191,6 +196,17 @@ export function LoginScreen({ initialMode, onBack, onEnter, banner }: { initialM
     } catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong') } finally { setBusy(false) }
   }
   const continueWithGoogle = () => { window.location.href = `${API_URL}/oauth2/authorization/google` }
+  const needsVerification = error.includes("isn't verified")
+  const resend = async () => {
+    setResendBusy(true)
+    try {
+      const result = await api<{ message: string }>('/api/auth/resend-verification', {
+        method: 'POST', body: JSON.stringify({ email: form.email }),
+      })
+      setResendMessage(result.message)
+    } catch (err) { setResendMessage(err instanceof Error ? err.message : 'Something went wrong') }
+    finally { setResendBusy(false) }
+  }
 
   if (signupMessage) return <div className="public-page login-page">
     <header className="public-nav"><button className="brand brand-btn" onClick={onBack}><div className="mark">F</div><span>FinSights</span></button></header>
@@ -214,11 +230,15 @@ export function LoginScreen({ initialMode, onBack, onEnter, banner }: { initialM
           <Field label="Email" required><input type="email" required value={form.email} onChange={e => set('email', e.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
           <Field label="Password" required><input type="password" required minLength={mode === 'signup' ? 8 : undefined} value={form.password} onChange={e => set('password', e.target.value)} placeholder={mode === 'signup' ? 'At least 8 characters' : ''} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} /></Field>
           {error && <p className="form-error">{error}</p>}
+          {needsVerification && !resendMessage && <button type="button" className="outline" disabled={resendBusy} onClick={() => void resend()}>
+            {resendBusy ? 'Sending…' : 'Resend verification email'}
+          </button>}
+          {resendMessage && <p className="form-success">{resendMessage}</p>}
           <button className="primary" disabled={busy}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Log in'}</button>
         </form>
         <p className="auth-toggle">
           {mode === 'signup' ? 'Already have an account? ' : 'New to FinSights? '}
-          <button type="button" onClick={() => { setMode(mode === 'signup' ? 'login' : 'signup'); setError('') }}>
+          <button type="button" onClick={() => { setMode(mode === 'signup' ? 'login' : 'signup'); setError(''); setResendMessage('') }}>
             {mode === 'signup' ? 'Log in' : 'Create an account'}
           </button>
         </p>
