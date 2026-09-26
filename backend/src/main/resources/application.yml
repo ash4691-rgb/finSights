@@ -40,6 +40,15 @@ spring:
           auth: true
           starttls:
             enable: true
+  # Sessions persisted to the same database instead of living only in this process's memory —
+  # otherwise every redeploy (a brand-new process, empty in-memory session store) silently signs
+  # every logged-in user out, even though nothing about their actual session was invalid.
+  # initialize-schema: always (not Boot's embedded-only default) because this runs against a
+  # real Postgres in production, not just H2 in dev.
+  session:
+    store-type: jdbc
+    jdbc:
+      initialize-schema: always
 
 server:
   port: ${PORT:8080}
