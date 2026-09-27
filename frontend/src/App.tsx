@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, API_URL } from './api'
+import { api, ApiError, API_URL } from './api'
 import { applyLocale, currencies, nav, downloadCsv, label, rate, ago, THEME_KEY, initialTheme } from './util'
 import { clearPageLayout, createPanel, flushPageSave, hasNoPersistedSections, hydrateLayouts, LayoutMenu } from './layout'
 import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layout-config'
@@ -97,6 +97,11 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     try {
       me = await api<User>('/api/auth/me')
     } catch (err) {
+      // 401 means the session itself is gone (expired, signed out elsewhere, or invalidated by
+      // a backend restart) — no retry will fix that, so run the same sign-out flow as the
+      // "Sign out" button instead of getting stuck on a "could not connect" error that just
+      // 401s again on every "Try again".
+      if (err instanceof ApiError && err.status === 401) { onSignOut(); return }
       if (isFirstLoad) { setError(err instanceof Error ? err.message : 'Unable to load the portfolio'); setLoading(false) }
       return
     }
