@@ -17,13 +17,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Converts between currencies for display purposes only. INR crosses for every supported
- * currency are pulled from the same live, best-effort feed {@link MarketDataService} already
- * uses for holding prices, refreshed at most every {@link #RATE_MAX_AGE} — the same ~15-30
- * minute staleness the rest of the app already accepts for market-linked assets (see
- * {@code HoldingService.PRICE_MAX_AGE}). A currency the feed can't reach on a given refresh
- * just keeps its last known-good rate (seeded from a hand-maintained fallback table on a cold
- * start) instead of failing — a dead feed degrades the numbers shown, never the app. Every
+ * Converts between currencies for display purposes only. INR crosses for a small, fixed set of
+ * currencies are pulled from the same live, best-effort feed {@link MarketDataService} already
+ * uses for holding prices, refreshed at most every {@link #RATE_MAX_AGE} directly (unlike
+ * holding/watchlist prices, this doesn't go through {@link LivePriceService}'s shared table —
+ * five currency tickers, cached once per app instance, isn't the per-holding-per-user scaling
+ * problem that cache exists for). A currency the feed can't reach on a given refresh just keeps
+ * its last known-good rate (seeded from a hand-maintained fallback table on a cold start)
+ * instead of failing — a dead feed degrades the numbers shown, never the app. Every
  * response carries {@link FxRatesResponse#asOf()} so the UI can say how fresh the rates are.
  */
 @Service

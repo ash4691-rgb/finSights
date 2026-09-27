@@ -51,6 +51,7 @@ class HoldingServiceTest {
     @Mock TransactionRepository transactions;
     @Mock PriceSnapshotService snapshots;
     @Mock MarketDataService marketData;
+    @Mock LivePriceService livePrices;
     @Mock com.finsights.portfolio.repository.EmiPaymentRepository emiPayments;
 
     private HoldingService service;
@@ -58,7 +59,7 @@ class HoldingServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new HoldingService(holdings, categories, currentUser, valuations, fx, transactions, snapshots, marketData, emiPayments);
+        service = new HoldingService(holdings, categories, currentUser, valuations, fx, transactions, snapshots, marketData, livePrices, emiPayments);
         holding = new Holding();
         holding.setName("Reliance");
     }
@@ -193,7 +194,7 @@ class HoldingServiceTest {
         when(currentUser.currentUser()).thenReturn(user);
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of(holding));
         when(transactions.findHoldingIdsWithTransactions(any())).thenReturn(new HashSet<>());
-        when(marketData.quotes(any())).thenReturn(Map.of("HUGE", new MarketQuoteResponse("HUGE", "Huge Co", new BigDecimal("500"), "INR", null)));
+        when(livePrices.getPrices(any())).thenReturn(Map.of("HUGE", new MarketQuoteResponse("HUGE", "Huge Co", new BigDecimal("500"), "INR", null)));
         when(fx.convert(any(), any(), any())).thenReturn(new BigDecimal("500"));
         when(valuations.currentValue(any())).thenReturn(new BigDecimal("100.00"));
 
@@ -220,7 +221,7 @@ class HoldingServiceTest {
         when(currentUser.currentUser()).thenReturn(user);
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of(holding));
         when(transactions.findHoldingIdsWithTransactions(any())).thenReturn(new HashSet<>());
-        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE", new MarketQuoteResponse("RELIANCE", "Reliance", new BigDecimal("500"), "INR", null)));
+        when(livePrices.getPrices(any())).thenReturn(Map.of("RELIANCE", new MarketQuoteResponse("RELIANCE", "Reliance", new BigDecimal("500"), "INR", null)));
         when(fx.convert(any(), any(), any())).thenReturn(new BigDecimal("500"));
         when(valuations.currentValue(any())).thenReturn(new BigDecimal("100.00"));
         when(snapshots.hasSnapshotAtOrBefore(any(), any(), any())).thenReturn(false);
@@ -251,7 +252,7 @@ class HoldingServiceTest {
         when(currentUser.currentUser()).thenReturn(user);
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of(holding));
         when(transactions.findHoldingIdsWithTransactions(any())).thenReturn(new HashSet<>());
-        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE", new MarketQuoteResponse("RELIANCE", "Reliance", new BigDecimal("500"), "INR", null)));
+        when(livePrices.getPrices(any())).thenReturn(Map.of("RELIANCE", new MarketQuoteResponse("RELIANCE", "Reliance", new BigDecimal("500"), "INR", null)));
         when(fx.convert(any(), any(), any())).thenReturn(new BigDecimal("500"));
         when(valuations.currentValue(any())).thenReturn(new BigDecimal("100.00"));
         when(snapshots.hasSnapshotAtOrBefore(any(), any(), any())).thenReturn(true);

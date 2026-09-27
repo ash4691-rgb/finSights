@@ -50,16 +50,15 @@ public class HoldingService {
     private final TransactionRepository transactions;
     private final PriceSnapshotService snapshots;
     private final MarketDataService marketData;
+    private final LivePriceService livePrices;
     private final com.finsights.portfolio.repository.EmiPaymentRepository emiPayments;
 
-    /** MARKET_PRICE holdings are re-priced from the live feed no more often than this. */
-    private static final Duration PRICE_MAX_AGE = Duration.ofMinutes(15);
     /** How far back a historical backfill needs to already reach before it's considered done. */
     private static final Duration DEEP_HISTORY_WINDOW = Duration.ofDays(350);
 
     public HoldingService(HoldingRepository holdings, CategoryRepository categories, CurrentUserService currentUser,
                           ValuationService valuations, FxRateService fx, TransactionRepository transactions,
-                          PriceSnapshotService snapshots, MarketDataService marketData,
+                          PriceSnapshotService snapshots, MarketDataService marketData, LivePriceService livePrices,
                           com.finsights.portfolio.repository.EmiPaymentRepository emiPayments) {
         this.holdings = holdings;
         this.emiPayments = emiPayments;
@@ -70,6 +69,7 @@ public class HoldingService {
         this.transactions = transactions;
         this.snapshots = snapshots;
         this.marketData = marketData;
+        this.livePrices = livePrices;
     }
 
     @Transactional
@@ -83,27 +83,29 @@ public class HoldingService {
     }
 
     /**
-     * Re-prices MARKET_PRICE holdings that have a ticker, a quantity, and a price older
-     * than {@link #PRICE_MAX_AGE}. Runs on every Holdings-page load; the feed itself is
-     * cached and every failure is swallowed so a dead feed never blocks the page.
+     * Re-prices MARKET_PRICE holdings that have a ticker and a quantity, from the shared
+     * {@link LivePriceService} cache — a local DB lookup, not a Yahoo/mfapi call, so this runs
+     * on every Holdings-page load without adding external-network latency to it (LivePriceService
+     * itself falls back to an on-demand fetch only for a symbol nobody's ever priced yet).
+     * A holding already up to date with the cached price is left untouched — no redundant
+     * save()/snapshot on every single load, only when the shared price actually moved on.
      */
     private void refreshMarketPrices(List<Holding> owned) {
-        Instant cutoff = Instant.now().minus(PRICE_MAX_AGE);
-        List<Holding> stale = owned.stream()
+        List<Holding> priced = owned.stream()
                 .filter(h -> h.getValuationMethod() == ValuationMethod.MARKET_PRICE)
                 .filter(h -> h.getTickerSymbol() != null && !h.getTickerSymbol().isBlank())
                 .filter(h -> h.getQuantity() != null && h.getQuantity().signum() > 0)
-                .filter(h -> h.getPriceUpdatedAt() == null || h.getPriceUpdatedAt().isBefore(cutoff))
                 .toList();
-        if (stale.isEmpty()) return;
+        if (priced.isEmpty()) return;
 
-        Map<String, MarketQuoteResponse> quotes = marketData.quotes(stale.stream()
+        Map<String, MarketQuoteResponse> quotes = livePrices.getPrices(priced.stream()
                 .map(h -> h.getTickerSymbol().trim().toUpperCase())
                 .collect(Collectors.toSet()));
-        Instant now = Instant.now();
-        for (Holding holding : stale) {
+        for (Holding holding : priced) {
             MarketQuoteResponse quote = quotes.get(holding.getTickerSymbol().trim().toUpperCase());
             if (quote == null || quote.price() == null || quote.price().signum() <= 0) continue;
+            Instant asOf = quote.asOf() != null ? quote.asOf() : Instant.now();
+            if (holding.getPriceUpdatedAt() != null && !holding.getPriceUpdatedAt().isBefore(asOf)) continue;
             BigDecimal unitPrice = convertToHoldingCurrency(quote.price(), quote.currency(), holding.getCurrency());
             BigDecimal newValue = unitPrice.multiply(holding.getQuantity()).setScale(2, RoundingMode.HALF_UP);
             // A wildly oversized quantity (or a bad quote) can compute a value the `holdings`
@@ -115,7 +117,7 @@ public class HoldingService {
             }
             BigDecimal oldValue = zeroIfNull(holding.getCurrentValue());
             holding.setCurrentValue(newValue);
-            holding.setPriceUpdatedAt(now);
+            holding.setPriceUpdatedAt(asOf);
             holdings.save(holding);
             if (oldValue.compareTo(newValue) != 0) {
                 snapshots.record(SnapshotSubject.HOLDING, holding.getId(), holding.getUser(), newValue);
