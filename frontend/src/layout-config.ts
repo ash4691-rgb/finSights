@@ -11,7 +11,7 @@ export type ZoneConfig =
   | { kind: 'widget'; seed: Omit<Widget, 'id'>[] }
   | { kind: 'sections'; seed: SectionSeed[] }
 
-export const PAGE_LAYOUT: Record<'dashboard' | 'insights' | 'brokers', Record<string, ZoneConfig>> = {
+export const PAGE_LAYOUT: Record<'dashboard' | 'insights', Record<string, ZoneConfig>> = {
   // No seeded sections on either page — onboarding new users into the widget system with sample
   // content is Platform's to build, not seed data baked into these pages.
   dashboard: {
@@ -19,19 +19,6 @@ export const PAGE_LAYOUT: Record<'dashboard' | 'insights' | 'brokers', Record<st
   },
   insights: {
     'insights/widgets': { kind: 'sections', seed: [] },
-  },
-  brokers: {
-    'brokers/widgets': { kind: 'sections', seed: [
-      { title: 'Overview', deletable: false, widgets: [
-        { subType: 'histogram', title: 'Value by broker', query: { dimension: 'broker', measure: 'currentValue' }, deletable: false },
-        { subType: 'counter', title: 'Total portfolio value', query: { measure: 'currentValue' }, deletable: false },
-      ] },
-      { title: 'Demo section', deletable: true, widgets: [
-        { subType: 'pie-chart', title: 'Invested by broker', query: { dimension: 'broker', measure: 'investedValue' }, deletable: true },
-        { subType: 'counter', title: 'Total holdings', query: { measure: 'holdingCount' }, deletable: true },
-      ] },
-    ] },
-    // existing zones (brokers/page, brokers/grid) stay implicit / plain as today
   },
 }
 

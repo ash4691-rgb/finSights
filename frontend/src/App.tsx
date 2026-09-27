@@ -69,7 +69,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
 
   // Leaving a page always drops out of layout-edit mode.
   useEffect(() => { setLayoutEditing(false) }, [page])
-  const canEditLayout = page === 'dashboard' || page === 'insights' || page === 'brokers'
+  const canEditLayout = page === 'dashboard' || page === 'insights'
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -253,7 +253,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       {page === 'insights' && (settings && dashboard
         ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />
         : <SectionError what="insights" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
-      {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />}
+      {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} />}
       {page === 'settings' && (settings
         ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme} />
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
