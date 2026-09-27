@@ -4,13 +4,13 @@ import { ago } from './util'
 import { Field, useEscToClose } from './ui'
 import type { GokuAllowedUser, GokuChatReply, GokuConfig, GokuMessage } from './types'
 
-// Goku's state + send logic, lifted out of the panel so its trigger can live in the sidebar
-// nav (see App.tsx) while the panel itself renders elsewhere. Conversation lives only in this
-// hook's state; Goku keeps no server-side history, so a reload starts fresh, same as the rate
-// limit resetting daily.
+// Goku's state + send logic, lifted out of the launcher/panel so both can render as siblings
+// at the top of App.tsx. Conversation lives only in this hook's state; Goku keeps no
+// server-side history, so a reload starts fresh, same as the rate limit resetting daily.
 export function useGoku() {
   const [available, setAvailable] = useState(false)
   const [admin, setAdmin] = useState(false)
+  const [unavailableReason, setUnavailableReason] = useState('')
   const [open, setOpen] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
   const [messages, setMessages] = useState<GokuMessage[]>([])
@@ -20,8 +20,9 @@ export function useGoku() {
   const [remaining, setRemaining] = useState<number | null>(null)
 
   useEffect(() => {
-    api<GokuConfig>('/api/goku/config').then(cfg => { setAvailable(cfg.available); setAdmin(cfg.admin) })
-      .catch(() => { setAvailable(false); setAdmin(false) })
+    api<GokuConfig>('/api/goku/config')
+      .then(cfg => { setAvailable(cfg.available); setAdmin(cfg.admin); setUnavailableReason(cfg.reason ?? '') })
+      .catch(() => { setAvailable(false); setAdmin(false); setUnavailableReason('') })
   }, [])
 
   const send = async () => {
@@ -46,24 +47,25 @@ export function useGoku() {
     }
   }
 
-  return { available, admin, open, setOpen, showAdmin, setShowAdmin, messages, draft, setDraft, sending, error, remaining, send }
+  return { available, admin, unavailableReason, open, setOpen, showAdmin, setShowAdmin, messages, draft, setDraft, sending, error, remaining, send }
 }
 
 export type Goku = ReturnType<typeof useGoku>
 
-// Sidebar nav entry — same shape as the page links above it (icon + label), so Goku reads as
-// part of the app's own navigation rather than a bolted-on widget. Only rendered once `available`
-// is true; hidden entirely for anyone off the allowlist.
-export function GokuNavButton({ goku }: Readonly<{ goku: Goku }>) {
-  return <button type="button" className={`goku-nav-btn${goku.open ? ' active' : ''}`}
-    onClick={() => goku.setOpen(o => !o)} title="Ask Goku about your portfolio">
-    <span className="goku-nav-icon" aria-hidden>⚡</span> Goku
+// Floating action button, bottom-right on every page — rendered once `available` is true,
+// hidden entirely for anyone off the allowlist. Toggles the chat panel; swaps to a close icon
+// while it's open so the button itself is the only thing you need to click either way.
+export function GokuLauncher({ goku }: Readonly<{ goku: Goku }>) {
+  return <button type="button" className={`goku-launcher${goku.open ? ' active' : ''}`}
+    onClick={() => goku.setOpen(o => !o)} title={goku.open ? 'Close Goku' : 'Ask Goku about your portfolio'}>
+    <span aria-hidden>{goku.open ? '×' : '⚡'}</span>
   </button>
 }
 
 // Shown only to admins (app.goku.admin-allowlist), independent of `available` — an admin should
 // be able to grant Goku access to others (or to themselves) even before they've granted it to
-// themselves personally.
+// themselves personally. Lives in the sidebar nav since it's an admin/settings action, not the
+// chat itself.
 export function GokuAdminButton({ goku }: Readonly<{ goku: Goku }>) {
   return <button type="button" className="goku-nav-btn goku-admin-btn"
     onClick={() => goku.setShowAdmin(true)} title="Manage who can access Goku">
@@ -155,6 +157,9 @@ export function GokuAdminModal({ goku }: Readonly<{ goku: Goku }>) {
       <div><p className="eyebrow">GOKU</p><h2>Who can access Goku</h2></div>
       <button className="close" onClick={() => goku.setShowAdmin(false)} aria-label="Close">×</button>
     </div>
+    {goku.unavailableReason && <p className="hint goku-admin-error">
+      Chat isn't showing for you yet: {goku.unavailableReason}
+    </p>}
     <Field label="Add an email" wide>
       <div className="goku-admin-add">
         <input type="email" value={email} placeholder="name@example.com" disabled={saving}

@@ -43,6 +43,17 @@ public class GokuAccessService {
         return adminEmails().contains(currentUserEmail());
     }
 
+    /**
+     * Why {@link #isAvailable()} is false, for an admin to self-diagnose a missing chat button
+     * without needing to read server logs or config. Never shown to non-admins.
+     */
+    public String unavailableReason() {
+        if (!enabled) return "Goku is disabled (app.goku.enabled / GOKU_ENABLED is false).";
+        if (apiKey == null || apiKey.isBlank()) return "ANTHROPIC_API_KEY isn't configured on the backend.";
+        if (!allowlist.isAllowed(currentUserEmail())) return "Your account isn't on the chat allowlist yet — add it below.";
+        return null;
+    }
+
     private String currentUserEmail() {
         String email = currentUser.currentUser().getEmail();
         return email == null ? null : email.toLowerCase();
