@@ -613,13 +613,21 @@ th.sortable:hover{color:var(--text)}
 .link-back:hover{color:var(--text)}
 
 /* ---------- Goku chat widget ---------- */
-/* Lives in the sidebar nav, styled like the page links above it but with its own gold "power up"
-   accent so it still reads as a different kind of thing (a chat trigger, not a page). */
+/* .goku-nav-btn is now only the admin-panel entry, still styled like the page links above it
+   in the sidebar but with its own gold "power up" accent. The chat trigger itself is the
+   floating .goku-launcher button, bottom-right on every page. */
 .goku-nav-btn{margin-top:10px;color:var(--goku-gold)!important}
 .goku-nav-btn:hover,.goku-nav-btn.active{background:var(--goku-gold-soft)!important;color:var(--goku-gold)!important}
 .goku-nav-btn.active{box-shadow:inset 3px 0 0 var(--goku-gold)!important}
 .goku-nav-icon{filter:drop-shadow(0 0 5px var(--goku-gold-glow))}
-.goku-panel{position:fixed;left:264px;bottom:24px;z-index:6;width:min(360px,calc(100vw - 32px));height:min(520px,calc(100vh - 140px));
+.goku-launcher{position:fixed;right:24px;bottom:24px;z-index:6;width:56px;height:56px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;
+  background:var(--goku-gold);color:#1a1400;font-size:24px;line-height:1;
+  box-shadow:0 6px 20px var(--goku-gold-glow),0 2px 10px rgba(0,0,0,.3);
+  transition:transform .15s ease,background .15s ease,color .15s ease}
+.goku-launcher:hover{transform:scale(1.06)}
+.goku-launcher.active{background:var(--surface);color:var(--goku-gold);border:2px solid var(--goku-gold)}
+.goku-panel{position:fixed;right:24px;bottom:96px;z-index:6;width:min(360px,calc(100vw - 32px));height:min(520px,calc(100vh - 140px));
   background:var(--surface);border:1px solid var(--border-strong);border-radius:15px;box-shadow:var(--shadow-modal);
   display:flex;flex-direction:column;overflow:hidden}
 .goku-panel-header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:16px 16px 12px;border-bottom:1px solid var(--border-soft)}
@@ -662,7 +670,6 @@ th.sortable:hover{color:var(--text)}
   /* Halve the layout grid; wide items just span the whole 6 and stack. */
   .layout-zone{grid-template-columns:repeat(6,minmax(0,1fr))}
   main{padding:30px 24px}
-  .goku-panel{left:90px}
 }
 @media(max-width:670px){
   .sidebar{display:none}
@@ -681,5 +688,6 @@ th.sortable:hover{color:var(--text)}
   .check-row{flex-direction:column;gap:10px}
   header{margin-bottom:18px;flex-wrap:wrap}
   .currency-picker span{display:none}
-  .goku-panel{left:16px;right:16px;width:auto}
+  .goku-panel{left:16px;right:16px;width:auto;bottom:88px}
+  .goku-launcher{right:16px;bottom:16px}
 }

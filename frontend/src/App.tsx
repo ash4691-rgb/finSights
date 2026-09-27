@@ -7,7 +7,7 @@ import { fetchLayouts } from './layout-api'
 import { CustomLayoutOnboarding } from './custom-layout-onboarding'
 import { UserOnboarding } from './user-onboarding'
 import { PersonaOnboarding } from './persona-onboarding'
-import { GokuAdminButton, GokuAdminModal, GokuNavButton, GokuPanel, useGoku } from './goku'
+import { GokuAdminButton, GokuAdminModal, GokuLauncher, GokuPanel, useGoku } from './goku'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
@@ -193,7 +193,6 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       <div className="brand"><div className="mark">F</div><span>FinSights</span></div>
       <nav>
         {nav.map(([key, icon, text]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span>{icon}</span> {text}</button>)}
-        {goku.available && <GokuNavButton goku={goku} />}
         {goku.admin && <GokuAdminButton goku={goku} />}
       </nav>
       <div className="sidebar-bottom">
@@ -280,6 +279,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showPersonaOnboarding && <PersonaOnboarding
       onClose={() => setShowPersonaOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
+    {goku.available && <GokuLauncher goku={goku} />}
     <GokuPanel goku={goku} />
     <GokuAdminModal goku={goku} />
   </div>
