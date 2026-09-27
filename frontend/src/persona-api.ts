@@ -1,11 +1,11 @@
 import { api } from './api'
-import type { InstrumentType, InvestingTenure, InvestorExperience, Persona, SalaryRange } from './types'
+import type { InstrumentType, InvestingTenure, InvestorPersona, Persona, SalaryRange } from './types'
 
 export type PersonaSubmission = {
   age: number | null
   occupation: string | null
   salaryRange: SalaryRange | null
-  investorExperience: InvestorExperience | null
+  investorPersona: InvestorPersona | null
   investingTenure: InvestingTenure | null
   instrumentTypes: InstrumentType[]
   marketDropAnswer: number | null
@@ -31,4 +31,19 @@ export async function submitPersona(payload: PersonaSubmission): Promise<void> {
 export async function skipPersona(): Promise<void> {
   try { await api('/api/persona/skip', { method: 'POST' }) }
   catch { /* replays next time — not worth surfacing an error for */ }
+}
+
+export type PersonaDetails = {
+  age: number | null
+  occupation: string | null
+  salaryRange: SalaryRange | null
+  investingTenure: InvestingTenure | null
+}
+
+// Settings' inline "edit your details" save — deliberately narrower than submitPersona: it never
+// touches riskProfile/investorPersona/instrumentTypes (Settings has no way to resupply the
+// five scenario answers, so resubmitting the full questionnaire from here would silently reset
+// an already-computed risk profile back to the "missing answers" default).
+export async function updatePersonaDetails(payload: PersonaDetails): Promise<Persona> {
+  return api<Persona>('/api/persona/details', { method: 'PUT', body: JSON.stringify(payload) })
 }

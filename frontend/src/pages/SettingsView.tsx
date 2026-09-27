@@ -3,8 +3,9 @@ import type * as React from 'react'
 import { api, API_URL } from '../api'
 import { money, since, numeric, toggleLabel } from '../util'
 import { Switch } from '../ui'
-import { EXPERIENCE_LABELS, RISK_LABELS, SALARY_LABELS, TENURE_LABELS } from '../persona-onboarding'
-import type { Settings, Country, Dashboard, Holding, Theme, Persona } from '../types'
+import { updatePersonaDetails } from '../persona-api'
+import { PERSONA_LABELS, RISK_ALLOCATION, RISK_LABELS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
+import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, SalaryRange } from '../types'
 
 export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onUpdatePersona }: {
   settings: Settings; countries: Country[]; dashboard: Dashboard | null; holdings: Holding[]
@@ -15,6 +16,11 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
     displayName: settings.displayName, phone: settings.phone || '', country: settings.country,
     numberFormat: settings.numberFormat, notifyEmail: settings.notifyEmail, notifySms: settings.notifySms,
     notifyPush: settings.notifyPush, notifyThresholdPercent: String(settings.notifyThresholdPercent),
+    // Investor details — only meaningful once a persona row exists (see the `persona` prop);
+    // blank otherwise, since there's nothing to edit yet.
+    age: persona?.age ? String(persona.age) : '', occupation: persona?.occupation ?? '',
+    salaryRange: persona?.salaryRange ?? '' as SalaryRange | '',
+    investingTenure: persona?.investingTenure ?? '' as InvestingTenure | '',
   })
   const [status, setStatus] = useState('')
   const [confirmText, setConfirmText] = useState('')
@@ -29,11 +35,20 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
   const save = async () => {
     setStatus('saving')
     try {
-      await api('/api/settings', { method: 'PUT', body: JSON.stringify({
+      const calls: Promise<unknown>[] = [api('/api/settings', { method: 'PUT', body: JSON.stringify({
         country: form.country, displayName: form.displayName, phone: form.phone, numberFormat: form.numberFormat,
         notifyEmail: form.notifyEmail, notifySms: form.notifySms, notifyPush: form.notifyPush,
         notifyThresholdPercent: numeric(form.notifyThresholdPercent),
-      }) })
+      }) })]
+      // Persona/risk profile itself is read-only here — only the demographic fields save, and
+      // only once a persona exists to attach them to (see updatePersonaDetails).
+      if (persona) {
+        calls.push(updatePersonaDetails({
+          age: form.age ? Number(form.age) : null, occupation: form.occupation || null,
+          salaryRange: form.salaryRange || null, investingTenure: form.investingTenure || null,
+        }))
+      }
+      await Promise.all(calls)
       await reload(); setStatus('saved')
     } catch (e) { setStatus(e instanceof Error ? e.message : 'Could not save') }
   }
@@ -58,26 +73,50 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
 
   return <div className="settings-list">
     <SettingsSection {...sectionProps('User profile')} subtitle="Who you are">
-      <div className="settings-field"><label>Display name</label><input value={form.displayName} onChange={e => set('displayName', e.target.value)} /></div>
-      <div className="settings-field"><label>Email</label><input value={settings.email} disabled title="Managed by your sign-in provider" /></div>
-      <div className="settings-field"><label>Contact number</label><input value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91 98765 43210" /></div>
-      <div className="settings-field">
-        <label>Country of residence</label>
-        <select value={form.country} onChange={e => set('country', e.target.value)}>{countries.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select>
+      <h4 className="settings-subheading">Contact &amp; account</h4>
+      <div className="settings-fields-grid">
+        <div className="settings-field"><label>Display name</label><input value={form.displayName} onChange={e => set('displayName', e.target.value)} /></div>
+        <div className="settings-field"><label>Email</label><input value={settings.email} disabled title="Managed by your sign-in provider" /></div>
+        <div className="settings-field"><label>Contact number</label><input value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91 98765 43210" /></div>
+        <div className="settings-field">
+          <label>Country of residence</label>
+          <select value={form.country} onChange={e => set('country', e.target.value)}>{countries.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}</select>
+        </div>
       </div>
       <p className="hint">Your base currency follows your country: <b>{selectedCountry?.currency ?? settings.baseCurrency}</b>. Any page also has a "View in" dropdown for a one-off switch, using live market rates (refreshed at most every 20 minutes).</p>
-      {saveBar}
+
       <div className="settings-subsection">
-        <div className="panel-heading"><h3>Investor profile</h3><span>From persona onboarding</span></div>
+        <h4 className="settings-subheading">Investor details</h4>
         {persona ? <>
-          <div className="pulse-row"><span>Age</span><strong>{persona.age ?? '—'}</strong></div>
-          <div className="pulse-row"><span>Occupation</span><strong>{persona.occupation || '—'}</strong></div>
-          <div className="pulse-row"><span>Annual salary range</span><strong>{persona.salaryRange ? SALARY_LABELS[persona.salaryRange] : '—'}</strong></div>
-          <div className="pulse-row"><span>Investor persona</span><strong>{persona.investorExperience ? EXPERIENCE_LABELS[persona.investorExperience] : '—'}</strong></div>
-          <div className="pulse-row"><span>Investing since</span><strong>{persona.investingTenure ? TENURE_LABELS[persona.investingTenure] : '—'}</strong></div>
-          <div className="pulse-row"><span>Risk profile</span><strong>{RISK_LABELS[persona.riskProfile]}</strong></div>
-        </> : <p className="hint">You haven't completed the persona questionnaire yet.</p>}
+          <div className="profile-tags-row">
+            {persona.investorPersona && <span className="profile-tag">{PERSONA_LABELS[persona.investorPersona]}</span>}
+            <span className="profile-tag">{RISK_LABELS[persona.riskProfile]}</span>
+          </div>
+          <p className="hint">
+            Equity {RISK_ALLOCATION[persona.riskProfile].equity} · Debt &amp; cash {RISK_ALLOCATION[persona.riskProfile].debtCash} · {RISK_ALLOCATION[persona.riskProfile].coreFocus}
+            {' · '}<button type="button" className="link-inline" onClick={onUpdatePersona}>Retake assessment</button>
+          </p>
+          <div className="settings-fields-grid">
+            <div className="settings-field"><label>Age</label><input type="number" min={0} max={120} value={form.age} onChange={e => set('age', e.target.value)} /></div>
+            <div className="settings-field"><label>Occupation</label><input value={form.occupation} onChange={e => set('occupation', e.target.value)} placeholder="e.g. Software engineer" /></div>
+            <div className="settings-field">
+              <label>Annual salary range</label>
+              <select value={form.salaryRange} onChange={e => set('salaryRange', e.target.value as SalaryRange)}>
+                <option value="">Select…</option>
+                {SALARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="settings-field">
+              <label>Investing since</label>
+              <select value={form.investingTenure} onChange={e => set('investingTenure', e.target.value as InvestingTenure)}>
+                <option value="">Select…</option>
+                {TENURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </> : <p className="hint">You haven't completed the persona questionnaire yet. <button type="button" className="link-inline" onClick={onUpdatePersona}>Start now</button></p>}
       </div>
+      {saveBar}
     </SettingsSection>
 
     <SettingsSection {...sectionProps('User preferences')} subtitle="How the app looks & behaves">
@@ -119,7 +158,6 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       <div className="pulse-row"><span>Brokers connected</span><strong>{brokersConnected}</strong></div>
       <div className="pulse-row"><span>Authentication</span><strong>{settings.demoMode ? 'Demo mode' : 'Google'}</strong></div>
       <button className="outline" onClick={() => void exportJson()}>Export all data (JSON)</button>
-      <button className="outline" onClick={onUpdatePersona}>Update investment profile</button>
       <div className="danger-zone-inline">
         <div className="panel-heading"><h3>Delete account</h3><span>Cannot be undone</span></div>
         <p className="hint">This permanently removes every instrument, holding, transaction, and your profile. Type <b>DELETE</b> to confirm.</p>

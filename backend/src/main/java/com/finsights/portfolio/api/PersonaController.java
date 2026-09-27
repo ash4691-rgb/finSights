@@ -1,5 +1,6 @@
 package com.finsights.portfolio.api;
 
+import com.finsights.portfolio.dto.PersonaDetailsRequest;
 import com.finsights.portfolio.dto.PersonaRequest;
 import com.finsights.portfolio.dto.PersonaResponse;
 import com.finsights.portfolio.service.PersonaService;
@@ -32,5 +33,12 @@ public class PersonaController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void skip() {
         persona.skip();
+    }
+
+    // Settings' inline edit for age/occupation/salary/investing-since — never touches
+    // riskProfile/investorPersona/instrumentTypes. See PersonaService.updateDetails.
+    @PutMapping("/details")
+    PersonaResponse updateDetails(@RequestBody PersonaDetailsRequest request) {
+        return persona.updateDetails(request);
     }
 }

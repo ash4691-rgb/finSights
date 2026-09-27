@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useEscToClose } from './ui'
 import { submitPersona, skipPersona } from './persona-api'
-import type { InstrumentType, InvestingTenure, InvestorExperience, Persona, RiskProfile, SalaryRange } from './types'
+import type { InstrumentType, InvestingTenure, InvestorPersona, Persona, RiskProfile, SalaryRange } from './types'
 
 export const SALARY_OPTIONS: { value: SalaryRange; label: string }[] = [
   { value: 'UNDER_5L', label: 'Under ₹5L' },
@@ -22,14 +22,18 @@ const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
   { value: 'REAL_ESTATE', label: 'Real Estate' },
 ]
 
-// Self-identified investor persona — how the user describes themselves, not computed.
-export const EXPERIENCE_OPTIONS: { value: InvestorExperience; label: string; hint: string }[] = [
-  { value: 'NEWBIE', label: 'Newbie', hint: "I'm new to investing and still learning the basics" },
-  { value: 'MODERATE', label: 'Moderate', hint: "I've been investing for a while and know my way around" },
-  { value: 'PROFESSIONAL_TRADER', label: 'Professional trader', hint: 'I trade actively and follow markets closely' },
+// Self-identified investor persona — how the user describes themselves, not computed. A
+// four-archetype framework built around age, portfolio size, and what the user is actually
+// trying to do, rather than a plain experience level.
+export const PERSONA_OPTIONS: { value: InvestorPersona; label: string; hint: string }[] = [
+  { value: 'WEALTH_BUILDER', label: 'The Wealth Builder', hint: '22–35 · Early career — automating contributions, learning the basics, long time horizon' },
+  { value: 'ACTIVE_ACCUMULATOR', label: 'The Active Accumulator', hint: '35–50 · Peak earning years — maximising 401(k)/IRA, outperforming the market' },
+  { value: 'HIGH_NET_WORTH_TACTICIAN', label: 'The High-Net-Worth Tactician', hint: '35–65 · Experienced/high earner — capital preservation, estate planning, non-correlated alpha' },
+  { value: 'DEFENSIVE_CONSUMER', label: 'The Defensive Consumer', hint: '55+ · Pre-retirement/retirement — income yield, protecting principal, RMD planning' },
 ]
-export const EXPERIENCE_LABELS: Record<InvestorExperience, string> = {
-  NEWBIE: 'Newbie', MODERATE: 'Moderate', PROFESSIONAL_TRADER: 'Professional trader',
+export const PERSONA_LABELS: Record<InvestorPersona, string> = {
+  WEALTH_BUILDER: 'The Wealth Builder', ACTIVE_ACCUMULATOR: 'The Active Accumulator',
+  HIGH_NET_WORTH_TACTICIAN: 'The High-Net-Worth Tactician', DEFENSIVE_CONSUMER: 'The Defensive Consumer',
 }
 
 export const TENURE_OPTIONS: { value: InvestingTenure; label: string }[] = [
@@ -47,6 +51,14 @@ export const TENURE_LABELS: Record<InvestingTenure, string> = {
 // below — the backend's enum constants are stable identifiers; these are just friendlier labels.
 export const RISK_LABELS: Record<RiskProfile, string> = {
   CONSERVATIVE: 'Long-term investor', MODERATE: 'Swing trader', AGGRESSIVE: 'High growth trader',
+}
+// Allocation guideline shown alongside the risk profile — not enforced anywhere, purely
+// informational. MODERATE is the framework's default (see the pre-selected scenario answers
+// below and PersonaService.skip on the backend), not just its midpoint.
+export const RISK_ALLOCATION: Record<RiskProfile, { equity: string; debtCash: string; coreFocus: string }> = {
+  CONSERVATIVE: { equity: '0% – 20%', debtCash: '80% – 100%', coreFocus: 'Capital preservation' },
+  MODERATE: { equity: '40% – 50%', debtCash: '50% – 60%', coreFocus: 'Balanced growth' },
+  AGGRESSIVE: { equity: '70% – 90%', debtCash: '10% – 30%', coreFocus: 'Long-term wealth' },
 }
 export const SALARY_LABELS: Record<SalaryRange, string> = Object.fromEntries(
   SALARY_OPTIONS.map(o => [o.value, o.label])) as Record<SalaryRange, string>
@@ -77,13 +89,13 @@ const SCENARIOS: { question: string; options: string[] }[] = [
 ]
 
 const DETAILS_STEP = 1
-const EXPERIENCE_STEP = 2
+const PERSONA_STEP = 2
 const INSTRUMENTS_STEP = 3
 const SCENARIO_START_STEP = 4
 const TOTAL_STEPS = SCENARIO_START_STEP + SCENARIOS.length
 
 // A data-collecting, skippable onboarding widget — identifies a starter persona (basic profile,
-// self-described investing experience, and a risk read from five scenario questions) used to
+// a self-identified investor archetype, and a risk read from five scenario questions) used to
 // seed a few starter categories. Same skip / "don't show again" pattern as CustomLayoutOnboarding
 // and UserOnboarding, but "don't show again" here also saves a MODERATE-default persona (via
 // skipPersona) rather than leaving the user with none at all — completing the full flow instead
@@ -100,10 +112,14 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
   const [age, setAge] = useState(initial?.age ? String(initial.age) : '')
   const [occupation, setOccupation] = useState(initial?.occupation ?? '')
   const [salaryRange, setSalaryRange] = useState<SalaryRange | ''>(initial?.salaryRange ?? '')
-  const [investorExperience, setInvestorExperience] = useState<InvestorExperience | ''>(initial?.investorExperience ?? '')
+  const [investorPersona, setInvestorPersona] = useState<InvestorPersona | ''>(initial?.investorPersona ?? '')
   const [investingTenure, setInvestingTenure] = useState<InvestingTenure | ''>(initial?.investingTenure ?? '')
   const [instruments, setInstruments] = useState<Set<InstrumentType>>(new Set(initial?.instrumentTypes ?? []))
-  const [answers, setAnswers] = useState<(number | null)[]>([null, null, null, null, null])
+  // Pre-selected to the moderate option (index 1) on each question — matches the backend's own
+  // default (a missing answer normalizes to "moderate", and skipping saves MODERATE outright), so
+  // a user who clicks straight through without changing anything ends up with the same result
+  // either way, rather than an implicit "most conservative" default from an all-null start.
+  const [answers, setAnswers] = useState<number[]>([1, 1, 1, 1, 1])
   const [busy, setBusy] = useState(false)
   useEscToClose(onClose)
 
@@ -131,7 +147,7 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
         age: age ? Number(age) : null,
         occupation: occupation || null,
         salaryRange: salaryRange || null,
-        investorExperience: investorExperience || null,
+        investorPersona: investorPersona || null,
         investingTenure: investingTenure || null,
         instrumentTypes: Array.from(instruments),
         marketDropAnswer: answers[0],
@@ -147,7 +163,7 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
 
   const title = step === 0 ? (isEdit ? 'Update your investment profile' : "Let's personalise FinSights")
     : step === DETAILS_STEP ? 'A bit about you'
-    : step === EXPERIENCE_STEP ? 'Your investing experience'
+    : step === PERSONA_STEP ? 'Which investor profile fits you best?'
     : step === INSTRUMENTS_STEP ? 'What do you invest in?'
     : `Scenario ${step - SCENARIO_START_STEP + 1} of ${SCENARIOS.length}`
 
@@ -158,7 +174,7 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
     </div>
 
     {step === 0 && <p>{isEdit
-      ? 'Update your details, investing experience, and risk-comfort answers — we\'ll use them to refresh your risk profile.'
+      ? 'Update your details, investor profile, and risk-comfort answers — we\'ll use them to refresh your risk profile.'
       : "A few quick, entirely optional questions — we'll use your answers to set up a couple of starter categories and get a read on your risk comfort. Skip anytime."}</p>}
 
     {step === DETAILS_STEP && <div className="persona-fields">
@@ -172,11 +188,11 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
       </label>
     </div>}
 
-    {step === EXPERIENCE_STEP && <div className="persona-experience">
-      <p className="hint">How would you describe yourself as an investor?</p>
+    {step === PERSONA_STEP && <div className="persona-experience">
+      <p className="hint">Which of these best describes you?</p>
       <div className="persona-radio-cards">
-        {EXPERIENCE_OPTIONS.map(o => <label key={o.value} className="persona-radio-card">
-          <input type="radio" name="investor-experience" checked={investorExperience === o.value} onChange={() => setInvestorExperience(o.value)} />
+        {PERSONA_OPTIONS.map(o => <label key={o.value} className="persona-radio-card">
+          <input type="radio" name="investor-persona" checked={investorPersona === o.value} onChange={() => setInvestorPersona(o.value)} />
           <span><b>{o.label}</b><small>{o.hint}</small></span>
         </label>)}
       </div>
