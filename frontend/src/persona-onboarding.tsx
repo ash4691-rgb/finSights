@@ -26,15 +26,16 @@ const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
 // four-archetype framework built around age, portfolio size, and what the user is actually
 // trying to do, rather than a plain experience level.
 export const PERSONA_OPTIONS: { value: InvestorPersona; label: string; hint: string }[] = [
-  { value: 'WEALTH_BUILDER', label: 'The Wealth Builder', hint: '22–35 · Early career — automating contributions, learning the basics, long time horizon' },
-  { value: 'ACTIVE_ACCUMULATOR', label: 'The Active Accumulator', hint: '35–50 · Peak earning years — maximising 401(k)/IRA, outperforming the market' },
-  { value: 'HIGH_NET_WORTH_TACTICIAN', label: 'The High-Net-Worth Tactician', hint: '35–65 · Experienced/high earner — capital preservation, estate planning, non-correlated alpha' },
-  { value: 'DEFENSIVE_CONSUMER', label: 'The Defensive Consumer', hint: '55+ · Pre-retirement/retirement — income yield, protecting principal, RMD planning' },
+  { value: 'WEALTH_BUILDER', label: 'Wealth Builder', hint: '22–35 · Early career — automating contributions, learning the basics, long time horizon' },
+  { value: 'ACTIVE_ACCUMULATOR', label: 'Active Accumulator', hint: '35–50 · Peak earning years — maximising 401(k)/IRA, outperforming the market' },
+  { value: 'HIGH_NET_WORTH_TACTICIAN', label: 'Advanced Tactician', hint: '35–65 · Experienced/high earner — capital preservation, estate planning, non-correlated alpha' },
+  { value: 'DEFENSIVE_CONSUMER', label: 'Defensive Wall', hint: '55+ · Pre-retirement/retirement — income yield, protecting principal, RMD planning' },
 ]
-export const PERSONA_LABELS: Record<InvestorPersona, string> = {
-  WEALTH_BUILDER: 'The Wealth Builder', ACTIVE_ACCUMULATOR: 'The Active Accumulator',
-  HIGH_NET_WORTH_TACTICIAN: 'The High-Net-Worth Tactician', DEFENSIVE_CONSUMER: 'The Defensive Consumer',
-}
+export const PERSONA_LABELS: Record<InvestorPersona, string> = Object.fromEntries(
+  PERSONA_OPTIONS.map(o => [o.value, o.label])) as Record<InvestorPersona, string>
+// Same copy as each option's onboarding hint — reused as the Settings tag's hover tooltip.
+export const PERSONA_DESCRIPTIONS: Record<InvestorPersona, string> = Object.fromEntries(
+  PERSONA_OPTIONS.map(o => [o.value, o.hint])) as Record<InvestorPersona, string>
 
 export const TENURE_OPTIONS: { value: InvestingTenure; label: string }[] = [
   { value: 'UNDER_1_YEAR', label: 'Less than a year' },
@@ -52,6 +53,12 @@ export const TENURE_LABELS: Record<InvestingTenure, string> = {
 export const RISK_LABELS: Record<RiskProfile, string> = {
   CONSERVATIVE: 'Long-term investor', MODERATE: 'Swing trader', AGGRESSIVE: 'High growth trader',
 }
+// Reused as the Settings tag's hover tooltip.
+export const RISK_DESCRIPTIONS: Record<RiskProfile, string> = {
+  CONSERVATIVE: 'Prioritises protecting capital, even for lower returns.',
+  MODERATE: 'Balances growth and safety for a moderate risk-reward profile.',
+  AGGRESSIVE: 'Seeks aggressive capital growth despite bigger swings.',
+}
 // Allocation guideline shown alongside the risk profile — not enforced anywhere, purely
 // informational. MODERATE is the framework's default (see the pre-selected scenario answers
 // below and PersonaService.skip on the backend), not just its midpoint.
@@ -63,30 +70,41 @@ export const RISK_ALLOCATION: Record<RiskProfile, { equity: string; debtCash: st
 export const SALARY_LABELS: Record<SalaryRange, string> = Object.fromEntries(
   SALARY_OPTIONS.map(o => [o.value, o.label])) as Record<SalaryRange, string>
 
-// Each option's index (0/1/2) is itself the risk score for that answer — see PersonaService's
-// scoring on the backend, which sums these five and buckets the total into a risk profile.
-const SCENARIOS: { question: string; options: string[] }[] = [
+// Five areas from the risk-assessment framework, each with its own number of options (3 to 5) —
+// an option's index is the raw answer sent to the backend; PersonaService.scoreRisk rescales
+// each question against its own option count before combining them into a risk profile, so a
+// 5-option question doesn't quietly outweigh a 3-option one.
+const SCENARIOS: { area: string; question: string; options: string[] }[] = [
   {
-    question: 'If your portfolio dropped 20% in a month, what would you do?',
-    options: ['Sell some to limit further loss', 'Hold and wait it out', 'Buy more while prices are low'],
+    area: 'Time Horizon',
+    question: 'When do you expect to start withdrawing a major portion of your investments?',
+    options: ['Under 3 years', '3–5 years', '6–10 years', 'More than 10 years'],
   },
   {
-    question: "How long until you'll likely need this money?",
-    options: ['Less than 2 years', '2–7 years', 'More than 7 years'],
+    area: 'Risk Capacity',
+    question: 'Over the next few years, how do you expect your annual income to change?',
+    options: ['Decrease substantially', 'Decrease moderately', 'Stay the same', 'Grow moderately', 'Grow substantially'],
   },
   {
-    question: 'Which trade-off matters more to you?',
-    options: ['Protecting what I have, even for lower returns', 'A balance of growth and safety', 'Maximising growth, even with more ups and downs'],
+    area: 'Risk Tolerance',
+    question: 'If the performance of your investment dropped by 20% over a short period, how would you feel?',
+    options: ['Highly panicked and sell immediately', 'Uneasy but hold', 'View it as an opportunity to buy more'],
   },
   {
-    question: 'How do you react to your investments swinging in value day to day?',
-    options: ['It stresses me out — I check constantly', "I notice but don't dwell on it", "Short-term swings don't bother me at all"],
+    area: 'Investment Objectives',
+    question: 'Which statement best describes your overall investment philosophy?',
+    options: ['Seeking stable, low-risk capital preservation', 'Balancing moderate growth and safety', 'Seeking high/aggressive capital growth despite major fluctuations'],
   },
   {
-    question: "What's your primary goal with this money?",
-    options: ['Preserve what I have', 'Grow it steadily over time', 'Maximise growth, even with bigger swings'],
+    area: 'Liquidity Needs',
+    question: 'How much of your total portfolio might you need to access in an emergency within the next 12 months?',
+    options: ['None', 'Less than 10%', '10%–30%', 'More than 30%'],
   },
 ]
+// The middle-normalizing index for each question's own option count (matches
+// PersonaService.normalize's rounding) — pre-selecting it means a user who clicks straight
+// through without touching a scenario question still ends up "moderate" on that question.
+const MODERATE_ANSWERS = SCENARIOS.map(s => Math.floor((s.options.length - 1) / 2))
 
 const DETAILS_STEP = 1
 const PERSONA_STEP = 2
@@ -119,11 +137,11 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
   const [investorPersona, setInvestorPersona] = useState<InvestorPersona | ''>(initial?.investorPersona ?? '')
   const [investingTenure, setInvestingTenure] = useState<InvestingTenure | ''>(initial?.investingTenure ?? '')
   const [instruments, setInstruments] = useState<Set<InstrumentType>>(new Set(initial?.instrumentTypes ?? []))
-  // Pre-selected to the moderate option (index 1) on each question — matches the backend's own
-  // default (a missing answer normalizes to "moderate", and skipping saves MODERATE outright), so
-  // a user who clicks straight through without changing anything ends up with the same result
-  // either way, rather than an implicit "most conservative" default from an all-null start.
-  const [answers, setAnswers] = useState<number[]>([1, 1, 1, 1, 1])
+  // Pre-selected to each question's moderate option — matches the backend's own default (a
+  // missing answer normalizes to "moderate", and skipping saves MODERATE outright), so a user
+  // who clicks straight through without changing anything ends up with the same result either
+  // way, rather than an implicit "most conservative" default from an all-null start.
+  const [answers, setAnswers] = useState<number[]>(MODERATE_ANSWERS)
   const [busy, setBusy] = useState(false)
   useEscToClose(onClose)
 
@@ -154,11 +172,11 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
         investorPersona: investorPersona || null,
         investingTenure: investingTenure || null,
         instrumentTypes: Array.from(instruments),
-        marketDropAnswer: answers[0],
-        timeHorizonAnswer: answers[1],
-        tradeOffAnswer: answers[2],
-        volatilityReactionAnswer: answers[3],
-        primaryGoalAnswer: answers[4],
+        timeHorizonAnswer: answers[0],
+        riskCapacityAnswer: answers[1],
+        riskToleranceAnswer: answers[2],
+        investmentObjectivesAnswer: answers[3],
+        liquidityNeedsAnswer: answers[4],
       })
     } catch { /* best-effort — still close so the user isn't stuck on a save failure */ }
     if (!isRiskOnly) onDismissForever()
@@ -169,7 +187,7 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
     : step === DETAILS_STEP ? 'A bit about you'
     : step === PERSONA_STEP ? 'Which investor profile fits you best?'
     : step === INSTRUMENTS_STEP ? 'What do you invest in?'
-    : `Scenario ${step - SCENARIO_START_STEP + 1} of ${SCENARIOS.length}`
+    : SCENARIOS[step - SCENARIO_START_STEP].area
 
   // Risk-only mode only ever shows the five scenario steps — number them 1-5 on their own,
   // rather than as steps 5-9 of a nine-step flow the user never sees the rest of.

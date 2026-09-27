@@ -8,8 +8,10 @@ import java.util.Set;
 
 /** Every field is optional — the persona questionnaire is skippable, so nothing here is
  *  required at the HTTP layer; PersonaService fills in sensible defaults for anything missing.
- *  The five *Answer fields are each 0 (conservative-leaning), 1 (moderate) or 2 (aggressive-
- *  leaning) — see PersonaService.scoreRisk for how they're combined into a RiskProfile. */
+ *  The five *Answer fields are each the 0-based index of the option the user picked for that
+ *  question — each question offers a different number of options (see the framework in
+ *  persona-onboarding.tsx's SCENARIOS), so PersonaService.scoreRisk normalizes each one against
+ *  its own option count before combining them into a RiskProfile. */
 public record PersonaRequest(
         Integer age,
         String occupation,
@@ -17,9 +19,9 @@ public record PersonaRequest(
         InvestorPersona investorPersona,
         InvestingTenure investingTenure,
         Set<InstrumentType> instrumentTypes,
-        Integer marketDropAnswer,
         Integer timeHorizonAnswer,
-        Integer tradeOffAnswer,
-        Integer volatilityReactionAnswer,
-        Integer primaryGoalAnswer
+        Integer riskCapacityAnswer,
+        Integer riskToleranceAnswer,
+        Integer investmentObjectivesAnswer,
+        Integer liquidityNeedsAnswer
 ) { }

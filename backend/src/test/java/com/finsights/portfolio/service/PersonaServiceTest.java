@@ -48,11 +48,14 @@ class PersonaServiceTest {
         service = new PersonaService(personas, users, currentUserService, categoryService);
     }
 
-    private PersonaRequest request(Integer marketDrop, Integer timeHorizon, Integer tradeOff,
-                                    Integer volatilityReaction, Integer primaryGoal) {
+    // Options per question: Time Horizon 4, Risk Capacity 5, Risk Tolerance 3,
+    // Investment Objectives 3, Liquidity Needs 4 — deliberately mismatched so tests exercise
+    // PersonaService.normalize()'s per-question rescaling rather than a uniform 0-2 answer.
+    private PersonaRequest request(Integer timeHorizon, Integer riskCapacity, Integer riskTolerance,
+                                    Integer investmentObjectives, Integer liquidityNeeds) {
         return new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L, InvestorPersona.ACTIVE_ACCUMULATOR,
-                InvestingTenure.ONE_TO_3_YEARS, Set.of(), marketDrop, timeHorizon, tradeOff,
-                volatilityReaction, primaryGoal);
+                InvestingTenure.ONE_TO_3_YEARS, Set.of(), timeHorizon, riskCapacity, riskTolerance,
+                investmentObjectives, liquidityNeeds);
     }
 
     @Test
@@ -60,6 +63,7 @@ class PersonaServiceTest {
         when(currentUserService.currentUser()).thenReturn(user);
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
 
+        // First option on every question, regardless of how many options it offers.
         PersonaResponse response = service.submit(request(0, 0, 0, 0, 0));
 
         assertThat(response.riskProfile()).isEqualTo(RiskProfile.CONSERVATIVE);
@@ -70,7 +74,8 @@ class PersonaServiceTest {
         when(currentUserService.currentUser()).thenReturn(user);
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
 
-        PersonaResponse response = service.submit(request(1, 1, 1, 1, 1));
+        // The middle-normalizing index for each question's own option count.
+        PersonaResponse response = service.submit(request(1, 2, 1, 1, 1));
 
         assertThat(response.riskProfile()).isEqualTo(RiskProfile.MODERATE);
     }
@@ -79,7 +84,9 @@ class PersonaServiceTest {
     void highScoreIsAggressive() {
         when(currentUserService.currentUser()).thenReturn(user);
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
-        PersonaResponse response = service.submit(request(2, 2, 2, 2, 2));
+
+        // Last option on every question (index = optionCount - 1).
+        PersonaResponse response = service.submit(request(3, 4, 2, 2, 3));
 
         assertThat(response.riskProfile()).isEqualTo(RiskProfile.AGGRESSIVE);
     }
@@ -94,10 +101,22 @@ class PersonaServiceTest {
     }
 
     @Test
+    void outOfRangeAnswerDefaultsToModerateWeight() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        // riskCapacity only has 5 options (indices 0-4); everything else is a middle-normalizing
+        // answer, so a defaulted-to-moderate riskCapacity should still land on MODERATE overall.
+        PersonaResponse response = service.submit(request(1, 99, 1, 1, 1));
+
+        assertThat(response.riskProfile()).isEqualTo(RiskProfile.MODERATE);
+    }
+
+    @Test
     void submitCarriesPersonaAndTenureThrough() {
         when(currentUserService.currentUser()).thenReturn(user);
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
-        PersonaResponse response = service.submit(request(1, 1, 1, 1, 1));
+        PersonaResponse response = service.submit(request(1, 2, 1, 1, 1));
 
         assertThat(response.investorPersona()).isEqualTo(InvestorPersona.ACTIVE_ACCUMULATOR);
         assertThat(response.investingTenure()).isEqualTo(InvestingTenure.ONE_TO_3_YEARS);
@@ -108,7 +127,7 @@ class PersonaServiceTest {
     void submitMarksPersonaOnboardingDismissed() {
         when(currentUserService.currentUser()).thenReturn(user);
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
-        service.submit(request(1, 1, 1, 1, 1));
+        service.submit(request(1, 2, 1, 1, 1));
 
         assertThat(user.getPersonaOnboardingDismissed()).isTrue();
         verify(users).save(user);
