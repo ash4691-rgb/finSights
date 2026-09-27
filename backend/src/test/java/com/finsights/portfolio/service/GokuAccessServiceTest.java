@@ -108,4 +108,36 @@ class GokuAccessServiceTest {
 
         service.requireAdmin();
     }
+
+    @Test
+    void unavailableReasonNamesTheDisabledFeature() throws Exception {
+        GokuAccessService service = access(false, "ash4691@gmail.com", "sk-test");
+
+        assertThat(service.unavailableReason()).contains("disabled");
+    }
+
+    @Test
+    void unavailableReasonNamesTheMissingApiKey() throws Exception {
+        GokuAccessService service = access(true, "ash4691@gmail.com", "");
+
+        assertThat(service.unavailableReason()).contains("ANTHROPIC_API_KEY");
+    }
+
+    @Test
+    void unavailableReasonNamesTheMissingChatAllowlistEntry() throws Exception {
+        GokuAccessService service = access(true, "ash4691@gmail.com", "sk-test");
+        userIs("someone@gmail.com");
+        when(allowlistService.isAllowed("someone@gmail.com")).thenReturn(false);
+
+        assertThat(service.unavailableReason()).contains("allowlist");
+    }
+
+    @Test
+    void unavailableReasonIsNullWhenAvailable() throws Exception {
+        GokuAccessService service = access(true, "ash4691@gmail.com", "sk-test");
+        userIs("someone@gmail.com");
+        when(allowlistService.isAllowed("someone@gmail.com")).thenReturn(true);
+
+        assertThat(service.unavailableReason()).isNull();
+    }
 }
