@@ -101,13 +101,17 @@ const TOTAL_STEPS = SCENARIO_START_STEP + SCENARIOS.length
 // skipPersona) rather than leaving the user with none at all — completing the full flow instead
 // saves the real answers.
 //
-// Reused from Settings ("Update investment profile") in `mode="edit"`: prefilled from `initial`,
-// no "don't show again" checkbox (already set), and Skip becomes a plain Cancel that never calls
-// skipPersona — there's nothing to skip, only to close without saving.
+// mode="risk-only" (Settings' "Reassess risk profile") skips straight to the five scenario
+// questions — age/occupation/salary/persona/instruments stay exactly as they were (the state
+// below is still seeded from `initial`, just never edited in this mode), so re-submitting only
+// ever changes the computed risk profile. No "don't show again" checkbox (nothing to dismiss —
+// onboarding is already long done), and the close/Skip button is a plain Cancel.
 export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = 'onboarding' }: {
-  onClose: () => void; onDismissForever: () => void; initial?: Persona | null; mode?: 'onboarding' | 'edit'
+  onClose: () => void; onDismissForever: () => void; initial?: Persona | null; mode?: 'onboarding' | 'risk-only'
 }) {
-  const [step, setStep] = useState(0)
+  const isRiskOnly = mode === 'risk-only'
+  const startStep = isRiskOnly ? SCENARIO_START_STEP : 0
+  const [step, setStep] = useState(startStep)
   const [dontShowAgain, setDontShowAgain] = useState(false)
   const [age, setAge] = useState(initial?.age ? String(initial.age) : '')
   const [occupation, setOccupation] = useState(initial?.occupation ?? '')
@@ -123,8 +127,8 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
   const [busy, setBusy] = useState(false)
   useEscToClose(onClose)
 
-  const isEdit = mode === 'edit'
   const isLast = step === TOTAL_STEPS - 1
+  const canGoBack = step > startStep
 
   const toggleInstrument = (value: InstrumentType) => {
     setInstruments(current => {
@@ -135,7 +139,7 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
   }
 
   const skipNow = async () => {
-    if (isEdit) { onClose(); return }
+    if (isRiskOnly) { onClose(); return }
     if (dontShowAgain) { onDismissForever(); await skipPersona() }
     onClose()
   }
@@ -157,25 +161,28 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
         primaryGoalAnswer: answers[4],
       })
     } catch { /* best-effort — still close so the user isn't stuck on a save failure */ }
-    onDismissForever()
+    if (!isRiskOnly) onDismissForever()
     onClose()
   }
 
-  const title = step === 0 ? (isEdit ? 'Update your investment profile' : "Let's personalise FinSights")
+  const title = step === 0 ? "Let's personalise FinSights"
     : step === DETAILS_STEP ? 'A bit about you'
     : step === PERSONA_STEP ? 'Which investor profile fits you best?'
     : step === INSTRUMENTS_STEP ? 'What do you invest in?'
     : `Scenario ${step - SCENARIO_START_STEP + 1} of ${SCENARIOS.length}`
 
+  // Risk-only mode only ever shows the five scenario steps — number them 1-5 on their own,
+  // rather than as steps 5-9 of a nine-step flow the user never sees the rest of.
+  const displayStepNumber = isRiskOnly ? step - SCENARIO_START_STEP + 1 : step + 1
+  const displayTotalSteps = isRiskOnly ? SCENARIOS.length : TOTAL_STEPS
+
   return <div className="modal-backdrop"><section className="modal narrow onboarding-tour">
     <div className="modal-header">
-      <div><p className="eyebrow">{isEdit ? 'UPDATE YOUR PROFILE' : 'GETTING TO KNOW YOU'} · STEP {step + 1} OF {TOTAL_STEPS}</p><h2>{title}</h2></div>
+      <div><p className="eyebrow">{isRiskOnly ? 'REASSESS RISK PROFILE' : 'GETTING TO KNOW YOU'} · STEP {displayStepNumber} OF {displayTotalSteps}</p><h2>{title}</h2></div>
       <button className="close" onClick={() => void skipNow()}>×</button>
     </div>
 
-    {step === 0 && <p>{isEdit
-      ? 'Update your details, investor profile, and risk-comfort answers — we\'ll use them to refresh your risk profile.'
-      : "A few quick, entirely optional questions — we'll use your answers to set up a couple of starter categories and get a read on your risk comfort. Skip anytime."}</p>}
+    {step === 0 && <p>A few quick, entirely optional questions — we'll use your answers to set up a couple of starter categories and get a read on your risk comfort. Skip anytime.</p>}
 
     {step === DETAILS_STEP && <div className="persona-fields">
       <label>Age<input type="number" min={0} max={120} value={age} onChange={e => setAge(e.target.value)} /></label>
@@ -223,14 +230,15 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
     </div>}
 
     <div className="onboarding-dots">
-      {Array.from({ length: TOTAL_STEPS }).map((_, i) => <span key={i} className={`onboarding-dot${i === step ? ' active' : ''}`} />)}
+      {Array.from({ length: displayTotalSteps }).map((_, i) => <span key={i} className={`onboarding-dot${i === displayStepNumber - 1 ? ' active' : ''}`} />)}
     </div>
     <div className="modal-actions">
-      {!isEdit && <label className="onboarding-dismiss push-start">
+      {!isRiskOnly && <label className="onboarding-dismiss push-start">
         <input type="checkbox" checked={dontShowAgain} onChange={e => setDontShowAgain(e.target.checked)} />
         Don't show this again
       </label>}
-      <button type="button" className={isEdit ? 'outline push-start' : 'outline'} onClick={() => void skipNow()}>{isEdit ? 'Cancel' : 'Skip'}</button>
+      <button type="button" className={isRiskOnly ? 'outline push-start' : 'outline'} onClick={() => void skipNow()}>{isRiskOnly ? 'Cancel' : 'Skip'}</button>
+      {canGoBack && <button type="button" className="outline" onClick={() => setStep(s => s - 1)}>Back</button>}
       <button type="button" className="primary" disabled={busy} onClick={() => isLast ? void finish() : setStep(s => s + 1)}>
         {isLast ? (busy ? 'Saving…' : 'Finish') : 'Next'}
       </button>

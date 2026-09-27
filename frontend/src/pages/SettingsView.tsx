@@ -7,10 +7,10 @@ import { updatePersonaDetails } from '../persona-api'
 import { PERSONA_LABELS, RISK_ALLOCATION, RISK_LABELS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
 import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, SalaryRange } from '../types'
 
-export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onUpdatePersona }: {
+export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onStartOnboarding, onReassessRisk }: {
   settings: Settings; countries: Country[]; dashboard: Dashboard | null; holdings: Holding[]
   reload: () => Promise<void>; theme: Theme; setTheme: React.Dispatch<React.SetStateAction<Theme>>
-  persona: Persona | null; onUpdatePersona: () => void
+  persona: Persona | null; onStartOnboarding: () => void; onReassessRisk: () => void
 }) {
   const [form, setForm] = useState({
     displayName: settings.displayName, phone: settings.phone || '', country: settings.country,
@@ -92,10 +92,7 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
             {persona.investorPersona && <span className="profile-tag">{PERSONA_LABELS[persona.investorPersona]}</span>}
             <span className="profile-tag">{RISK_LABELS[persona.riskProfile]}</span>
           </div>
-          <p className="hint">
-            Equity {RISK_ALLOCATION[persona.riskProfile].equity} · Debt &amp; cash {RISK_ALLOCATION[persona.riskProfile].debtCash} · {RISK_ALLOCATION[persona.riskProfile].coreFocus}
-            {' · '}<button type="button" className="link-inline" onClick={onUpdatePersona}>Retake assessment</button>
-          </p>
+          <p className="hint">Equity {RISK_ALLOCATION[persona.riskProfile].equity} · Debt &amp; cash {RISK_ALLOCATION[persona.riskProfile].debtCash} · {RISK_ALLOCATION[persona.riskProfile].coreFocus}</p>
           <div className="settings-fields-grid">
             <div className="settings-field"><label>Age</label><input type="number" min={0} max={120} value={form.age} onChange={e => set('age', e.target.value)} /></div>
             <div className="settings-field"><label>Occupation</label><input value={form.occupation} onChange={e => set('occupation', e.target.value)} placeholder="e.g. Software engineer" /></div>
@@ -114,7 +111,7 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
               </select>
             </div>
           </div>
-        </> : <p className="hint">You haven't completed the persona questionnaire yet. <button type="button" className="link-inline" onClick={onUpdatePersona}>Start now</button></p>}
+        </> : <p className="hint">You haven't completed the persona questionnaire yet. <button type="button" className="link-inline" onClick={onStartOnboarding}>Start now</button></p>}
       </div>
       {saveBar}
     </SettingsSection>
@@ -158,6 +155,7 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       <div className="pulse-row"><span>Brokers connected</span><strong>{brokersConnected}</strong></div>
       <div className="pulse-row"><span>Authentication</span><strong>{settings.demoMode ? 'Demo mode' : 'Google'}</strong></div>
       <button className="outline" onClick={() => void exportJson()}>Export all data (JSON)</button>
+      <button className="outline" onClick={onReassessRisk}>Reassess Risk profile</button>
       <div className="danger-zone-inline">
         <div className="panel-heading"><h3>Delete account</h3><span>Cannot be undone</span></div>
         <p className="hint">This permanently removes every instrument, holding, transaction, and your profile. Type <b>DELETE</b> to confirm.</p>
