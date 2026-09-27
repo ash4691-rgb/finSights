@@ -20,6 +20,7 @@ import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.HoldingRequest;
+import com.finsights.portfolio.dto.HoldingResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.repository.CategoryRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
@@ -418,5 +419,80 @@ class HoldingServiceTest {
         ArgumentCaptor<Holding> captor = ArgumentCaptor.forClass(Holding.class);
         verify(holdings, times(2)).save(captor.capture());
         assertThat(captor.getAllValues().get(0).getCurrency()).isEqualTo("USD");
+    }
+
+    // The display-currency overloads of get/create/update (used by HoldingDrawer's post-
+    // transaction refresh and HoldingModal's optimistic save) must be a no-op when the caller
+    // doesn't pass a currency — same contract as list(String) — and must delegate to
+    // FxRateService.convert(HoldingResponse, String) when it does.
+    private void stubForGet(Category category) {
+        UserAccount user = new UserAccount("demo@finsights.local", "Demo");
+        holding.setUser(user);
+        holding.setCategory(category);
+        when(currentUser.currentUser()).thenReturn(user);
+        when(holdings.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(holding));
+        when(valuations.currentValue(any())).thenAnswer(inv -> ((Holding) inv.getArgument(0)).getCurrentValue());
+    }
+
+    @Test
+    void getWithNoDisplayCurrencyReturnsTheNativeResponseUnconverted() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForGet(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setCurrentValue(new BigDecimal("12000.00"));
+
+        assertThat(service.get("h-1", null).currentValue()).isEqualByComparingTo("12000.00");
+        assertThat(service.get("h-1", "").currentValue()).isEqualByComparingTo("12000.00");
+        verify(fx, never()).convert(any(HoldingResponse.class), any());
+    }
+
+    @Test
+    void getWithADisplayCurrencyReturnsTheConvertedResponse() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForGet(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setCurrentValue(new BigDecimal("12000.00"));
+        HoldingResponse converted = org.mockito.Mockito.mock(HoldingResponse.class);
+        when(fx.convert(any(HoldingResponse.class), eq("USD"))).thenReturn(converted);
+
+        HoldingResponse result = service.get("h-1", "usd");
+
+        assertThat(result).isSameAs(converted);
+    }
+
+    @Test
+    void createWithADisplayCurrencyReturnsTheConvertedResponse() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForCreate(category);
+        HoldingResponse converted = org.mockito.Mockito.mock(HoldingResponse.class);
+        when(fx.convert(any(HoldingResponse.class), eq("USD"))).thenReturn(converted);
+        HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
+                null, new BigDecimal("10000"), new BigDecimal("12000"), null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null);
+
+        HoldingResponse result = service.create(request, "usd");
+
+        assertThat(result).isSameAs(converted);
+    }
+
+    @Test
+    void updateWithADisplayCurrencyReturnsTheConvertedResponse() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForUpdate(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setInvestedValue(new BigDecimal("10000.00"));
+        holding.setCurrentValue(new BigDecimal("12000.00"));
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
+                txn(TransactionType.BUY, "10000", null)));
+        HoldingResponse converted = org.mockito.Mockito.mock(HoldingResponse.class);
+        when(fx.convert(any(HoldingResponse.class), eq("USD"))).thenReturn(converted);
+
+        HoldingResponse result = service.update("h-1", editRequest(new BigDecimal("10000.00"), new BigDecimal("12000.00")), "usd");
+
+        assertThat(result).isSameAs(converted);
     }
 }

@@ -221,8 +221,28 @@ public class HoldingService {
         return toResponse(holding);
     }
 
+    /** As {@link #get(String)}, converted into {@code displayCurrency} — a blank/null currency
+     *  is a no-op, same as {@link #list(String)}. Lets a caller re-fetch one holding already
+     *  correctly currency-matched to what the rest of the page is showing, e.g. HoldingDrawer
+     *  refreshing its own snapshot after logging a transaction against it. */
+    public HoldingResponse get(String id, String displayCurrency) {
+        return forDisplay(get(id), displayCurrency);
+    }
+
+    private HoldingResponse forDisplay(HoldingResponse native_, String displayCurrency) {
+        return displayCurrency == null || displayCurrency.isBlank() ? native_ : fx.convert(native_, displayCurrency.trim().toUpperCase());
+    }
+
     public com.finsights.portfolio.dto.ValuationDetailResponse valuationDetail(String id) {
         return valuations.explain(findOwned(id));
+    }
+
+    /** As {@link #create(HoldingRequest)}, converted into {@code displayCurrency} — lets a caller
+     *  splice the newly-created holding straight into a display-converted list without a second
+     *  round trip (or, if the request came in unconverted, without briefly showing native-currency
+     *  figures in a list that's otherwise converted). */
+    public HoldingResponse create(HoldingRequest request, String displayCurrency) {
+        return forDisplay(create(request), displayCurrency);
     }
 
     @Transactional
@@ -269,6 +289,12 @@ public class HoldingService {
         }
         holdings.saveAll(owned);
         return list();
+    }
+
+    /** As {@link #update(String, HoldingRequest)}, converted into {@code displayCurrency} — see
+     *  {@link #create(HoldingRequest, String)}. */
+    public HoldingResponse update(String id, HoldingRequest request, String displayCurrency) {
+        return forDisplay(update(id, request), displayCurrency);
     }
 
     @Transactional

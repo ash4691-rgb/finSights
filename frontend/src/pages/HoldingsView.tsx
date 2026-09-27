@@ -110,8 +110,8 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
-export function HoldingModal({ holding, category, categories, holdings, onClose, onSaved, onGoToTransactions }: {
-  holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; onClose: () => void
+export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions }: {
+  holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
   // Carries the just-saved holding back to the caller so it can be spliced into local state
   // immediately — instant feedback instead of waiting on the reload that follows.
   onSaved: (saved: Holding) => void
@@ -214,7 +214,8 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
       tags: form.tags,
     }
     try {
-      const saved = await api<Holding>(holding ? `/api/holdings/${holding.id}` : '/api/holdings', { method: holding ? 'PUT' : 'POST', body: JSON.stringify(payload) })
+      const url = (holding ? `/api/holdings/${holding.id}` : '/api/holdings') + `?currency=${encodeURIComponent(displayCurrency)}`
+      const saved = await api<Holding>(url, { method: holding ? 'PUT' : 'POST', body: JSON.stringify(payload) })
       onSaved(saved)
     }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not save holding') } finally { setSaving(false) }
@@ -306,8 +307,15 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   </section></div>
 }
 
-export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose, onEdit, reload }: {
-  holding: Holding; displayCurrency: string; fxRatesToBase: Record<string, number>; onClose: () => void; onEdit: (holding: Holding) => void; reload: () => Promise<void>
+export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose, onEdit, onHoldingUpdated, reload }: {
+  holding: Holding; displayCurrency: string; fxRatesToBase: Record<string, number>; onClose: () => void; onEdit: (holding: Holding) => void
+  // Called with this holding's fresh figures right after logging a transaction against it —
+  // `holding` above is a snapshot taken when the drawer opened, and reload() alone only updates
+  // the app's top-level holdings list, not this drawer's own prop, so without this the summary
+  // cards up top (current value, invested, P/L) would keep showing pre-transaction numbers even
+  // though the transaction list right below them already shows the new entry.
+  onHoldingUpdated: (updated: Holding) => void
+  reload: () => Promise<void>
 }) {
   const [detail, setDetail] = useState<ValuationDetail | null>(null)
   const [txns, setTxns] = useState<Transaction[] | null>(null)
@@ -316,9 +324,19 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
   const [addingTxn, setAddingTxn] = useState(false)
   // Suppressed while the transaction modal is open on top — otherwise one Esc closes both.
   useEscToClose(() => { if (!addingTxn) onClose() })
-  useEffect(() => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }, [holding.id])
+  const loadDetail = () => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }
+  useEffect(loadDetail, [holding.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const loadTxns = () => { setVisibleTxns(10); api<Transaction[]>(`/api/transactions?holdingId=${holding.id}&currency=${displayCurrency}`).then(setTxns).catch(() => setTxns([])) }
   useEffect(loadTxns, [holding.id, displayCurrency])
+  // Logging a transaction changes this holding's quantity/invested/current value server-side,
+  // but `holding` itself is just a snapshot from whenever the drawer opened — refetch it (already
+  // currency-matched) and hand it up so the summary cards above don't keep showing stale numbers
+  // right next to a transaction list that already shows the new entry.
+  const refreshHolding = () => {
+    api<Holding>(`/api/holdings/${holding.id}?currency=${encodeURIComponent(displayCurrency)}`)
+      .then(onHoldingUpdated)
+      .catch(() => { /* the reload() already triggered alongside this will eventually catch it up */ })
+  }
   const onTxnScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) setVisibleTxns(count => count + 10)
@@ -389,6 +407,6 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
       <button className="primary" onClick={() => onEdit(holding)}>Edit holding</button>
       <button className="danger-btn" onClick={() => void removeHolding()}>Delete holding</button>
     </div>
-    {addingTxn && <TransactionModal transaction={null} holdings={[holding]} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); void reload() }} />}
+    {addingTxn && <TransactionModal transaction={null} holdings={[holding]} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); loadDetail(); refreshHolding(); void reload() }} />}
   </section></div>
 }

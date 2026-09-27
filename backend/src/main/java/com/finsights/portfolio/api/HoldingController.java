@@ -37,23 +37,28 @@ public class HoldingController {
         return tagSuggestions.suggest(categoryId, valuationMethod, limit);
     }
 
+    // currency is optional and native (unconverted) when omitted — HoldingModal's own edit-form
+    // fetch relies on exactly that native default (see its comment on nativeHolding) to never
+    // resave a display-converted figure, so this default must not change.
     @GetMapping("/{id}")
-    HoldingResponse get(@PathVariable String id) { return holdings.get(id); }
+    HoldingResponse get(@PathVariable String id, @RequestParam(required = false) String currency) {
+        return holdings.get(id, currency);
+    }
 
     @GetMapping("/{id}/valuation")
     ValuationDetailResponse valuation(@PathVariable String id) { return holdings.valuationDetail(id); }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    HoldingResponse create(@Valid @RequestBody HoldingRequest request) {
-        HoldingResponse saved = holdings.create(request);
+    HoldingResponse create(@Valid @RequestBody HoldingRequest request, @RequestParam(required = false) String currency) {
+        HoldingResponse saved = holdings.create(request, currency);
         tagSuggestions.record(saved.categoryId(), saved.valuationMethod(), saved.tags());
         return saved;
     }
 
     @PutMapping("/{id}")
-    HoldingResponse update(@PathVariable String id, @Valid @RequestBody HoldingRequest request) {
-        HoldingResponse saved = holdings.update(id, request);
+    HoldingResponse update(@PathVariable String id, @Valid @RequestBody HoldingRequest request, @RequestParam(required = false) String currency) {
+        HoldingResponse saved = holdings.update(id, request, currency);
         tagSuggestions.record(saved.categoryId(), saved.valuationMethod(), saved.tags());
         return saved;
     }
