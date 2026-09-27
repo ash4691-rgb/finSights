@@ -60,6 +60,7 @@ export function UserOnboarding({ onClose, onDismissForever }: { onClose: () => v
         Don't show this again
       </label>
       <button type="button" className="outline" onClick={finish}>Skip</button>
+      {step > 0 && <button type="button" className="outline" onClick={() => setStep(s => s - 1)}>Back</button>}
       <button type="button" className="primary" onClick={() => isLast ? finish() : setStep(s => s + 1)}>{isLast ? 'Finish' : 'Next'}</button>
     </div>
   </section></div>

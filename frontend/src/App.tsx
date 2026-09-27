@@ -70,9 +70,11 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   // first-load sequencing below.
   const [showOnboardingSetup, setShowOnboardingSetup] = useState(false)
   const [persona, setPersona] = useState<Persona | null>(null)
-  // Reopens PersonaOnboarding in edit mode from Settings' "Update investment profile" — separate
-  // from showPersonaOnboarding so it never re-triggers the setup-transition/UserOnboarding chain.
-  const [editingPersona, setEditingPersona] = useState(false)
+  // Reopens PersonaOnboarding from Settings — separate from showPersonaOnboarding so it never
+  // re-triggers the setup-transition/UserOnboarding chain. 'onboarding' for a user who never
+  // completed it (Settings' "Start now"); 'risk-only' for "Reassess risk profile", which skips
+  // straight to the five scenario questions.
+  const [settingsPersonaMode, setSettingsPersonaMode] = useState<'onboarding' | 'risk-only' | null>(null)
   const bootstrapped = useRef(false)
   const goku = useGoku()
 
@@ -287,7 +289,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} />}
       {page === 'settings' && (settings
         ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme}
-            persona={persona} onUpdatePersona={() => setEditingPersona(true)} />
+            persona={persona} onStartOnboarding={() => setSettingsPersonaMode('onboarding')} onReassessRisk={() => setSettingsPersonaMode('risk-only')} />
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
@@ -309,11 +311,11 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showUserOnboarding && <UserOnboarding
       onClose={() => setShowUserOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}
-    {editingPersona && <PersonaOnboarding
-      mode="edit"
+    {settingsPersonaMode && <PersonaOnboarding
+      mode={settingsPersonaMode}
       initial={persona}
-      onClose={() => { setEditingPersona(false); void load() }}
-      onDismissForever={() => { /* already dismissed — reopening from Settings is a plain edit */ }} />}
+      onClose={() => { setSettingsPersonaMode(null); void load() }}
+      onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
     {goku.available && <GokuLauncher goku={goku} />}
     <GokuPanel goku={goku} />
     <GokuAdminModal goku={goku} />

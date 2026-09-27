@@ -7,6 +7,7 @@ import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.UserPersona;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.CategoryRequest;
+import com.finsights.portfolio.dto.PersonaDetailsRequest;
 import com.finsights.portfolio.dto.PersonaRequest;
 import com.finsights.portfolio.dto.PersonaResponse;
 import com.finsights.portfolio.repository.UserAccountRepository;
@@ -16,8 +17,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Persona onboarding: a few questions used to seed starter categories and compute a risk
  *  profile from five scenario answers. Skippable — dismissing without completing saves a
@@ -64,7 +67,7 @@ public class PersonaService {
         persona.setAge(request.age());
         persona.setOccupation(request.occupation());
         persona.setSalaryRange(request.salaryRange());
-        persona.setInvestorExperience(request.investorExperience());
+        persona.setInvestorPersona(request.investorPersona());
         persona.setInvestingTenure(request.investingTenure());
         Set<InstrumentType> instruments = request.instrumentTypes() == null ? Set.of() : request.instrumentTypes();
         persona.setInstrumentTypes(new LinkedHashSet<>(instruments));
@@ -85,6 +88,24 @@ public class PersonaService {
     public Optional<PersonaResponse> current() {
         UserAccount user = currentUser.currentUser();
         return personas.findByUser_Id(user.getId()).map(this::toResponse);
+    }
+
+    /** Settings' inline "edit your details" path — updates only age/occupation/salaryRange/
+     *  investingTenure, leaving riskProfile, investorPersona, instrumentTypes and usedDefaults
+     *  exactly as they were. Requires an existing persona row (Settings only offers this once the
+     *  questionnaire has been completed or skipped at least once — see PersonaController). */
+    @Transactional
+    public PersonaResponse updateDetails(PersonaDetailsRequest request) {
+        UserAccount user = currentUser.currentUser();
+        UserPersona persona = personas.findByUser_Id(user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Complete the persona questionnaire before editing these details"));
+        persona.setAge(request.age());
+        persona.setOccupation(request.occupation());
+        persona.setSalaryRange(request.salaryRange());
+        persona.setInvestingTenure(request.investingTenure());
+        personas.save(persona);
+        return toResponse(persona);
     }
 
     @Transactional
@@ -134,7 +155,7 @@ public class PersonaService {
 
     private PersonaResponse toResponse(UserPersona persona) {
         return new PersonaResponse(persona.getAge(), persona.getOccupation(), persona.getSalaryRange(),
-                persona.getInvestorExperience(), persona.getInvestingTenure(), persona.getInstrumentTypes(),
+                persona.getInvestorPersona(), persona.getInvestingTenure(), persona.getInstrumentTypes(),
                 persona.getRiskProfile(), persona.isUsedDefaults());
     }
 }

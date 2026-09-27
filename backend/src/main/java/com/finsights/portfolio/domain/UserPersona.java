@@ -22,10 +22,10 @@ public class UserPersona {
     private String occupation;
     @Enumerated(EnumType.STRING)
     private SalaryRange salaryRange;
-    /** Self-identified, e.g. "Newbie" — stays unset for the skip-with-defaults path, same as
-     *  age/occupation/salaryRange. */
+    /** Self-identified, e.g. "The Wealth Builder" — stays unset for the skip-with-defaults path,
+     *  same as age/occupation/salaryRange. */
     @Enumerated(EnumType.STRING)
-    private InvestorExperience investorExperience;
+    private InvestorPersona investorPersona;
     @Enumerated(EnumType.STRING)
     private InvestingTenure investingTenure;
     @ElementCollection(fetch = FetchType.EAGER)
@@ -51,8 +51,8 @@ public class UserPersona {
     public void setOccupation(String occupation) { this.occupation = occupation; }
     public SalaryRange getSalaryRange() { return salaryRange; }
     public void setSalaryRange(SalaryRange salaryRange) { this.salaryRange = salaryRange; }
-    public InvestorExperience getInvestorExperience() { return investorExperience; }
-    public void setInvestorExperience(InvestorExperience investorExperience) { this.investorExperience = investorExperience; }
+    public InvestorPersona getInvestorPersona() { return investorPersona; }
+    public void setInvestorPersona(InvestorPersona investorPersona) { this.investorPersona = investorPersona; }
     public InvestingTenure getInvestingTenure() { return investingTenure; }
     public void setInvestingTenure(InvestingTenure investingTenure) { this.investingTenure = investingTenure; }
     public Set<InstrumentType> getInstrumentTypes() { return instrumentTypes; }
