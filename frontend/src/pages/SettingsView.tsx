@@ -4,7 +4,7 @@ import { api, API_URL } from '../api'
 import { money, since, numeric, toggleLabel } from '../util'
 import { Switch } from '../ui'
 import { updatePersonaDetails } from '../persona-api'
-import { PERSONA_LABELS, RISK_ALLOCATION, RISK_LABELS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
+import { PERSONA_DESCRIPTIONS, PERSONA_LABELS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
 import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, SalaryRange } from '../types'
 
 export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onStartOnboarding, onReassessRisk }: {
@@ -89,8 +89,8 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
         <h4 className="settings-subheading">Investor details</h4>
         {persona ? <>
           <div className="profile-tags-row">
-            {persona.investorPersona && <span className="profile-tag">{PERSONA_LABELS[persona.investorPersona]}</span>}
-            <span className="profile-tag">{RISK_LABELS[persona.riskProfile]}</span>
+            {persona.investorPersona && <span className="profile-tag" title={PERSONA_DESCRIPTIONS[persona.investorPersona]}>{PERSONA_LABELS[persona.investorPersona]}</span>}
+            <span className="profile-tag" title={RISK_DESCRIPTIONS[persona.riskProfile]}>{RISK_LABELS[persona.riskProfile]}</span>
           </div>
           <p className="hint">Equity {RISK_ALLOCATION[persona.riskProfile].equity} · Debt &amp; cash {RISK_ALLOCATION[persona.riskProfile].debtCash} · {RISK_ALLOCATION[persona.riskProfile].coreFocus}</p>
           <div className="settings-fields-grid">

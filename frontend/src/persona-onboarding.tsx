@@ -26,15 +26,16 @@ const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
 // four-archetype framework built around age, portfolio size, and what the user is actually
 // trying to do, rather than a plain experience level.
 export const PERSONA_OPTIONS: { value: InvestorPersona; label: string; hint: string }[] = [
-  { value: 'WEALTH_BUILDER', label: 'The Wealth Builder', hint: '22–35 · Early career — automating contributions, learning the basics, long time horizon' },
-  { value: 'ACTIVE_ACCUMULATOR', label: 'The Active Accumulator', hint: '35–50 · Peak earning years — maximising 401(k)/IRA, outperforming the market' },
-  { value: 'HIGH_NET_WORTH_TACTICIAN', label: 'The High-Net-Worth Tactician', hint: '35–65 · Experienced/high earner — capital preservation, estate planning, non-correlated alpha' },
-  { value: 'DEFENSIVE_CONSUMER', label: 'The Defensive Consumer', hint: '55+ · Pre-retirement/retirement — income yield, protecting principal, RMD planning' },
+  { value: 'WEALTH_BUILDER', label: 'Wealth Builder', hint: '22–35 · Early career — automating contributions, learning the basics, long time horizon' },
+  { value: 'ACTIVE_ACCUMULATOR', label: 'Active Accumulator', hint: '35–50 · Peak earning years — maximising 401(k)/IRA, outperforming the market' },
+  { value: 'HIGH_NET_WORTH_TACTICIAN', label: 'Advanced Tactician', hint: '35–65 · Experienced/high earner — capital preservation, estate planning, non-correlated alpha' },
+  { value: 'DEFENSIVE_CONSUMER', label: 'Defensive Wall', hint: '55+ · Pre-retirement/retirement — income yield, protecting principal, RMD planning' },
 ]
-export const PERSONA_LABELS: Record<InvestorPersona, string> = {
-  WEALTH_BUILDER: 'The Wealth Builder', ACTIVE_ACCUMULATOR: 'The Active Accumulator',
-  HIGH_NET_WORTH_TACTICIAN: 'The High-Net-Worth Tactician', DEFENSIVE_CONSUMER: 'The Defensive Consumer',
-}
+export const PERSONA_LABELS: Record<InvestorPersona, string> = Object.fromEntries(
+  PERSONA_OPTIONS.map(o => [o.value, o.label])) as Record<InvestorPersona, string>
+// Same copy as each option's onboarding hint — reused as the Settings tag's hover tooltip.
+export const PERSONA_DESCRIPTIONS: Record<InvestorPersona, string> = Object.fromEntries(
+  PERSONA_OPTIONS.map(o => [o.value, o.hint])) as Record<InvestorPersona, string>
 
 export const TENURE_OPTIONS: { value: InvestingTenure; label: string }[] = [
   { value: 'UNDER_1_YEAR', label: 'Less than a year' },
@@ -51,6 +52,12 @@ export const TENURE_LABELS: Record<InvestingTenure, string> = {
 // below — the backend's enum constants are stable identifiers; these are just friendlier labels.
 export const RISK_LABELS: Record<RiskProfile, string> = {
   CONSERVATIVE: 'Long-term investor', MODERATE: 'Swing trader', AGGRESSIVE: 'High growth trader',
+}
+// Reused as the Settings tag's hover tooltip.
+export const RISK_DESCRIPTIONS: Record<RiskProfile, string> = {
+  CONSERVATIVE: 'Prioritises protecting capital, even for lower returns.',
+  MODERATE: 'Balances growth and safety for a moderate risk-reward profile.',
+  AGGRESSIVE: 'Seeks aggressive capital growth despite bigger swings.',
 }
 // Allocation guideline shown alongside the risk profile — not enforced anywhere, purely
 // informational. MODERATE is the framework's default (see the pre-selected scenario answers
