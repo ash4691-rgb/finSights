@@ -175,12 +175,23 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   // right after to reconcile everything that isn't in this one holding: category/dashboard
   // aggregates, and a MARKET_PRICE holding's live price if it wasn't cached yet (see
   // LivePriceService) — those still arrive a moment later, same as before.
-  const mergeSavedHolding = (saved: Holding) => {
-    setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null)
+  //
+  // Also used by HoldingDrawer after logging a transaction: `holdings` here is the flat list
+  // backing the Holdings/Categories/Dashboard pages, but the drawer's own `holding` prop
+  // (holdingDetail below) is a separate snapshot taken when it opened — reloading `holdings`
+  // alone doesn't touch it, so its summary cards would keep showing pre-transaction numbers
+  // forever without this also syncing holdingDetail when it's the same holding.
+  const applyHoldingUpdate = (saved: Holding) => {
     setHoldings(current => {
       const index = current.findIndex(h => h.id === saved.id)
       return index === -1 ? [...current, saved] : current.map((h, i) => i === index ? saved : h)
     })
+    setHoldingDetail(current => current && current.id === saved.id ? saved : current)
+  }
+
+  const mergeSavedHolding = (saved: Holding) => {
+    setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null)
+    applyHoldingUpdate(saved)
     void load()
   }
 
@@ -293,9 +304,9 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
-    {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={mergeSavedHolding} onGoToTransactions={() => setPage('transactions')} />}
+    {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={mergeSavedHolding} onGoToTransactions={() => setPage('transactions')} />}
     {categoryDetail && <CategoryDrawer category={categoryDetail} holdings={holdings.filter(h => h.categoryId === categoryDetail.id)} onClose={() => setCategoryDetail(null)} onEdit={c => { setCategoryDetail(null); setEditingCategory(c) }} onAddHolding={c => { setCategoryDetail(null); setCreatingHoldingFor(c) }} onOpenHolding={h => { setCategoryDetail(null); setHoldingDetail(h) }} reload={load} />}
-    {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} reload={load} />}
+    {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} onHoldingUpdated={applyHoldingUpdate} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
     {showLayoutOnboarding && <CustomLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
