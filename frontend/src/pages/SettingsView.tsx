@@ -3,11 +3,13 @@ import type * as React from 'react'
 import { api, API_URL } from '../api'
 import { money, since, numeric, toggleLabel } from '../util'
 import { Switch } from '../ui'
-import type { Settings, Country, Dashboard, Holding, Theme } from '../types'
+import { EXPERIENCE_LABELS, RISK_LABELS, SALARY_LABELS, TENURE_LABELS } from '../persona-onboarding'
+import type { Settings, Country, Dashboard, Holding, Theme, Persona } from '../types'
 
-export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme }: {
+export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onUpdatePersona }: {
   settings: Settings; countries: Country[]; dashboard: Dashboard | null; holdings: Holding[]
   reload: () => Promise<void>; theme: Theme; setTheme: React.Dispatch<React.SetStateAction<Theme>>
+  persona: Persona | null; onUpdatePersona: () => void
 }) {
   const [form, setForm] = useState({
     displayName: settings.displayName, phone: settings.phone || '', country: settings.country,
@@ -65,6 +67,17 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       </div>
       <p className="hint">Your base currency follows your country: <b>{selectedCountry?.currency ?? settings.baseCurrency}</b>. Any page also has a "View in" dropdown for a one-off switch, using live market rates (refreshed at most every 20 minutes).</p>
       {saveBar}
+      <div className="settings-subsection">
+        <div className="panel-heading"><h3>Investor profile</h3><span>From persona onboarding</span></div>
+        {persona ? <>
+          <div className="pulse-row"><span>Age</span><strong>{persona.age ?? '—'}</strong></div>
+          <div className="pulse-row"><span>Occupation</span><strong>{persona.occupation || '—'}</strong></div>
+          <div className="pulse-row"><span>Annual salary range</span><strong>{persona.salaryRange ? SALARY_LABELS[persona.salaryRange] : '—'}</strong></div>
+          <div className="pulse-row"><span>Investor persona</span><strong>{persona.investorExperience ? EXPERIENCE_LABELS[persona.investorExperience] : '—'}</strong></div>
+          <div className="pulse-row"><span>Investing since</span><strong>{persona.investingTenure ? TENURE_LABELS[persona.investingTenure] : '—'}</strong></div>
+          <div className="pulse-row"><span>Risk profile</span><strong>{RISK_LABELS[persona.riskProfile]}</strong></div>
+        </> : <p className="hint">You haven't completed the persona questionnaire yet.</p>}
+      </div>
     </SettingsSection>
 
     <SettingsSection {...sectionProps('User preferences')} subtitle="How the app looks & behaves">
@@ -106,6 +119,7 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       <div className="pulse-row"><span>Brokers connected</span><strong>{brokersConnected}</strong></div>
       <div className="pulse-row"><span>Authentication</span><strong>{settings.demoMode ? 'Demo mode' : 'Google'}</strong></div>
       <button className="outline" onClick={() => void exportJson()}>Export all data (JSON)</button>
+      <button className="outline" onClick={onUpdatePersona}>Update investment profile</button>
       <div className="danger-zone-inline">
         <div className="panel-heading"><h3>Delete account</h3><span>Cannot be undone</span></div>
         <p className="hint">This permanently removes every instrument, holding, transaction, and your profile. Type <b>DELETE</b> to confirm.</p>

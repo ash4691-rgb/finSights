@@ -7,8 +7,10 @@ import { fetchLayouts } from './layout-api'
 import { CustomLayoutOnboarding } from './custom-layout-onboarding'
 import { UserOnboarding } from './user-onboarding'
 import { PersonaOnboarding } from './persona-onboarding'
+import { OnboardingSetupScreen } from './onboarding-setup'
+import { fetchPersona } from './persona-api'
 import { GokuAdminButton, GokuAdminModal, GokuLauncher, GokuPanel, useGoku } from './goku'
-import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme } from './types'
+import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme, Persona } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
 import { HoldingsView, HoldingModal, HoldingDrawer } from './pages/HoldingsView'
@@ -64,6 +66,13 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [showLayoutOnboarding, setShowLayoutOnboarding] = useState(false)
   const [showUserOnboarding, setShowUserOnboarding] = useState(false)
   const [showPersonaOnboarding, setShowPersonaOnboarding] = useState(false)
+  // Shown between PersonaOnboarding finishing and UserOnboarding starting — see load()'s
+  // first-load sequencing below.
+  const [showOnboardingSetup, setShowOnboardingSetup] = useState(false)
+  const [persona, setPersona] = useState<Persona | null>(null)
+  // Reopens PersonaOnboarding in edit mode from Settings' "Update investment profile" — separate
+  // from showPersonaOnboarding so it never re-triggers the setup-transition/UserOnboarding chain.
+  const [editingPersona, setEditingPersona] = useState(false)
   const bootstrapped = useRef(false)
   const goku = useGoku()
 
@@ -107,10 +116,10 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     }
     setUser(me)
 
-    const [settingsR, fxR, countriesR, dashboardR, categoriesR, holdingsR, layoutsR] = await Promise.allSettled([
+    const [settingsR, fxR, countriesR, dashboardR, categoriesR, holdingsR, layoutsR, personaR] = await Promise.allSettled([
       api<Settings>('/api/settings'), api<FxRates>('/api/fx-rates'), api<Country[]>('/api/countries'),
       api<Dashboard>(`/api/dashboard?currency=${cur}`), api<Category[]>(`/api/categories?currency=${cur}`),
-      api<Holding[]>(`/api/holdings?currency=${cur}`), fetchLayouts(),
+      api<Holding[]>(`/api/holdings?currency=${cur}`), fetchLayouts(), fetchPersona(),
     ])
     const errors: LoadErrors = {}
     const reason = (r: PromiseRejectedResult) => r.reason instanceof Error ? r.reason.message : 'Something went wrong'
@@ -136,6 +145,8 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
 
     if (layoutsR.status === 'fulfilled') hydrateLayouts(layoutsR.value)
 
+    if (personaR.status === 'fulfilled') setPersona(personaR.value)
+
     setDisplayCurrency(cur)
     setLoadErrors(errors)
     setDataVersion(v => v + 1)
@@ -143,11 +154,12 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (isFirstLoad) {
       bootstrapped.current = true
       setLoading(false)
-      // UserOnboarding comes first for a brand-new user; PersonaOnboarding follows once it's
-      // closed (see its onClose below) rather than both popping up on top of each other. A
-      // returning user who's only dismissed one of the two still gets the other directly.
-      if (nextSettings && !nextSettings.userOnboardingDismissed) setShowUserOnboarding(true)
-      else if (nextSettings && !nextSettings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
+      // PersonaOnboarding (persona + risk assessment) comes first for a brand-new user, then a
+      // brief "setting up" transition, then UserOnboarding's app-concepts tour — each stage
+      // triggers the next from its own onClose/onDone below rather than all three being decided
+      // here. A returning user who's only dismissed one of the two still gets the other directly.
+      if (nextSettings && !nextSettings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
+      else if (nextSettings && !nextSettings.userOnboardingDismissed) setShowUserOnboarding(true)
       if (!currency && nextSettings?.baseCurrency && nextSettings.baseCurrency !== cur) {
         void load(nextSettings.baseCurrency)
       }
@@ -259,7 +271,8 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         : <SectionError what="insights" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} />}
       {page === 'settings' && (settings
-        ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme} />
+        ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme}
+            persona={persona} onUpdatePersona={() => setEditingPersona(true)} />
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
@@ -270,15 +283,22 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showLayoutOnboarding && <CustomLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}
-    {showUserOnboarding && <UserOnboarding
-      onClose={() => {
-        setShowUserOnboarding(false)
-        if (settings && !settings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
-      }}
-      onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}
     {showPersonaOnboarding && <PersonaOnboarding
-      onClose={() => setShowPersonaOnboarding(false)}
+      initial={persona}
+      onClose={() => { setShowPersonaOnboarding(false); setShowOnboardingSetup(true); void load() }}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
+    {showOnboardingSetup && <OnboardingSetupScreen onDone={() => {
+      setShowOnboardingSetup(false)
+      if (settings && !settings.userOnboardingDismissed) setShowUserOnboarding(true)
+    }} />}
+    {showUserOnboarding && <UserOnboarding
+      onClose={() => setShowUserOnboarding(false)}
+      onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}
+    {editingPersona && <PersonaOnboarding
+      mode="edit"
+      initial={persona}
+      onClose={() => { setEditingPersona(false); void load() }}
+      onDismissForever={() => { /* already dismissed — reopening from Settings is a plain edit */ }} />}
     {goku.available && <GokuLauncher goku={goku} />}
     <GokuPanel goku={goku} />
     <GokuAdminModal goku={goku} />

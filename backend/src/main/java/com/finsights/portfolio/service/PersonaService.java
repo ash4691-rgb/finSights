@@ -13,13 +13,14 @@ import com.finsights.portfolio.repository.UserAccountRepository;
 import com.finsights.portfolio.repository.UserPersonaRepository;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Persona onboarding: a few questions used to seed starter categories and compute a risk
- *  profile from three scenario answers. Skippable — dismissing without completing saves a
+ *  profile from five scenario answers. Skippable — dismissing without completing saves a
  *  MODERATE default instead of leaving the user with no persona at all. */
 @Service
 public class PersonaService {
@@ -63,9 +64,12 @@ public class PersonaService {
         persona.setAge(request.age());
         persona.setOccupation(request.occupation());
         persona.setSalaryRange(request.salaryRange());
+        persona.setInvestorExperience(request.investorExperience());
+        persona.setInvestingTenure(request.investingTenure());
         Set<InstrumentType> instruments = request.instrumentTypes() == null ? Set.of() : request.instrumentTypes();
         persona.setInstrumentTypes(new LinkedHashSet<>(instruments));
-        persona.setRiskProfile(scoreRisk(request.marketDropAnswer(), request.timeHorizonAnswer(), request.tradeOffAnswer()));
+        persona.setRiskProfile(scoreRisk(request.marketDropAnswer(), request.timeHorizonAnswer(),
+                request.tradeOffAnswer(), request.volatilityReactionAnswer(), request.primaryGoalAnswer()));
         persona.setUsedDefaults(false);
         personas.save(persona);
 
@@ -74,6 +78,13 @@ public class PersonaService {
         user.setPersonaOnboardingDismissed(true);
         users.save(user);
         return toResponse(persona);
+    }
+
+    /** Nullable — no persona row exists until the user has either completed or skipped the
+     *  questionnaire at least once. */
+    public Optional<PersonaResponse> current() {
+        UserAccount user = currentUser.currentUser();
+        return personas.findByUser_Id(user.getId()).map(this::toResponse);
     }
 
     @Transactional
@@ -90,11 +101,14 @@ public class PersonaService {
     }
 
     /** Each scenario answer is 0 (conservative-leaning), 1 (moderate) or 2 (aggressive-leaning);
-     *  a missing answer defaults to 1 (moderate) rather than skewing the score toward either end. */
-    private RiskProfile scoreRisk(Integer marketDrop, Integer timeHorizon, Integer tradeOff) {
-        int total = normalize(marketDrop) + normalize(timeHorizon) + normalize(tradeOff);
-        if (total <= 1) return RiskProfile.CONSERVATIVE;
-        if (total <= 4) return RiskProfile.MODERATE;
+     *  a missing answer defaults to 1 (moderate) rather than skewing the score toward either end.
+     *  Five questions (0-10 total) split roughly into thirds. */
+    private RiskProfile scoreRisk(Integer marketDrop, Integer timeHorizon, Integer tradeOff,
+                                   Integer volatilityReaction, Integer primaryGoal) {
+        int total = normalize(marketDrop) + normalize(timeHorizon) + normalize(tradeOff)
+                + normalize(volatilityReaction) + normalize(primaryGoal);
+        if (total <= 3) return RiskProfile.CONSERVATIVE;
+        if (total <= 6) return RiskProfile.MODERATE;
         return RiskProfile.AGGRESSIVE;
     }
 
@@ -120,6 +134,7 @@ public class PersonaService {
 
     private PersonaResponse toResponse(UserPersona persona) {
         return new PersonaResponse(persona.getAge(), persona.getOccupation(), persona.getSalaryRange(),
-                persona.getInstrumentTypes(), persona.getRiskProfile(), persona.isUsedDefaults());
+                persona.getInvestorExperience(), persona.getInvestingTenure(), persona.getInstrumentTypes(),
+                persona.getRiskProfile(), persona.isUsedDefaults());
     }
 }
