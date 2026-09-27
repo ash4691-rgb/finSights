@@ -8,6 +8,13 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
+    # Monorepo: only rebuild/redeploy this service when a backend-affecting file actually
+    # changed. Without this, every frontend-only PR merge to main still triggers a full
+    # Docker/Maven rebuild here — the "unnecessary backend deployments" this exists to stop.
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml
     envVars:
       - key: APP_AUTH_MODE
         value: google
