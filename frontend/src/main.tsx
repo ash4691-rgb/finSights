@@ -14,13 +14,25 @@ import type { User } from './types'
 // ---------------------------------------------------------------------------
 
 export const ENTERED_KEY = 'finsights-entered-app'
-export type Phase = 'home' | 'login' | 'app'
+// Set right before handing off to Google's OAuth screen, consumed (and cleared) on the very next
+// load of this page — the one-shot signal that lets Root show a loading state instead of the
+// marketing homepage while it re-checks auth, without adding that same wait to an organic,
+// never-signed-in visitor landing on '/' cold (who has neither this nor ENTERED_KEY set).
+const GOOGLE_REDIRECT_KEY = 'finsights-google-redirect-pending'
+export type Phase = 'home' | 'login' | 'checking' | 'app'
 
 export type Banner = { kind: 'success' | 'error'; message: string }
 
 export function Root() {
   const [phase, setPhase] = useState<Phase>(() => {
-    try { return localStorage.getItem(ENTERED_KEY) === 'true' ? 'app' : 'home' } catch { return 'home' }
+    try {
+      if (localStorage.getItem(ENTERED_KEY) === 'true') return 'app'
+      if (sessionStorage.getItem(GOOGLE_REDIRECT_KEY) === 'true') {
+        sessionStorage.removeItem(GOOGLE_REDIRECT_KEY)
+        return 'checking'
+      }
+    } catch { /* storage unavailable */ }
+    return 'home'
   })
   const [loginMode, setLoginMode] = useState<'login' | 'signup'>('signup')
   const [verifyBanner, setVerifyBanner] = useState<Banner | null>(null)
@@ -41,14 +53,19 @@ export function Root() {
   // of inactivity, and Neon's database can take a few seconds to wake from suspension — the
   // very first request right after either can transiently fail (timeout/5xx) even though the
   // session itself is perfectly valid, which would otherwise strand a just-logged-in user back
-  // on the landing page.
+  // on the landing page. While any of that is in flight, 'checking' (set above) keeps showing a
+  // loading screen instead of flashing the homepage first, but only for the redirect-back case —
+  // an organic visit still renders the homepage immediately and reconciles quietly in the background.
   useEffect(() => {
     let cancelled = false
+    const stopChecking = () => { if (!cancelled) setPhase(p => (p === 'checking' ? 'home' : p)) }
     const checkSignedIn = (attempt: number) => {
       api<User>('/api/auth/me')
-        .then(me => { if (!cancelled && !me.demoMode) enterApp() })
+        .then(me => { if (cancelled) return; if (!me.demoMode) enterApp(); else stopChecking() })
         .catch(() => {
-          if (!cancelled && attempt < 2) setTimeout(() => checkSignedIn(attempt + 1), 1500 * (attempt + 1))
+          if (cancelled) return
+          if (attempt < 2) setTimeout(() => checkSignedIn(attempt + 1), 1500 * (attempt + 1))
+          else stopChecking()
         })
     }
     checkSignedIn(0)
@@ -69,6 +86,7 @@ export function Root() {
       .catch(err => setVerifyBanner({ kind: 'error', message: err instanceof Error ? err.message : 'That verification link is invalid or has expired.' }))
   }, [])
 
+  if (phase === 'checking') return <div className="loading-screen"><div className="mark">F</div><p>Signing you in…</p></div>
   if (phase === 'home') return <Homepage onGetStarted={() => goToLogin('signup')} onSignIn={() => goToLogin('login')} />
   if (phase === 'login') return <LoginScreen initialMode={loginMode} onBack={() => setPhase('home')} onEnter={enterApp} banner={verifyBanner} />
   return <App onSignOut={exitApp} />
@@ -195,7 +213,10 @@ export function LoginScreen({ initialMode, onBack, onEnter, banner }: { initialM
       }
     } catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong') } finally { setBusy(false) }
   }
-  const continueWithGoogle = () => { window.location.href = `${API_URL}/oauth2/authorization/google` }
+  const continueWithGoogle = () => {
+    try { sessionStorage.setItem(GOOGLE_REDIRECT_KEY, 'true') } catch { /* storage unavailable */ }
+    window.location.href = `${API_URL}/oauth2/authorization/google`
+  }
   const needsVerification = error.includes("isn't verified")
   const resend = async () => {
     setResendBusy(true)
