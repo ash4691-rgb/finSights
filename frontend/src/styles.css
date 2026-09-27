@@ -302,6 +302,12 @@ th.sortable:hover{color:var(--text)}
 .persona-scenario p{font-weight:700;color:var(--text);margin-bottom:12px}
 .persona-scenario{display:grid;gap:2px}
 .persona-checkbox{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);cursor:pointer;padding:6px 0}
+.persona-experience{display:grid;gap:14px}
+.persona-radio-cards{display:grid;gap:8px}
+.persona-radio-card{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--border-strong);border-radius:8px;cursor:pointer}
+.persona-radio-card input{margin-top:3px}
+.persona-radio-card b{display:block;font-size:13px;color:var(--text)}
+.persona-radio-card small{display:block;font-size:11px;color:var(--text-3);margin-top:2px}
 .loading-screen{min-height:100vh;display:grid;place-content:center;text-align:center;gap:12px}
 .loading-screen .mark{margin:auto;width:44px;height:44px;font-size:22px}
 .loading-screen p{color:var(--text-3)}
@@ -519,6 +525,7 @@ th.sortable:hover{color:var(--text)}
 .settings-status{font-size:12px;color:var(--positive);margin-left:10px}
 .danger-zone{border-color:var(--danger-border)}
 .danger-zone-inline{margin-top:18px;padding-top:16px;border-top:1px dashed var(--danger-border)}
+.settings-subsection{margin-top:18px;padding-top:16px;border-top:1px dashed var(--border-soft)}
 .danger-btn{border:1px solid var(--danger-border);background:var(--danger-btn-bg);color:var(--danger-btn-text);border-radius:8px;padding:10px 14px;font-weight:700;font-size:13px}
 .danger-btn:hover:not(:disabled){background:var(--danger-btn-bg-hover)}
 .settings-checks{margin-bottom:14px}

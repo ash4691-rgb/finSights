@@ -55,6 +55,16 @@ export type Settings = {
 }
 export type SalaryRange = 'UNDER_5L' | 'L5_TO_10L' | 'L10_TO_25L' | 'L25_TO_50L' | 'ABOVE_50L' | 'PREFER_NOT_TO_SAY'
 export type InstrumentType = 'INDIAN_STOCKS' | 'FOREIGN_STOCKS' | 'MUTUAL_FUNDS' | 'CRYPTO' | 'COMMODITIES' | 'FIXED_RETURN' | 'REAL_ESTATE'
+// Self-identified during persona onboarding — distinct from RiskProfile, which is computed from
+// the risk-scenario answers rather than chosen directly.
+export type InvestorExperience = 'NEWBIE' | 'MODERATE' | 'PROFESSIONAL_TRADER'
+export type InvestingTenure = 'UNDER_1_YEAR' | 'ONE_TO_3_YEARS' | 'THREE_TO_10_YEARS' | 'OVER_10_YEARS'
+export type RiskProfile = 'CONSERVATIVE' | 'MODERATE' | 'AGGRESSIVE'
+export type Persona = {
+  age?: number; occupation?: string; salaryRange?: SalaryRange
+  investorExperience?: InvestorExperience; investingTenure?: InvestingTenure
+  instrumentTypes: InstrumentType[]; riskProfile: RiskProfile; usedDefaults: boolean
+}
 export type Country = { code: string; name: string; currency: string }
 export type Transaction = {
   id: string; holdingId: string; holdingName: string; categoryId: string; categoryName: string; broker?: string

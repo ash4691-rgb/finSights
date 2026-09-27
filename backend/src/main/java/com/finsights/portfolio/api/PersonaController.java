@@ -4,6 +4,7 @@ import com.finsights.portfolio.dto.PersonaRequest;
 import com.finsights.portfolio.dto.PersonaResponse;
 import com.finsights.portfolio.service.PersonaService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -13,6 +14,13 @@ public class PersonaController {
 
     public PersonaController(PersonaService persona) {
         this.persona = persona;
+    }
+
+    // 204 (no body) when the user hasn't completed or skipped the questionnaire yet — the
+    // Settings page's persona/risk display treats that as "nothing to show".
+    @GetMapping
+    ResponseEntity<PersonaResponse> current() {
+        return persona.current().map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @PostMapping
