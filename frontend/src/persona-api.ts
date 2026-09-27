@@ -8,11 +8,11 @@ export type PersonaSubmission = {
   investorPersona: InvestorPersona | null
   investingTenure: InvestingTenure | null
   instrumentTypes: InstrumentType[]
-  marketDropAnswer: number | null
   timeHorizonAnswer: number | null
-  tradeOffAnswer: number | null
-  volatilityReactionAnswer: number | null
-  primaryGoalAnswer: number | null
+  riskCapacityAnswer: number | null
+  riskToleranceAnswer: number | null
+  investmentObjectivesAnswer: number | null
+  liquidityNeedsAnswer: number | null
 }
 
 // Null both when the request fails and when the user hasn't completed or skipped the

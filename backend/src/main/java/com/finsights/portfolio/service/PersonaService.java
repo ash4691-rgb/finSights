@@ -71,8 +71,8 @@ public class PersonaService {
         persona.setInvestingTenure(request.investingTenure());
         Set<InstrumentType> instruments = request.instrumentTypes() == null ? Set.of() : request.instrumentTypes();
         persona.setInstrumentTypes(new LinkedHashSet<>(instruments));
-        persona.setRiskProfile(scoreRisk(request.marketDropAnswer(), request.timeHorizonAnswer(),
-                request.tradeOffAnswer(), request.volatilityReactionAnswer(), request.primaryGoalAnswer()));
+        persona.setRiskProfile(scoreRisk(request.timeHorizonAnswer(), request.riskCapacityAnswer(),
+                request.riskToleranceAnswer(), request.investmentObjectivesAnswer(), request.liquidityNeedsAnswer()));
         persona.setUsedDefaults(false);
         personas.save(persona);
 
@@ -121,20 +121,36 @@ public class PersonaService {
         users.save(user);
     }
 
-    /** Each scenario answer is 0 (conservative-leaning), 1 (moderate) or 2 (aggressive-leaning);
-     *  a missing answer defaults to 1 (moderate) rather than skewing the score toward either end.
+    // Option count per question in the framework — Time Horizon and Liquidity Needs offer 4,
+    // Risk Capacity offers 5, Risk Tolerance and Investment Objectives offer 3. Kept in the same
+    // order scoreRisk takes its answers, purely so the two stay easy to eyeball together.
+    private static final int TIME_HORIZON_OPTIONS = 4;
+    private static final int RISK_CAPACITY_OPTIONS = 5;
+    private static final int RISK_TOLERANCE_OPTIONS = 3;
+    private static final int INVESTMENT_OBJECTIVES_OPTIONS = 3;
+    private static final int LIQUIDITY_NEEDS_OPTIONS = 4;
+
+    /** Each answer is the 0-based index the user picked among that question's own options, which
+     *  differ in count across the five questions (3 to 5) — normalize() rescales each one to a
+     *  common 0 (conservative-leaning) - 2 (aggressive-leaning) score before summing, so a
+     *  5-option question doesn't quietly outweigh a 3-option one. A missing answer defaults to
+     *  the normalized midpoint (1, moderate) rather than skewing the score toward either end.
      *  Five questions (0-10 total) split roughly into thirds. */
-    private RiskProfile scoreRisk(Integer marketDrop, Integer timeHorizon, Integer tradeOff,
-                                   Integer volatilityReaction, Integer primaryGoal) {
-        int total = normalize(marketDrop) + normalize(timeHorizon) + normalize(tradeOff)
-                + normalize(volatilityReaction) + normalize(primaryGoal);
+    private RiskProfile scoreRisk(Integer timeHorizon, Integer riskCapacity, Integer riskTolerance,
+                                   Integer investmentObjectives, Integer liquidityNeeds) {
+        int total = normalize(timeHorizon, TIME_HORIZON_OPTIONS) + normalize(riskCapacity, RISK_CAPACITY_OPTIONS)
+                + normalize(riskTolerance, RISK_TOLERANCE_OPTIONS) + normalize(investmentObjectives, INVESTMENT_OBJECTIVES_OPTIONS)
+                + normalize(liquidityNeeds, LIQUIDITY_NEEDS_OPTIONS);
         if (total <= 3) return RiskProfile.CONSERVATIVE;
         if (total <= 6) return RiskProfile.MODERATE;
         return RiskProfile.AGGRESSIVE;
     }
 
-    private int normalize(Integer answer) {
-        return answer == null || answer < 0 || answer > 2 ? 1 : answer;
+    /** Rescales a 0-based option index from a scale of {@code optionCount} options onto 0-2,
+     *  rounding to the nearest whole score. A null or out-of-range answer normalizes to 1. */
+    private int normalize(Integer answer, int optionCount) {
+        if (answer == null || answer < 0 || answer >= optionCount) return 1;
+        return (int) Math.round(answer * 2.0 / (optionCount - 1));
     }
 
     /** One starter category per selected instrument type the user doesn't already have a
