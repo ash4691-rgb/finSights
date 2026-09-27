@@ -39,12 +39,13 @@ class WatchlistServiceTest {
     @Mock CurrentUserService currentUser;
     @Mock FxRateService fx;
     @Mock MarketDataService marketData;
+    @Mock LivePriceService livePrices;
     private WatchlistService service;
     private UserAccount user;
 
     @BeforeEach
     void setUp() {
-        service = new WatchlistService(repository, snapshots, currentUser, fx, marketData);
+        service = new WatchlistService(repository, snapshots, currentUser, fx, marketData, livePrices);
         user = new UserAccount("demo@finsights.local", "Demo");
         when(currentUser.currentUser()).thenReturn(user);
     }
@@ -171,7 +172,7 @@ class WatchlistServiceTest {
         item.setCurrency("INR");
         when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
         when(snapshots.latestRecordedAt(any(), any())).thenReturn(null); // never priced yet
-        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE.NS",
+        when(livePrices.getPrices(any())).thenReturn(Map.of("RELIANCE.NS",
                 new MarketQuoteResponse("RELIANCE.NS", "Reliance", new BigDecimal("2950.00"), "INR", Instant.now())));
 
         service.list();
@@ -180,18 +181,24 @@ class WatchlistServiceTest {
     }
 
     @Test
-    void recentlySnapshottedItemIsNotRefetchedFromTheLiveFeed() {
+    void recentlySnapshottedItemIsNotReRecordedWhenTheCachedPriceIsNoNewer() {
         WatchlistItem item = new WatchlistItem();
         item.setUser(user);
         item.setName("Reliance");
         item.setTickerSymbol("RELIANCE.NS");
         item.setCurrency("INR");
         when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
-        when(snapshots.latestRecordedAt(any(), any())).thenReturn(Instant.now().minusSeconds(30)); // well within the 15-minute window
+        Instant last = Instant.now().minusSeconds(30);
+        when(snapshots.latestRecordedAt(any(), any())).thenReturn(last);
+        // The shared cache's price is no newer than what's already recorded (e.g. the scheduled
+        // refresh hasn't run again since) — reading it is cheap now, but it must not spam a new
+        // snapshot on every single page load regardless.
+        when(livePrices.getPrices(any())).thenReturn(Map.of("RELIANCE.NS",
+                new MarketQuoteResponse("RELIANCE.NS", "Reliance", new BigDecimal("2950.00"), "INR", last.minusSeconds(5))));
 
         service.list();
 
-        verify(marketData, never()).quotes(any());
+        verify(snapshots, never()).record(any(), any(), any(), any());
     }
 
     @Test
@@ -203,7 +210,7 @@ class WatchlistServiceTest {
 
         service.list();
 
-        verify(marketData, never()).quotes(any());
+        verify(livePrices, never()).getPrices(any());
     }
 
     @Test
@@ -215,7 +222,7 @@ class WatchlistServiceTest {
         item.setCurrency("INR");
         when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
         when(snapshots.latestRecordedAt(any(), any())).thenReturn(null);
-        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE.NS",
+        when(livePrices.getPrices(any())).thenReturn(Map.of("RELIANCE.NS",
                 new MarketQuoteResponse("RELIANCE.NS", "Reliance", new BigDecimal("2950.00"), "INR", Instant.now())));
         when(snapshots.hasSnapshotAtOrBefore(any(), any(), any())).thenReturn(false);
         when(marketData.history(eq("RELIANCE.NS"), eq("1Y"))).thenReturn(Optional.of(new MarketHistoryResponse("RELIANCE.NS", "INR", List.of(
@@ -236,7 +243,7 @@ class WatchlistServiceTest {
         item.setCurrency("INR");
         when(repository.findByUser_IdOrderByCreatedAtAsc(user.getId())).thenReturn(List.of(item));
         when(snapshots.latestRecordedAt(any(), any())).thenReturn(null);
-        when(marketData.quotes(any())).thenReturn(Map.of("RELIANCE.NS",
+        when(livePrices.getPrices(any())).thenReturn(Map.of("RELIANCE.NS",
                 new MarketQuoteResponse("RELIANCE.NS", "Reliance", new BigDecimal("2950.00"), "INR", Instant.now())));
         when(snapshots.hasSnapshotAtOrBefore(any(), any(), any())).thenReturn(true);
 

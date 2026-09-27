@@ -28,8 +28,6 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Service
 public class WatchlistService {
-    /** Ticker-bearing items are re-priced from the live feed no more often than this — same cadence as holdings. */
-    private static final Duration PRICE_MAX_AGE = Duration.ofMinutes(15);
     /** How far back a historical backfill needs to already reach before it's considered done. */
     private static final Duration DEEP_HISTORY_WINDOW = Duration.ofDays(350);
 
@@ -38,14 +36,16 @@ public class WatchlistService {
     private final CurrentUserService currentUser;
     private final FxRateService fx;
     private final MarketDataService marketData;
+    private final LivePriceService livePrices;
 
     public WatchlistService(WatchlistRepository items, PriceSnapshotService snapshots, CurrentUserService currentUser,
-                             FxRateService fx, MarketDataService marketData) {
+                             FxRateService fx, MarketDataService marketData, LivePriceService livePrices) {
         this.items = items;
         this.snapshots = snapshots;
         this.currentUser = currentUser;
         this.fx = fx;
         this.marketData = marketData;
+        this.livePrices = livePrices;
     }
 
     /** Native currency, unconverted — the basis for movement/threshold evaluation in Top movers. */
@@ -57,27 +57,27 @@ public class WatchlistService {
     }
 
     /**
-     * Re-prices ticker-bearing items whose last recorded snapshot is older than {@link #PRICE_MAX_AGE}
-     * (or that have none yet). Runs on every watchlist load; the feed is cached and every failure is
-     * swallowed so a dead feed never blocks the page — same shape as {@code HoldingService.refreshMarketPrices}.
+     * Re-prices every ticker-bearing item from the shared {@link LivePriceService} cache — a
+     * local DB lookup, not a Yahoo call, so this runs on every watchlist load without adding
+     * external-network latency to it. A new snapshot is only recorded when the cached price is
+     * actually newer than the item's last one — not on every single load — which naturally
+     * paces snapshots to the cache's own ~15-minute refresh cadence.
      */
     private void refreshLivePrices(List<WatchlistItem> owned) {
-        Instant cutoff = Instant.now().minus(PRICE_MAX_AGE);
-        List<WatchlistItem> stale = owned.stream()
+        List<WatchlistItem> tickerBearing = owned.stream()
                 .filter(w -> w.getTickerSymbol() != null && !w.getTickerSymbol().isBlank())
-                .filter(w -> {
-                    Instant last = snapshots.latestRecordedAt(SnapshotSubject.WATCHLIST, w.getId());
-                    return last == null || last.isBefore(cutoff);
-                })
                 .toList();
-        if (stale.isEmpty()) return;
+        if (tickerBearing.isEmpty()) return;
 
-        Map<String, MarketQuoteResponse> quotes = marketData.quotes(stale.stream()
+        Map<String, MarketQuoteResponse> quotes = livePrices.getPrices(tickerBearing.stream()
                 .map(w -> w.getTickerSymbol().trim().toUpperCase())
                 .collect(Collectors.toSet()));
-        for (WatchlistItem item : stale) {
+        for (WatchlistItem item : tickerBearing) {
             MarketQuoteResponse quote = quotes.get(item.getTickerSymbol().trim().toUpperCase());
             if (quote == null || quote.price() == null || quote.price().signum() <= 0) continue;
+            Instant asOf = quote.asOf() != null ? quote.asOf() : Instant.now();
+            Instant last = snapshots.latestRecordedAt(SnapshotSubject.WATCHLIST, item.getId());
+            if (last != null && !last.isBefore(asOf)) continue;
             String currency = item.getCurrency() != null ? item.getCurrency() : quote.currency();
             if (item.getCurrency() == null) {
                 item.setCurrency(currency);

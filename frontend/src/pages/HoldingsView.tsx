@@ -111,7 +111,10 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
 }
 
 export function HoldingModal({ holding, category, categories, holdings, onClose, onSaved, onGoToTransactions }: {
-  holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; onClose: () => void; onSaved: () => void
+  holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; onClose: () => void
+  // Carries the just-saved holding back to the caller so it can be spliced into local state
+  // immediately — instant feedback instead of waiting on the reload that follows.
+  onSaved: (saved: Holding) => void
   onGoToTransactions?: () => void
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
@@ -210,7 +213,10 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
       description: form.description || null, notes: null,
       tags: form.tags,
     }
-    try { await api(holding ? `/api/holdings/${holding.id}` : '/api/holdings', { method: holding ? 'PUT' : 'POST', body: JSON.stringify(payload) }); onSaved() }
+    try {
+      const saved = await api<Holding>(holding ? `/api/holdings/${holding.id}` : '/api/holdings', { method: holding ? 'PUT' : 'POST', body: JSON.stringify(payload) })
+      onSaved(saved)
+    }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not save holding') } finally { setSaving(false) }
   }
 

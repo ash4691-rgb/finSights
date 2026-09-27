@@ -167,6 +167,21 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   }
   useEffect(() => { void load() }, [])
 
+  // Splices a just-created/edited holding into local state the instant its save resolves,
+  // rather than waiting on the full reload below to see it — instant feedback for the one
+  // thing we already know for certain (what the server just echoed back). load() still runs
+  // right after to reconcile everything that isn't in this one holding: category/dashboard
+  // aggregates, and a MARKET_PRICE holding's live price if it wasn't cached yet (see
+  // LivePriceService) — those still arrive a moment later, same as before.
+  const mergeSavedHolding = (saved: Holding) => {
+    setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null)
+    setHoldings(current => {
+      const index = current.findIndex(h => h.id === saved.id)
+      return index === -1 ? [...current, saved] : current.map((h, i) => i === index ? saved : h)
+    })
+    void load()
+  }
+
   const exportCategoriesCsv = () => downloadCsv('finsights-categories.csv',
     ['Name', 'Type', 'Description', 'Invested', 'Current value', 'P/L', 'P/L %', 'Weightage %', 'Liquid amount', 'Liquid %', 'NPA amount', 'NPA %', 'Holdings'],
     categories.map(c => [c.name, label(c.kind), c.description ?? '', c.investedValue, c.currentValue, c.profitLoss, c.profitLossPercentage.toFixed(2),
@@ -276,7 +291,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
-    {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null); void load() }} onGoToTransactions={() => setPage('transactions')} />}
+    {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={mergeSavedHolding} onGoToTransactions={() => setPage('transactions')} />}
     {categoryDetail && <CategoryDrawer category={categoryDetail} holdings={holdings.filter(h => h.categoryId === categoryDetail.id)} onClose={() => setCategoryDetail(null)} onEdit={c => { setCategoryDetail(null); setEditingCategory(c) }} onAddHolding={c => { setCategoryDetail(null); setCreatingHoldingFor(c) }} onOpenHolding={h => { setCategoryDetail(null); setHoldingDetail(h) }} reload={load} />}
     {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
