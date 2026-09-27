@@ -60,6 +60,16 @@ class MarketDataServiceTest {
     }
 
     @Test
+    void mutualFundHistoryNeverConsultsTheSharedDailySeriesCache() {
+        // Mutual funds have no ticker to look up in the equity daily-series DB cache — mfapi.in's
+        // single per-scheme call already returns the full dated NAV series, so the MF: branch must
+        // never touch historyCacheRepo, whatever the live feed does or doesn't return here.
+        service.history("MF:120503", "1Y");
+        service.history("MF:120503", "1D");
+        verify(historyCacheRepo, never()).findBySymbol(any());
+    }
+
+    @Test
     void derivedRangesServeFromAFreshCachedDailySeriesWithoutTouchingTheNetwork() throws Exception {
         List<MarketHistoryResponse.Point> points = List.of(
                 new MarketHistoryResponse.Point(Instant.now().minus(200, ChronoUnit.DAYS), new BigDecimal("100")),

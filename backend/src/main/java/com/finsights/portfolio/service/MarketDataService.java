@@ -19,10 +19,15 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,10 +39,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Live prices and ticker search backed by Yahoo Finance's public (undocumented)
- * endpoints. There is no API key; calls can fail or rate-limit at any time, so
- * every method degrades to "no data" rather than throwing. Quotes are cached
- * briefly so opening the Holdings page repeatedly does not hammer the feed.
+ * Live prices and ticker search across two public, unauthenticated feeds: Yahoo Finance's
+ * (undocumented) endpoints for exchange-traded instruments, and mfapi.in (a JSON wrapper over
+ * AMFI's daily NAV file) for Indian mutual fund schemes, which have no ticker and are keyed by
+ * an {@code MF:}-prefixed scheme code instead (see {@link #isMutualFund(String)}). Either source
+ * can fail or rate-limit at any time, so every method degrades to "no data" rather than throwing,
+ * and a failure in one source never suppresses the other's results. Quotes are cached briefly so
+ * opening the Holdings page repeatedly does not hammer either feed.
  */
 @Service
 public class MarketDataService {
@@ -46,6 +54,12 @@ public class MarketDataService {
     private static final String SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search";
     private static final String CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/";
     private static final String LANDING_URL = "https://finance.yahoo.com/";
+    private static final String MFAPI_SEARCH_URL = "https://api.mfapi.in/mf/search";
+    private static final String MFAPI_SCHEME_URL = "https://api.mfapi.in/mf/";
+    /** Namespaces mutual-fund scheme codes against equity tickers sharing the same string space
+     * (Holding.tickerSymbol, watchlist entries, etc.) — e.g. {@code MF:120503}. */
+    private static final String MF_PREFIX = "MF:";
+    private static final DateTimeFormatter MFAPI_DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
     private static final String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     private static final Duration QUOTE_TTL = Duration.ofSeconds(60);
@@ -92,6 +106,16 @@ public class MarketDataService {
         Cached<List<SymbolSuggestion>> hit = searchCache.get(key);
         if (hit != null && hit.fresh(SEARCH_TTL)) return hit.value;
 
+        // Each source degrades to empty independently — a failure in one must not suppress the other's results.
+        List<SymbolSuggestion> results = new ArrayList<>(searchYahoo(query));
+        results.addAll(searchMutualFunds(query));
+        // India-first: surface NSE/BSE listings before the foreign lines, keeping each source's own order within a group.
+        results.sort((a, b) -> Integer.compare(indianRank(a.symbol()), indianRank(b.symbol())));
+        searchCache.put(key, new Cached<>(results));
+        return results;
+    }
+
+    private List<SymbolSuggestion> searchYahoo(String query) {
         List<SymbolSuggestion> results = new ArrayList<>();
         try {
             String url = SEARCH_URL + "?q=" + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8)
@@ -109,9 +133,23 @@ public class MarketDataService {
         } catch (Exception e) {
             log.debug("Ticker search failed for '{}': {}", query, e.toString());
         }
-        // India-first: surface NSE/BSE listings before the foreign lines, keeping Yahoo's order within each group.
-        results.sort((a, b) -> Integer.compare(indianRank(a.symbol()), indianRank(b.symbol())));
-        searchCache.put(key, new Cached<>(results));
+        return results;
+    }
+
+    private List<SymbolSuggestion> searchMutualFunds(String query) {
+        List<SymbolSuggestion> results = new ArrayList<>();
+        try {
+            String url = MFAPI_SEARCH_URL + "?q=" + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
+            JsonNode root = getMfapi(url);
+            for (JsonNode f : root) {
+                String schemeCode = f.path("schemeCode").asText(null);
+                String schemeName = f.path("schemeName").asText(null);
+                if (schemeCode == null || schemeCode.isBlank() || schemeName == null || schemeName.isBlank()) continue;
+                results.add(new SymbolSuggestion(MF_PREFIX + schemeCode, schemeName, "AMFI", "Mutual Fund"));
+            }
+        } catch (Exception e) {
+            log.debug("Mutual fund search failed for '{}': {}", query, e.toString());
+        }
         return results;
     }
 
@@ -121,24 +159,42 @@ public class MarketDataService {
         Cached<MarketQuoteResponse> hit = quoteCache.get(key);
         if (hit != null && hit.fresh(QUOTE_TTL)) return Optional.ofNullable(hit.value);
 
-        MarketQuoteResponse quote = null;
+        MarketQuoteResponse quote = isMutualFund(key) ? mfQuote(key) : yahooQuote(key);
+        quoteCache.put(key, new Cached<>(quote));
+        return Optional.ofNullable(quote);
+    }
+
+    private MarketQuoteResponse yahooQuote(String key) {
         try {
             JsonNode meta = get(CHART_URL + URLEncoder.encode(key, StandardCharsets.UTF_8) + "?range=1d&interval=1d")
                     .path("chart").path("result").path(0).path("meta");
             JsonNode price = meta.path("regularMarketPrice");
-            if (price.isNumber()) {
-                quote = new MarketQuoteResponse(
-                        firstNonBlank(meta.path("symbol").asText(null), key),
-                        firstNonBlank(meta.path("longName").asText(null), meta.path("shortName").asText(null), key),
-                        price.decimalValue(),
-                        firstNonBlank(meta.path("currency").asText(null), "USD"),
-                        Instant.now());
-            }
+            if (!price.isNumber()) return null;
+            return new MarketQuoteResponse(
+                    firstNonBlank(meta.path("symbol").asText(null), key),
+                    firstNonBlank(meta.path("longName").asText(null), meta.path("shortName").asText(null), key),
+                    price.decimalValue(),
+                    firstNonBlank(meta.path("currency").asText(null), "USD"),
+                    Instant.now());
         } catch (Exception e) {
-            log.debug("Quote lookup failed for '{}': {}", symbol, e.toString());
+            log.debug("Quote lookup failed for '{}': {}", key, e.toString());
+            return null;
         }
-        quoteCache.put(key, new Cached<>(quote));
-        return Optional.ofNullable(quote);
+    }
+
+    private MarketQuoteResponse mfQuote(String key) {
+        try {
+            JsonNode root = getMfapi(MFAPI_SCHEME_URL + stripMfPrefix(key));
+            JsonNode latest = root.path("data").path(0);
+            BigDecimal nav = parseNav(latest.path("nav").asText(null));
+            if (nav == null) return null;
+            Instant asOf = parseMfDate(latest.path("date").asText(null)).orElseGet(Instant::now);
+            String name = firstNonBlank(root.path("meta").path("scheme_name").asText(null), key);
+            return new MarketQuoteResponse(key, name, nav, "INR", asOf);
+        } catch (Exception e) {
+            log.debug("Mutual fund quote lookup failed for '{}': {}", key, e.toString());
+            return null;
+        }
     }
 
     /** Best-effort batch: never throws, missing symbols are simply absent from the map. */
@@ -162,11 +218,43 @@ public class MarketDataService {
         if (symbol == null || symbol.isBlank()) return Optional.empty();
         String key = symbol.trim().toUpperCase();
         String range = HISTORY_RANGES.containsKey(rangeKey) ? rangeKey : "1M";
+        if (isMutualFund(key)) {
+            // NAV publishes once/day, so there's no per-range Yahoo-style fetch — one call already
+            // returns the full dated series; every range is just a client-side slice of it.
+            return mfSeries(key).map(series -> sliceToRange(series, range));
+        }
         if (DERIVED_FROM_DAILY_SERIES.contains(range)) {
             return dailySeries(key).map(series -> sliceToRange(series, range));
         }
         String[] params = HISTORY_RANGES.get(range);
         return intradayHistory(key, range, params[0], params[1]);
+    }
+
+    private Optional<MarketHistoryResponse> mfSeries(String key) {
+        Cached<MarketHistoryResponse> hit = historyCache.get(key);
+        if (hit != null && hit.fresh(HISTORY_TTL)) return Optional.ofNullable(hit.value);
+        Optional<MarketHistoryResponse> fetched = fetchMfHistory(key);
+        historyCache.put(key, new Cached<>(fetched.orElse(null)));
+        return fetched;
+    }
+
+    private Optional<MarketHistoryResponse> fetchMfHistory(String key) {
+        try {
+            JsonNode root = getMfapi(MFAPI_SCHEME_URL + stripMfPrefix(key));
+            List<MarketHistoryResponse.Point> points = new ArrayList<>();
+            for (JsonNode row : root.path("data")) {
+                BigDecimal nav = parseNav(row.path("nav").asText(null));
+                Optional<Instant> when = parseMfDate(row.path("date").asText(null));
+                if (nav == null || when.isEmpty()) continue; // skip rather than fabricate
+                points.add(new MarketHistoryResponse.Point(when.get(), nav));
+            }
+            if (points.isEmpty()) return Optional.empty();
+            Collections.reverse(points); // mfapi returns newest-first; callers expect oldest-first
+            return Optional.of(new MarketHistoryResponse(key, "INR", points));
+        } catch (Exception e) {
+            log.debug("Mutual fund history fetch failed for '{}': {}", key, e.toString());
+            return Optional.empty();
+        }
     }
 
     private Optional<MarketHistoryResponse> intradayHistory(String symbol, String rangeKey, String yahooRange, String yahooInterval) {
@@ -270,6 +358,15 @@ public class MarketDataService {
         return json.readTree(response.body());
     }
 
+    /** mfapi.in needs no session cookie (that's Yahoo-specific) — a plain unauthenticated GET. */
+    private JsonNode getMfapi(String url) throws Exception {
+        HttpResponse<String> response = send(url);
+        if (response.statusCode() / 100 != 2) {
+            throw new IllegalStateException("HTTP " + response.statusCode());
+        }
+        return json.readTree(response.body());
+    }
+
     private HttpResponse<String> send(String url) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(4))
@@ -292,6 +389,32 @@ public class MarketDataService {
             cookiesPrimedAt.set(Instant.now());
         } catch (Exception e) {
             log.debug("Priming Yahoo cookies failed: {}", e.toString());
+        }
+    }
+
+    private static boolean isMutualFund(String key) {
+        return key.startsWith(MF_PREFIX);
+    }
+
+    private static String stripMfPrefix(String key) {
+        return key.substring(MF_PREFIX.length());
+    }
+
+    private static BigDecimal parseNav(String nav) {
+        if (nav == null || nav.isBlank()) return null;
+        try {
+            return new BigDecimal(nav.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static Optional<Instant> parseMfDate(String date) {
+        if (date == null || date.isBlank()) return Optional.empty();
+        try {
+            return Optional.of(LocalDate.parse(date.trim(), MFAPI_DATE_FORMAT).atStartOfDay(ZoneOffset.UTC).toInstant());
+        } catch (DateTimeParseException e) {
+            return Optional.empty();
         }
     }
 
