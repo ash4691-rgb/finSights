@@ -11,6 +11,7 @@ import type { GokuAllowedUser, GokuChatReply, GokuConfig, GokuMessage } from './
 export function useGoku() {
   const [available, setAvailable] = useState(false)
   const [admin, setAdmin] = useState(false)
+  const [unavailableReason, setUnavailableReason] = useState('')
   const [open, setOpen] = useState(false)
   const [showAdmin, setShowAdmin] = useState(false)
   const [messages, setMessages] = useState<GokuMessage[]>([])
@@ -20,8 +21,9 @@ export function useGoku() {
   const [remaining, setRemaining] = useState<number | null>(null)
 
   useEffect(() => {
-    api<GokuConfig>('/api/goku/config').then(cfg => { setAvailable(cfg.available); setAdmin(cfg.admin) })
-      .catch(() => { setAvailable(false); setAdmin(false) })
+    api<GokuConfig>('/api/goku/config')
+      .then(cfg => { setAvailable(cfg.available); setAdmin(cfg.admin); setUnavailableReason(cfg.reason ?? '') })
+      .catch(() => { setAvailable(false); setAdmin(false); setUnavailableReason('') })
   }, [])
 
   const send = async () => {
@@ -46,7 +48,7 @@ export function useGoku() {
     }
   }
 
-  return { available, admin, open, setOpen, showAdmin, setShowAdmin, messages, draft, setDraft, sending, error, remaining, send }
+  return { available, admin, unavailableReason, open, setOpen, showAdmin, setShowAdmin, messages, draft, setDraft, sending, error, remaining, send }
 }
 
 export type Goku = ReturnType<typeof useGoku>
@@ -155,6 +157,9 @@ export function GokuAdminModal({ goku }: Readonly<{ goku: Goku }>) {
       <div><p className="eyebrow">GOKU</p><h2>Who can access Goku</h2></div>
       <button className="close" onClick={() => goku.setShowAdmin(false)} aria-label="Close">×</button>
     </div>
+    {goku.unavailableReason && <p className="hint goku-admin-error">
+      Chat isn't showing for you yet: {goku.unavailableReason}
+    </p>}
     <Field label="Add an email" wide>
       <div className="goku-admin-add">
         <input type="email" value={email} placeholder="name@example.com" disabled={saving}
