@@ -258,6 +258,12 @@ public class HoldingService {
         holding.setSortOrder((int) holdings.countByUser_Id(userId));
         copy(request, holding);
         applyTickerCurrency(holding); // market-linked holdings take their currency from the ticker, not the form
+        if (holding.getValuationMethod() == ValuationMethod.MARKET_PRICE && zeroIfNull(holding.getCurrentValue()).signum() == 0) {
+            // No live price yet — start at the average cost paid rather than zero, so a fresh
+            // market-linked holding doesn't flash a misleading full loss until refreshMarketPrices()
+            // (called right after, from the very next list()) overwrites it with the real quote.
+            holding.setCurrentValue(zeroIfNull(holding.getInvestedValue()));
+        }
         holding.setHoldingRef(generateHoldingRef(holding.getName()));
         Holding saved = holdings.save(holding);
         // Opening the position is itself a transaction; invested/quantity then flow from transactions.
