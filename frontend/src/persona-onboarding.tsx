@@ -25,14 +25,17 @@ const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
 // Self-identified investor persona — how the user describes themselves, not computed. A
 // four-archetype framework built around age, portfolio size, and what the user is actually
 // trying to do, rather than a plain experience level.
-export const PERSONA_OPTIONS: { value: InvestorPersona; label: string; hint: string }[] = [
-  { value: 'WEALTH_BUILDER', label: 'Wealth Builder', hint: '22–35 · Early career — automating contributions, learning the basics, long time horizon' },
-  { value: 'ACTIVE_ACCUMULATOR', label: 'Active Accumulator', hint: '35–50 · Peak earning years — maximising 401(k)/IRA, outperforming the market' },
-  { value: 'HIGH_NET_WORTH_TACTICIAN', label: 'Advanced Tactician', hint: '35–65 · Experienced/high earner — capital preservation, estate planning, non-correlated alpha' },
-  { value: 'DEFENSIVE_CONSUMER', label: 'Defensive Wall', hint: '55+ · Pre-retirement/retirement — income yield, protecting principal, RMD planning' },
+export const PERSONA_OPTIONS: { value: InvestorPersona; label: string; icon: string; hint: string }[] = [
+  { value: 'WEALTH_BUILDER', label: 'Wealth Builder', icon: '🙂', hint: '22–35 · Early career — automating contributions, learning the basics, long time horizon' },
+  { value: 'ACTIVE_ACCUMULATOR', label: 'Active Accumulator', icon: '🧑‍💼', hint: '35–50 · Peak earning years — maximising 401(k)/IRA, outperforming the market' },
+  { value: 'HIGH_NET_WORTH_TACTICIAN', label: 'Advanced Tactician', icon: '🧐', hint: '35–65 · Experienced/high earner — capital preservation, estate planning, non-correlated alpha' },
+  { value: 'DEFENSIVE_CONSUMER', label: 'Defensive Wall', icon: '🧓', hint: '55+ · Pre-retirement/retirement — income yield, protecting principal, RMD planning' },
 ]
 export const PERSONA_LABELS: Record<InvestorPersona, string> = Object.fromEntries(
   PERSONA_OPTIONS.map(o => [o.value, o.label])) as Record<InvestorPersona, string>
+// A face/person emoji standing in for each archetype — shown on the Settings tag.
+export const PERSONA_ICONS: Record<InvestorPersona, string> = Object.fromEntries(
+  PERSONA_OPTIONS.map(o => [o.value, o.icon])) as Record<InvestorPersona, string>
 // Same copy as each option's onboarding hint — reused as the Settings tag's hover tooltip.
 export const PERSONA_DESCRIPTIONS: Record<InvestorPersona, string> = Object.fromEntries(
   PERSONA_OPTIONS.map(o => [o.value, o.hint])) as Record<InvestorPersona, string>
@@ -58,6 +61,11 @@ export const RISK_DESCRIPTIONS: Record<RiskProfile, string> = {
   CONSERVATIVE: 'Prioritises protecting capital, even for lower returns.',
   MODERATE: 'Balances growth and safety for a moderate risk-reward profile.',
   AGGRESSIVE: 'Seeks aggressive capital growth despite bigger swings.',
+}
+// Traffic-light colour coding for the Settings risk tag — conservative reads as "safe" (green),
+// aggressive as "hot" (red), moderate in between (amber).
+export const RISK_TAG_CLASS: Record<RiskProfile, string> = {
+  CONSERVATIVE: 'profile-tag-conservative', MODERATE: 'profile-tag-moderate', AGGRESSIVE: 'profile-tag-aggressive',
 }
 // Allocation guideline shown alongside the risk profile — not enforced anywhere, purely
 // informational. MODERATE is the framework's default (see the pre-selected scenario answers

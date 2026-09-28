@@ -4,7 +4,7 @@ import { api, API_URL } from '../api'
 import { money, since, numeric, toggleLabel } from '../util'
 import { Switch } from '../ui'
 import { updatePersonaDetails } from '../persona-api'
-import { PERSONA_DESCRIPTIONS, PERSONA_LABELS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
+import { PERSONA_DESCRIPTIONS, PERSONA_ICONS, PERSONA_LABELS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, RISK_TAG_CLASS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
 import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, SalaryRange } from '../types'
 
 export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onStartOnboarding, onReassessRisk }: {
@@ -89,10 +89,16 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
         <h4 className="settings-subheading">Investor details</h4>
         {persona ? <>
           <div className="profile-tags-row">
-            {persona.investorPersona && <span className="profile-tag" title={PERSONA_DESCRIPTIONS[persona.investorPersona]}>{PERSONA_LABELS[persona.investorPersona]}</span>}
-            <span className="profile-tag" title={RISK_DESCRIPTIONS[persona.riskProfile]}>{RISK_LABELS[persona.riskProfile]}</span>
+            {persona.investorPersona && <span className="profile-tag-wrap" tabIndex={0}>
+              <span className="profile-tag">{PERSONA_ICONS[persona.investorPersona]} {PERSONA_LABELS[persona.investorPersona]}</span>
+              <span className="profile-tag-tooltip" role="tooltip">{PERSONA_DESCRIPTIONS[persona.investorPersona]}</span>
+            </span>}
+            <span className="profile-tag-wrap" tabIndex={0}>
+              <span className={`profile-tag ${RISK_TAG_CLASS[persona.riskProfile]}`}>{RISK_LABELS[persona.riskProfile]}</span>
+              <span className="profile-tag-tooltip" role="tooltip">{RISK_DESCRIPTIONS[persona.riskProfile]} Core focus: {RISK_ALLOCATION[persona.riskProfile].coreFocus}.</span>
+            </span>
           </div>
-          <p className="hint">Equity {RISK_ALLOCATION[persona.riskProfile].equity} · Debt &amp; cash {RISK_ALLOCATION[persona.riskProfile].debtCash} · {RISK_ALLOCATION[persona.riskProfile].coreFocus}</p>
+          <p className="hint">Ideal portfolio mix: Equity {RISK_ALLOCATION[persona.riskProfile].equity} · Debt &amp; cash {RISK_ALLOCATION[persona.riskProfile].debtCash}, based on your persona &amp; risk profile.</p>
           <div className="settings-fields-grid">
             <div className="settings-field"><label>Age</label><input type="number" min={0} max={120} value={form.age} onChange={e => set('age', e.target.value)} /></div>
             <div className="settings-field"><label>Occupation</label><input value={form.occupation} onChange={e => set('occupation', e.target.value)} placeholder="e.g. Software engineer" /></div>
