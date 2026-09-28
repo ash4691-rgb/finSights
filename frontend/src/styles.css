@@ -107,6 +107,9 @@ h3{color:var(--text)}
 .currency-picker{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:0 6px 0 12px;font-size:12px;color:var(--text-3);font-weight:700;height:38px}
 .currency-picker select{border:0;background:transparent;color:var(--text);font-weight:700;font-size:13px;padding:8px 6px;outline:none}
 .fx-note{font-size:11px;color:var(--text-3);white-space:nowrap;border-left:1px solid var(--border);padding-left:12px;margin-left:2px}
+.fx-converting{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.fx-converting .dot{background:var(--accent);animation:fx-pulse 1s infinite ease-in-out}
+@keyframes fx-pulse{0%,100%{opacity:.35}50%{opacity:1}}
 .format-tabs{display:flex;gap:6px;margin:16px 0 14px}
 .format-tabs button{border:1px solid var(--border);background:var(--surface-2);color:var(--text-3);border-radius:7px;padding:7px 13px;font-weight:700;font-size:12px}
 .format-tabs button.active{background:var(--accent-soft);color:var(--text);border-color:var(--border-strong)}
