@@ -57,6 +57,11 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [fxCurrencies, setFxCurrencies] = useState<string[]>(currencies)
   const [fxRatesToBase, setFxRatesToBase] = useState<Record<string, number>>({})
   const [fxAsOf, setFxAsOf] = useState<string | undefined>(undefined)
+  // Switching the "View in" currency re-runs the full load() — normally a quiet background
+  // reload, but this one visibly changes every figure on the page, so unlike other reloads it
+  // gets its own "Converting…" nudge instead of leaving the user looking at stale-currency
+  // numbers with no sign anything is happening.
+  const [convertingCurrency, setConvertingCurrency] = useState(false)
   const [countries, setCountries] = useState<Country[]>([])
   const [dataVersion, setDataVersion] = useState(0)
   const [showImport, setShowImport] = useState(false)
@@ -265,14 +270,21 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         <div><p className="eyebrow">PERSONAL WEALTH</p><h1>{titles[page]}</h1></div>
         <div className="header-actions">
           {page !== 'settings' && <>
-            <label className="currency-picker" title="Convert every figure on this page into another currency (live rate, refreshed at most every 20 minutes)">
-              <span>View in</span>
-              <select value={displayCurrency} onChange={e => void load(e.target.value)}>{fxCurrencies.map(c => <option key={c}>{c}</option>)}</select>
-            </label>
-            {settings && displayCurrency !== settings.baseCurrency && fxRatesToBase[displayCurrency] && fxRatesToBase[settings.baseCurrency] &&
-              <span className="fx-note" title={`Live market rate${fxAsOf ? `, updated ${ago(fxAsOf)}` : ''} — a currency the feed can't reach falls back to its last known rate`}>
-                1 {displayCurrency} ≈ {rate(fxRatesToBase[displayCurrency] / fxRatesToBase[settings.baseCurrency], settings.baseCurrency)}
-              </span>}
+            <div className="currency-picker-group">
+              <label className="currency-picker" title="Convert every figure on this page into another currency (live rate, refreshed at most every 20 minutes)">
+                <span>View in</span>
+                <select value={displayCurrency} disabled={convertingCurrency} onChange={e => {
+                  setConvertingCurrency(true)
+                  void load(e.target.value).finally(() => setConvertingCurrency(false))
+                }}>{fxCurrencies.map(c => <option key={c}>{c}</option>)}</select>
+              </label>
+              {convertingCurrency
+                ? <span className="fx-note fx-converting"><span className="dot" /> Converting…</span>
+                : settings && displayCurrency !== settings.baseCurrency && fxRatesToBase[displayCurrency] && fxRatesToBase[settings.baseCurrency] &&
+                  <span className="fx-note" title={`Live market rate${fxAsOf ? `, updated ${ago(fxAsOf)}` : ''} — a currency the feed can't reach falls back to its last known rate`}>
+                    1 {displayCurrency} ≈ {rate(fxRatesToBase[displayCurrency] / fxRatesToBase[settings.baseCurrency], settings.baseCurrency)}
+                  </span>}
+            </div>
           </>}
           {page === 'transactions' && <>
             <button className="tool-action" onClick={() => setShowImport(true)}>↑ Import</button>
