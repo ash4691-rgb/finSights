@@ -83,7 +83,12 @@ button:disabled{opacity:.65;cursor:not-allowed}
 .user small{margin-top:3px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px}
 main{flex:1;min-width:0;padding:36px 44px 70px;max-width:1530px}
 header{display:flex;justify-content:space-between;align-items:center;margin-bottom:27px;gap:16px}
-.header-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+/* flex-start, not center: .currency-picker-group can grow taller than its siblings (the FX
+   note/"Converting…" nudge stacks below the picker) — centering would then sink every other
+   button in this row to match that taller block's midpoint instead of lining up with the picker
+   itself. All of .header-actions's direct children are the same height as the picker alone when
+   nothing is stacked below it, so top-aligning here costs nothing in the common case. */
+.header-actions{display:flex;align-items:flex-start;gap:10px;flex-shrink:0}
 .eyebrow{letter-spacing:1.6px;font-size:10px;font-weight:800;color:var(--accent-soft-text);margin:0 0 6px}
 h1,h2,h3,p{margin-top:0}
 h1{font-size:28px;letter-spacing:-1px;margin-bottom:0;color:var(--text)}
