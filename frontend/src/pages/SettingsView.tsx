@@ -117,6 +117,7 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
               </select>
             </div>
           </div>
+          <button type="button" className="outline" onClick={onReassessRisk}>Reassess Risk profile</button>
         </> : <p className="hint">You haven't completed the persona questionnaire yet. <button type="button" className="link-inline" onClick={onStartOnboarding}>Start now</button></p>}
       </div>
       {saveBar}
@@ -161,7 +162,6 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       <div className="pulse-row"><span>Brokers connected</span><strong>{brokersConnected}</strong></div>
       <div className="pulse-row"><span>Authentication</span><strong>{settings.demoMode ? 'Demo mode' : 'Google'}</strong></div>
       <button className="outline" onClick={() => void exportJson()}>Export all data (JSON)</button>
-      <button className="outline" onClick={onReassessRisk}>Reassess Risk profile</button>
       <div className="danger-zone-inline">
         <div className="panel-heading"><h3>Delete account</h3><span>Cannot be undone</span></div>
         <p className="hint">This permanently removes every instrument, holding, transaction, and your profile. Type <b>DELETE</b> to confirm.</p>
