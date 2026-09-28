@@ -139,10 +139,21 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (dashboardR.status === 'fulfilled') setDashboard(dashboardR.value)
     else errors.dashboard = reason(dashboardR)
 
-    if (categoriesR.status === 'fulfilled') setCategories(categoriesR.value)
+    // Every load() also re-syncs whichever category/holding detail drawer is currently open (if
+    // any) against these same fresh arrays — otherwise a drawer left open across some OTHER
+    // change (an edit made elsewhere, a holding added to this category, a transaction logged
+    // against this holding) stays frozen at whatever it showed when it was first opened, since
+    // categoryDetail/holdingDetail are their own snapshots and no reload naturally touches them.
+    if (categoriesR.status === 'fulfilled') {
+      setCategories(categoriesR.value)
+      setCategoryDetail(current => current ? categoriesR.value.find(c => c.id === current.id) ?? current : current)
+    }
     else errors.categories = reason(categoriesR)
 
-    if (holdingsR.status === 'fulfilled') setHoldings(holdingsR.value)
+    if (holdingsR.status === 'fulfilled') {
+      setHoldings(holdingsR.value)
+      setHoldingDetail(current => current ? holdingsR.value.find(h => h.id === current.id) ?? current : current)
+    }
     else errors.holdings = reason(holdingsR)
 
     if (layoutsR.status === 'fulfilled') hydrateLayouts(layoutsR.value)
@@ -304,8 +315,12 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
+    {/* CategoryDrawer renders before HoldingModal so the modal paints on top when "+ Add holding"
+        is opened from within an already-open drawer — the drawer now deliberately stays open
+        behind it (see onAddHolding below) instead of closing, so this stacking order matters:
+        swapping it would leave the modal visually present but unclickable underneath the drawer. */}
+    {categoryDetail && <CategoryDrawer category={categoryDetail} holdings={holdings.filter(h => h.categoryId === categoryDetail.id)} onClose={() => setCategoryDetail(null)} onEdit={c => { setCategoryDetail(null); setEditingCategory(c) }} onAddHolding={c => setCreatingHoldingFor(c)} onOpenHolding={h => { setCategoryDetail(null); setHoldingDetail(h) }} reload={load} />}
     {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={mergeSavedHolding} onGoToTransactions={() => setPage('transactions')} />}
-    {categoryDetail && <CategoryDrawer category={categoryDetail} holdings={holdings.filter(h => h.categoryId === categoryDetail.id)} onClose={() => setCategoryDetail(null)} onEdit={c => { setCategoryDetail(null); setEditingCategory(c) }} onAddHolding={c => { setCategoryDetail(null); setCreatingHoldingFor(c) }} onOpenHolding={h => { setCategoryDetail(null); setHoldingDetail(h) }} reload={load} />}
     {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} onHoldingUpdated={applyHoldingUpdate} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
     {showLayoutOnboarding && <CustomLayoutOnboarding
