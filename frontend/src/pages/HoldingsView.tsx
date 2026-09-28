@@ -308,12 +308,20 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
         </Field>
         <Field label="Notes" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
       </div>
-      {isEdit && !isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
-        <span><b>Broker</b> is fixed for the life of a holding, and <b>quantity</b> is calculated from its transactions — add or edit <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>transactions</button> to change it. Changing <b>invested value</b> above logs an adjustment transaction automatically.</span>
-      </p>}
-      {isEdit && isLiability && <p className="form-callout"><span className="form-callout-dot">i</span>
-        <span><b>Lender</b> and <b>total amount</b> are fixed once a loan exists — the total is logged from <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>Transactions</button>. Update the <b>outstanding amount</b> here, or mark instalments paid from the Action centre.</span>
-      </p>}
+      {isEdit && !isLiability && <div className="form-callout"><span className="form-callout-dot">i</span>
+        <ul className="audit-list">
+          <li><b>Broker</b> is fixed for the life of a holding.</li>
+          <li><b>Quantity</b> is calculated from its transactions — add or edit <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>transactions</button> to change it.</li>
+          <li>Changing <b>invested value</b> above logs an adjustment transaction automatically.</li>
+        </ul>
+      </div>}
+      {isEdit && isLiability && <div className="form-callout"><span className="form-callout-dot">i</span>
+        <ul className="audit-list">
+          <li><b>Lender</b> and <b>total amount</b> are fixed once a loan exists.</li>
+          <li>The total is logged from <button type="button" className="text-link" onClick={() => { onClose(); onGoToTransactions?.() }}>Transactions</button>.</li>
+          <li>Update the <b>outstanding amount</b> here, or mark instalments paid from the Action centre.</li>
+        </ul>
+      </div>}
       {duplicate && <p className="form-error">A holding named "{form.name.trim()}" at "{form.broker.trim()}" already exists — one holding maps to one broker.</p>}
       {error && <p className="form-error">{error}</p>}
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || moneyLoading || !form.categoryId || !form.name.trim()
