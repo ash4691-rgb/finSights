@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type * as React from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel } from '../util'
+import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel, checkLoanTerm } from '../util'
 import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
 import { TransactionModal } from './TransactionsView'
 import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
@@ -129,6 +129,25 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
   const [dirty, setDirty] = useState(false)
   const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
   useEscToClose(onClose, dirty)
+
+  // New liabilities ask only for the instalment amount — "Instalments remaining" is derived from
+  // it (see below) rather than asked for separately. Editing an existing loan keeps its old,
+  // fully-manual behaviour: real-world schedules often won't replay through this simplified
+  // amortization model, so auto-filling over a saved value here would silently rewrite good data.
+  const [termOverridden, setTermOverridden] = useState(false)
+  const loanCheck = !isEdit && isLiability && !isOneTime
+    ? checkLoanTerm(numeric(form.currentValue), numeric(form.emiAmount), numeric(form.fixedAnnualRate), form.repaymentFrequency)
+    : { term: null, error: null }
+  useEffect(() => {
+    if (isEdit || !isLiability || isOneTime || termOverridden || loanCheck.term == null) return
+    setForm(current => current.loanTermMonths === String(loanCheck.term) ? current : { ...current, loanTermMonths: String(loanCheck.term) })
+  }, [isEdit, isLiability, isOneTime, termOverridden, loanCheck.term]) // eslint-disable-line react-hooks/exhaustive-deps
+  // A manual override is still checked against the same math — it just isn't silently replaced.
+  const termMismatch = !isEdit && termOverridden && loanCheck.term != null && form.loanTermMonths.trim() !== ''
+    && Math.abs(numeric(form.loanTermMonths) - loanCheck.term) > 1
+  const liabilityMathError = loanCheck.error ?? (termMismatch
+    ? `This doesn't add up — at ${money(numeric(form.emiAmount), form.currency)} per instalment against ${money(numeric(form.currentValue), form.currency)} outstanding, the loan needs about ${loanCheck.term} instalment${loanCheck.term === 1 ? '' : 's'}, not ${form.loanTermMonths}.`
+    : null)
   // The passed-in holding may be from a view-currency-converted list — its money fields are only
   // safe to edit/resave once corrected back to what's actually stored, fetched fresh with no
   // currency param. Blocks editing (and submitting) those fields until that lands, so a fast save
@@ -262,9 +281,10 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
             : <>
                 <Field label="EMI due day" required><input required type="number" min="1" max="31" step="1" value={form.emiDayOfMonth} onChange={e => set('emiDayOfMonth', e.target.value)} placeholder="1–31" /></Field>
                 <div className="field-pair">
-                  <Field label="Instalment amount"><input type="number" min="0" step="0.01" disabled={moneyLoading} value={moneyLoading ? '' : form.emiAmount} onChange={e => set('emiAmount', e.target.value)} placeholder={moneyLoading ? 'Loading…' : 'Per instalment'} /></Field>
-                  <Field label="Instalments remaining"><input type="number" min="1" step="1" value={form.loanTermMonths} onChange={e => set('loanTermMonths', e.target.value)} placeholder="Count" /></Field>
+                  <Field label="Instalment amount" required={!isEdit}><input required={!isEdit} type="number" min="0.01" step="0.01" disabled={moneyLoading} value={moneyLoading ? '' : form.emiAmount} onChange={e => set('emiAmount', e.target.value)} placeholder={moneyLoading ? 'Loading…' : 'Per instalment'} /></Field>
+                  <Field label="Instalments remaining"><input type="number" min="1" step="1" value={form.loanTermMonths} onChange={e => { setTermOverridden(e.target.value !== ''); set('loanTermMonths', e.target.value) }} placeholder={!isEdit ? 'Calculated from the instalment amount' : 'Count'} /></Field>
                 </div>
+                {!isEdit && liabilityMathError && <p className="form-error">{liabilityMathError}</p>}
               </>}
         </>}
         {!isLiability && <div className="field-pair">
@@ -295,6 +315,7 @@ export function HoldingModal({ holding, category, categories, holdings, onClose,
         || (!isLiability && !form.investedValue)
         || (!isLiability && form.valuationMethod === 'MANUAL' && !form.currentValue)
         || (isLiability && (!form.investedValue || !form.currentValue || (isOneTime ? !form.repaymentDueDate : (!form.emiDayOfMonth || (!form.emiAmount && !form.loanTermMonths)))))
+        || !!liabilityMathError
         || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
     </form>
   </section></div>

@@ -5,6 +5,42 @@ export const frequencyLabel = (f: Frequency) => f === 'ANNUALLY' ? 'Yearly' : f 
   : f.toLowerCase().replace(/_/g, '-').replace(/\b\w/g, c => c.toUpperCase())
 export const repaymentFrequencies: RepaymentFrequency[] = ['WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', 'ONE_TIME']
 export const repaymentLabel = (f: RepaymentFrequency) => f === 'ONE_TIME' ? 'One-time' : f.charAt(0) + f.slice(1).toLowerCase()
+// Interest-per-period as a fraction of the outstanding balance — mirrors the backend's own
+// TransactionService.periodFraction() so the two amortization pictures never disagree.
+const repaymentPeriodFraction = (f: RepaymentFrequency) => f === 'WEEKLY' ? 1 / 52 : f === 'MONTHLY' ? 1 / 12 : f === 'QUARTERLY' ? 0.25 : 1
+
+export type LoanTermCheck = { term: number | null; error: string | null }
+// Simulates the same interest-then-principal split EmiService.markPaid() applies to each real
+// instalment, to (a) suggest how many instalments a new recurring loan needs and (b) catch inputs
+// that can't add up — an instalment too small to ever amortize the balance, or too large for a
+// multi-instalment schedule — before they're saved. Returns { term: null, error: null } while the
+// inputs aren't filled in yet, so callers don't show a warning on a half-filled form.
+export function checkLoanTerm(outstanding: number, instalment: number, annualRatePercent: number, frequency: RepaymentFrequency): LoanTermCheck {
+  if (!(outstanding > 0) || !(instalment > 0) || frequency === 'ONE_TIME') return { term: null, error: null }
+  if (instalment > outstanding) {
+    return { term: null, error: 'The instalment amount is more than the outstanding balance — a recurring schedule needs more than one instalment left. Lower the instalment, or switch to a one-time repayment.' }
+  }
+  const periodFraction = repaymentPeriodFraction(frequency)
+  const rate = (annualRatePercent || 0) / 100
+  let balance = outstanding, periods = 0
+  const MAX_PERIODS = 1200 // a generous cap (100 years of monthly instalments) against a runaway loop
+  while (balance > 0.01 && periods < MAX_PERIODS) {
+    const interest = balance * rate * periodFraction
+    const principal = instalment - interest
+    if (principal <= 0) {
+      return { term: null, error: 'This instalment doesn’t cover the interest on the outstanding balance — the loan would never be paid off. Increase the instalment or lower the interest rate.' }
+    }
+    balance -= principal
+    periods += 1
+  }
+  if (periods >= MAX_PERIODS) {
+    return { term: null, error: 'These numbers imply an unrealistically long repayment — double-check the instalment amount, outstanding balance, and interest rate.' }
+  }
+  if (periods === 0) {
+    return { term: null, error: 'The outstanding balance is already covered — this loan doesn’t need a recurring instalment.' }
+  }
+  return { term: periods, error: null }
+}
 // Matches the price-history chart's own range buttons (1D/1W/1M/3M/6M/1Y) for one consistent
 // vocabulary across Hot Picks thresholds, mover badges, and ViewMoverItem.
 export const periodLabels: Record<PeriodKey, string> = { DAILY: '1D', WEEKLY: '1W', MONTHLY: '1M', QUARTERLY: '3M', HALF_YEARLY: '6M', YEARLY: '1Y' }
