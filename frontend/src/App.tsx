@@ -203,6 +203,15 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const mergeSavedHolding = (saved: Holding) => {
     setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null)
     applyHoldingUpdate(saved)
+    // If this holding's category is the one currently open in the drawer, refetch just that
+    // category right away too — otherwise its summary cards (current value, invested, P/L,
+    // weightage) would sit stale until the background load() below finishes, which can take a
+    // few seconds. Mirrors HoldingDrawer's own post-transaction refreshHolding().
+    if (categoryDetail && categoryDetail.id === saved.categoryId) {
+      api<Category>(`/api/categories/${saved.categoryId}?currency=${encodeURIComponent(displayCurrency)}`)
+        .then(updated => setCategoryDetail(current => current && current.id === updated.id ? updated : current))
+        .catch(() => { /* load() below will eventually catch it up */ })
+    }
     void load()
   }
 
