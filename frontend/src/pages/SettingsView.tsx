@@ -60,8 +60,18 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
     link.href = url; link.download = 'finsights-export.json'; link.click()
     URL.revokeObjectURL(url)
   }
+  const deleteHoldings = async () => {
+    if (confirmText !== 'DELETE HOLDINGS') return
+    await api('/api/account/holdings', { method: 'DELETE' })
+    setConfirmText(''); await reload()
+  }
+  const deleteTransactions = async () => {
+    if (confirmText !== 'DELETE TRANSACTIONS') return
+    await api('/api/account/transactions', { method: 'DELETE' })
+    setConfirmText(''); await reload()
+  }
   const deleteAccount = async () => {
-    if (confirmText !== 'DELETE') return
+    if (confirmText !== 'DELETE ACCOUNT') return
     await api('/api/account', { method: 'DELETE' })
     await reload()
   }
@@ -117,6 +127,7 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
               </select>
             </div>
           </div>
+          <button type="button" className="outline" onClick={onReassessRisk}>Reassess Risk profile</button>
         </> : <p className="hint">You haven't completed the persona questionnaire yet. <button type="button" className="link-inline" onClick={onStartOnboarding}>Start now</button></p>}
       </div>
       {saveBar}
@@ -161,12 +172,22 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       <div className="pulse-row"><span>Brokers connected</span><strong>{brokersConnected}</strong></div>
       <div className="pulse-row"><span>Authentication</span><strong>{settings.demoMode ? 'Demo mode' : 'Google'}</strong></div>
       <button className="outline" onClick={() => void exportJson()}>Export all data (JSON)</button>
-      <button className="outline" onClick={onReassessRisk}>Reassess Risk profile</button>
       <div className="danger-zone-inline">
-        <div className="panel-heading"><h3>Delete account</h3><span>Cannot be undone</span></div>
-        <p className="hint">This permanently removes every instrument, holding, transaction, and your profile. Type <b>DELETE</b> to confirm.</p>
-        <div className="settings-field"><input value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="DELETE" /></div>
-        <button className="danger-btn" onClick={() => void deleteAccount()} disabled={confirmText !== 'DELETE'}>Delete everything</button>
+        <div className="panel-heading"><h3>Delete data</h3><span>Cannot be undone</span></div>
+        <p className="hint">Choose how much to remove, then type the matching phrase to enable that button.</p>
+        <div className="settings-field"><input value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="Type a phrase below" /></div>
+        <div className="danger-zone-option">
+          <p className="hint">Type <b>DELETE HOLDINGS</b> to remove every holding and its transactions. Categories and your profile are kept.</p>
+          <button className="danger-btn" onClick={() => void deleteHoldings()} disabled={confirmText !== 'DELETE HOLDINGS'}>Delete holdings &amp; transactions</button>
+        </div>
+        <div className="danger-zone-option">
+          <p className="hint">Type <b>DELETE TRANSACTIONS</b> to remove transaction history only. Holdings are retained, reset to zero value.</p>
+          <button className="danger-btn" onClick={() => void deleteTransactions()} disabled={confirmText !== 'DELETE TRANSACTIONS'}>Delete transactions</button>
+        </div>
+        <div className="danger-zone-option">
+          <p className="hint">Type <b>DELETE ACCOUNT</b> to permanently remove every instrument, holding, transaction, and your profile.</p>
+          <button className="danger-btn" onClick={() => void deleteAccount()} disabled={confirmText !== 'DELETE ACCOUNT'}>Delete everything</button>
+        </div>
       </div>
     </SettingsSection>
   </div>

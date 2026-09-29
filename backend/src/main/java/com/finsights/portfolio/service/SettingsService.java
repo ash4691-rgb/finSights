@@ -1,5 +1,7 @@
 package com.finsights.portfolio.service;
 
+import com.finsights.portfolio.domain.Holding;
+import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.CountryResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
@@ -133,6 +135,36 @@ public class SettingsService {
         actionDismissals.deleteForUser(user.getId());
         tagSuggestions.deleteByUser_Id(user.getId());
         users.delete(user);
+    }
+
+    /** Wipes every holding and its transaction history, but leaves categories and the account
+     *  itself intact — "DELETE HOLDINGS" on the Settings page. */
+    @Transactional
+    public void deleteHoldingsAndTransactions() {
+        UserAccount user = currentUser.currentUser();
+        for (Holding holding : holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(user.getId())) {
+            snapshots.deleteFor(SnapshotSubject.HOLDING, holding.getId());
+        }
+        emiPayments.deleteByUser_Id(user.getId());
+        transactions.deleteByUser_Id(user.getId());
+        holdings.deleteByUser_Id(user.getId());
+    }
+
+    /** Wipes transaction history but keeps every holding, reset to its zero/empty state — "DELETE
+     *  TRANSACTIONS" on the Settings page. {@link HoldingService#syncFromTransactions} recomputes
+     *  the ledger-derived figures (which naturally zero out once the ledger is empty); currentValue
+     *  isn't ledger-derived, so it's cleared explicitly. */
+    @Transactional
+    public void deleteTransactions() {
+        UserAccount user = currentUser.currentUser();
+        emiPayments.deleteByUser_Id(user.getId());
+        transactions.deleteByUser_Id(user.getId());
+        for (Holding holding : holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(user.getId())) {
+            holdingService.syncFromTransactions(holding);
+            holding.setCurrentValue(BigDecimal.ZERO);
+            holding.setPriceUpdatedAt(null);
+            holdings.save(holding);
+        }
     }
 
     private SettingsResponse toResponse(UserAccount user) {

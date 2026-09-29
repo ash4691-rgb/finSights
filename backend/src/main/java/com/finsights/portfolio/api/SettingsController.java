@@ -45,4 +45,12 @@ public class SettingsController {
         var session = request.getSession(false);
         if (session != null) session.invalidate();
     }
+
+    @DeleteMapping("/account/holdings")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteHoldingsAndTransactions() { settings.deleteHoldingsAndTransactions(); }
+
+    @DeleteMapping("/account/transactions")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteTransactions() { settings.deleteTransactions(); }
 }

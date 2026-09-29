@@ -535,6 +535,8 @@ th.sortable:hover{color:var(--text)}
 .settings-status{font-size:12px;color:var(--positive);margin-left:10px}
 .danger-zone{border-color:var(--danger-border)}
 .danger-zone-inline{margin-top:18px;padding-top:16px;border-top:1px dashed var(--danger-border)}
+.danger-zone-option{margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)}
+.danger-zone-option:first-of-type{margin-top:0;padding-top:0;border-top:0}
 .settings-subsection{margin-top:18px;padding-top:16px;border-top:1px dashed var(--border-soft)}
 .settings-subheading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-3);margin:0 0 12px}
 .settings-fields-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
@@ -546,14 +548,17 @@ th.sortable:hover{color:var(--text)}
 .profile-tag-aggressive{background:var(--error-bg);color:var(--error-text);border-color:var(--error-text)}
 /* CSS-only hover tooltip — native title attributes are unreliable (slow/inconsistent browser
    delay, sometimes suppressed), so the tag's description renders as a small styled popover
-   instead, shown on both :hover and :focus-within (keyboard-accessible). */
+   instead, shown on both :hover and :focus-within (keyboard-accessible). Anchored to the tag's
+   left edge (not centered) so it always grows rightward — a centered tooltip clips off-screen
+   for any tag sitting near the left edge of its container, which the leftmost "Investor
+   details" tag always does. */
 .profile-tag-wrap{position:relative;display:inline-block}
-.profile-tag-tooltip{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translate(-50%,4px);
+.profile-tag-tooltip{position:absolute;left:0;bottom:calc(100% + 8px);transform:translateY(4px);
   width:max-content;max-width:240px;background:var(--surface);color:var(--text-2);border:1px solid var(--border-strong);
   border-radius:8px;padding:8px 12px;font-size:12px;font-weight:400;line-height:1.5;box-shadow:var(--shadow-card);
   opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s ease,transform .15s ease;z-index:20}
 .profile-tag-wrap:hover .profile-tag-tooltip,.profile-tag-wrap:focus-within .profile-tag-tooltip{
-  opacity:1;visibility:visible;transform:translate(-50%,0)}
+  opacity:1;visibility:visible;transform:translateY(0)}
 .link-inline{background:none;border:0;padding:0;color:var(--accent);font-size:inherit;font-weight:700;cursor:pointer}
 .link-inline:hover{text-decoration:underline}
 .danger-btn{border:1px solid var(--danger-border);background:var(--danger-btn-bg);color:var(--danger-btn-text);border-radius:8px;padding:10px 14px;font-weight:700;font-size:13px}
