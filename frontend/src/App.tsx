@@ -6,8 +6,8 @@ import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layo
 import { fetchLayouts } from './layout-api'
 import { CustomLayoutOnboarding } from './custom-layout-onboarding'
 import { UserOnboarding } from './user-onboarding'
+import { TourNudge } from './tour-nudge'
 import { PersonaOnboarding } from './persona-onboarding'
-import { OnboardingSetupScreen } from './onboarding-setup'
 import { fetchPersona } from './persona-api'
 import { GokuAdminButton, GokuAdminModal, GokuLauncher, GokuPanel, useGoku } from './goku'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme, Persona } from './types'
@@ -71,9 +71,11 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [showLayoutOnboarding, setShowLayoutOnboarding] = useState(false)
   const [showUserOnboarding, setShowUserOnboarding] = useState(false)
   const [showPersonaOnboarding, setShowPersonaOnboarding] = useState(false)
-  // Shown between PersonaOnboarding finishing and UserOnboarding starting — see load()'s
-  // first-load sequencing below.
-  const [showOnboardingSetup, setShowOnboardingSetup] = useState(false)
+  // A small, non-blocking corner card offering the app-concepts tour — replaces auto-popping
+  // UserOnboarding as a full-screen modal the instant persona onboarding ends or a returning
+  // user logs in. Dismissing it (without "Don't show again" inside the tour itself) just hides
+  // it for this session; it offers again next login, same as the tour's own Skip always did.
+  const [showTourNudge, setShowTourNudge] = useState(false)
   const [persona, setPersona] = useState<Persona | null>(null)
   // Reopens PersonaOnboarding from Settings — separate from showPersonaOnboarding so it never
   // re-triggers the setup-transition/UserOnboarding chain. 'onboarding' for a user who never
@@ -172,12 +174,12 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (isFirstLoad) {
       bootstrapped.current = true
       setLoading(false)
-      // PersonaOnboarding (persona + risk assessment) comes first for a brand-new user, then a
-      // brief "setting up" transition, then UserOnboarding's app-concepts tour — each stage
-      // triggers the next from its own onClose/onDone below rather than all three being decided
-      // here. A returning user who's only dismissed one of the two still gets the other directly.
+      // PersonaOnboarding (persona + risk assessment) comes first for a brand-new user — its
+      // own onClose below offers the tour nudge next rather than that being decided here. A
+      // returning user who's already done persona onboarding but not the tour gets the nudge
+      // directly, with no blocking modal and no transition screen in between either way.
       if (nextSettings && !nextSettings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
-      else if (nextSettings && !nextSettings.userOnboardingDismissed) setShowUserOnboarding(true)
+      else if (nextSettings && !nextSettings.userOnboardingDismissed) setShowTourNudge(true)
       if (!currency && nextSettings?.baseCurrency && nextSettings.baseCurrency !== cur) {
         void load(nextSettings.baseCurrency)
       }
@@ -349,12 +351,16 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}
     {showPersonaOnboarding && <PersonaOnboarding
       initial={persona}
-      onClose={() => { setShowPersonaOnboarding(false); setShowOnboardingSetup(true); void load() }}
+      onClose={() => {
+        setShowPersonaOnboarding(false)
+        if (settings && !settings.userOnboardingDismissed) setShowTourNudge(true)
+        void load()
+      }}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
-    {showOnboardingSetup && <OnboardingSetupScreen onDone={() => {
-      setShowOnboardingSetup(false)
-      if (settings && !settings.userOnboardingDismissed) setShowUserOnboarding(true)
-    }} />}
+    {showTourNudge && <TourNudge
+      stackedAboveGoku={goku.available}
+      onDismiss={() => setShowTourNudge(false)}
+      onStart={() => { setShowTourNudge(false); setShowUserOnboarding(true) }} />}
     {showUserOnboarding && <UserOnboarding
       onClose={() => setShowUserOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}

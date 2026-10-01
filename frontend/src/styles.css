@@ -305,6 +305,20 @@ th.sortable:hover{color:var(--text)}
 .onboarding-dot{width:7px;height:7px;border-radius:50%;background:var(--border-strong)}
 .onboarding-dot.active{background:var(--accent)}
 .onboarding-dismiss{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-3);cursor:pointer}
+/* Non-blocking corner card offering the app tour (see TourNudge) — bottom-right rather than
+   bottom-left, which collides with the sidebar's own account panel pinned there. Stacked above
+   the Goku launcher button (.tour-nudge-above-goku) only when that button is actually rendered,
+   so there's no dead gap below the card for users without Goku access. */
+.tour-nudge{position:fixed;right:24px;bottom:24px;z-index:6;width:min(300px,calc(100vw - 32px));
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;padding:16px;
+  box-shadow:var(--shadow-modal)}
+.tour-nudge-above-goku{bottom:96px}
+.tour-nudge-close{position:absolute;top:10px;right:10px;background:none;border:0;color:var(--text-3);
+  font-size:18px;line-height:1;cursor:pointer;padding:2px}
+.tour-nudge-close:hover{color:var(--text)}
+.tour-nudge-title{font-weight:700;margin:0 0 6px}
+.tour-nudge .hint{margin:0 0 14px}
+.tour-nudge-actions{display:flex;justify-content:flex-end;gap:8px}
 .persona-fields{display:grid;gap:14px}
 .persona-fields label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--text-2)}
 .persona-fields input,.persona-fields select{background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px;font-weight:400}
@@ -732,4 +746,6 @@ th.sortable:hover{color:var(--text)}
   .currency-picker span{display:none}
   .goku-panel{left:16px;right:16px;width:auto;bottom:88px}
   .goku-launcher{right:16px;bottom:16px}
+  .tour-nudge{left:16px;right:16px;bottom:16px;width:auto}
+  .tour-nudge-above-goku{bottom:88px}
 }
