@@ -31,7 +31,7 @@ class LocalAuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new LocalAuthService(users, new BCryptPasswordEncoder(), mail);
+        service = new LocalAuthService(users, new BCryptPasswordEncoder(), mail, true);
     }
 
     @Test
@@ -48,6 +48,30 @@ class LocalAuthServiceTest {
         assertThat(user.getVerificationToken()).isNotBlank();
         assertThat(user.getVerificationTokenExpiresAt()).isNotNull();
         verify(mail).sendVerificationEmail(org.mockito.ArgumentMatchers.eq("sam@example.com"), anyString());
+    }
+
+    @Test
+    void registerAutoVerifiesAndSendsNothingWhenVerificationIsOff() {
+        LocalAuthService noVerification = new LocalAuthService(users, new BCryptPasswordEncoder(), mail, false);
+        when(users.findByEmail("sam@example.com")).thenReturn(Optional.empty());
+        when(users.save(any(UserAccount.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserAccount user = noVerification.register("Sam@Example.com ", "Sam", "hunter2horse");
+
+        assertThat(user.getEmailVerified()).isTrue();
+        assertThat(user.getVerificationToken()).isNull();
+        verify(mail, never()).sendVerificationEmail(anyString(), anyString());
+    }
+
+    @Test
+    void loginSkipsTheVerificationCheckWhenVerificationIsOff() {
+        LocalAuthService noVerification = new LocalAuthService(users, new BCryptPasswordEncoder(), mail, false);
+        UserAccount stored = new UserAccount("sam@example.com", "Sam");
+        stored.setPasswordHash(new BCryptPasswordEncoder().encode("hunter2horse"));
+        stored.setEmailVerified(false);
+        when(users.findByEmail("sam@example.com")).thenReturn(Optional.of(stored));
+
+        assertThat(noVerification.login("sam@example.com", "hunter2horse")).isSameAs(stored);
     }
 
     @Test

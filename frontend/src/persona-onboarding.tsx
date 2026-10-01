@@ -114,11 +114,14 @@ const SCENARIOS: { area: string; question: string; options: string[] }[] = [
 // through without touching a scenario question still ends up "moderate" on that question.
 const MODERATE_ANSWERS = SCENARIOS.map(s => Math.floor((s.options.length - 1) / 2))
 
-const DETAILS_STEP = 1
-const PERSONA_STEP = 2
-const INSTRUMENTS_STEP = 3
-const SCENARIO_START_STEP = 4
-const TOTAL_STEPS = SCENARIO_START_STEP + SCENARIOS.length
+// Persona (the hook) and the risk read it most affects come first; the optional, more sensitive
+// demographic questions are deferred to the end, where skipping them costs nothing — Finish
+// works with or without them, and they're always editable later from Settings.
+const PERSONA_STEP = 1
+const SCENARIO_START_STEP = 2
+const INSTRUMENTS_STEP = SCENARIO_START_STEP + SCENARIOS.length
+const DETAILS_STEP = INSTRUMENTS_STEP + 1
+const TOTAL_STEPS = DETAILS_STEP + 1
 
 // A data-collecting, skippable onboarding widget — identifies a starter persona (basic profile,
 // a self-identified investor archetype, and a risk read from five scenario questions) used to
@@ -153,7 +156,10 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
   const [busy, setBusy] = useState(false)
   useEscToClose(onClose)
 
-  const isLast = step === TOTAL_STEPS - 1
+  // Risk-only mode only ever walks the five scenario steps (see the mode doc above) — it must
+  // stop there, not fall through into Instruments/Details, which now sit after the scenarios.
+  const lastStep = isRiskOnly ? SCENARIO_START_STEP + SCENARIOS.length - 1 : TOTAL_STEPS - 1
+  const isLast = step === lastStep
   const canGoBack = step > startStep
 
   const toggleInstrument = (value: InstrumentType) => {
@@ -192,9 +198,9 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
   }
 
   const title = step === 0 ? "Let's personalise FinSights"
-    : step === DETAILS_STEP ? 'A bit about you'
     : step === PERSONA_STEP ? 'Which investor profile fits you best?'
     : step === INSTRUMENTS_STEP ? 'What do you invest in?'
+    : step === DETAILS_STEP ? 'A bit about you'
     : SCENARIOS[step - SCENARIO_START_STEP].area
 
   // Risk-only mode only ever shows the five scenario steps — number them 1-5 on their own,
@@ -210,17 +216,6 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
 
     {step === 0 && <p>A few quick, entirely optional questions — we'll use your answers to set up a couple of starter categories and get a read on your risk comfort. Skip anytime.</p>}
 
-    {step === DETAILS_STEP && <div className="persona-fields">
-      <label>Age<input type="number" min={0} max={120} value={age} onChange={e => setAge(e.target.value)} /></label>
-      <label>Occupation<input value={occupation} onChange={e => setOccupation(e.target.value)} placeholder="e.g. Software engineer" /></label>
-      <label>Annual salary range
-        <select value={salaryRange} onChange={e => setSalaryRange(e.target.value as SalaryRange)}>
-          <option value="">Select…</option>
-          {SALARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </label>
-    </div>}
-
     {step === PERSONA_STEP && <div className="persona-experience">
       <p className="hint">Which of these best describes you?</p>
       <div className="persona-radio-cards">
@@ -229,14 +224,15 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
           <span><b>{o.label}</b><small>{o.hint}</small></span>
         </label>)}
       </div>
-      <div className="persona-fields">
-        <label>How long have you been actively investing?
-          <select value={investingTenure} onChange={e => setInvestingTenure(e.target.value as InvestingTenure)}>
-            <option value="">Select…</option>
-            {TENURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </label>
-      </div>
+    </div>}
+
+    {step >= SCENARIO_START_STEP && step < INSTRUMENTS_STEP && <div className="persona-scenario">
+      <p>{SCENARIOS[step - SCENARIO_START_STEP].question}</p>
+      {SCENARIOS[step - SCENARIO_START_STEP].options.map((opt, i) => <label key={i} className="persona-checkbox">
+        <input type="radio" name={`scenario-${step}`} checked={answers[step - SCENARIO_START_STEP] === i}
+          onChange={() => setAnswers(a => { const next = [...a]; next[step - SCENARIO_START_STEP] = i; return next })} />
+        {opt}
+      </label>)}
     </div>}
 
     {step === INSTRUMENTS_STEP && <div className="persona-instruments">
@@ -246,13 +242,22 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
       </label>)}
     </div>}
 
-    {step >= SCENARIO_START_STEP && <div className="persona-scenario">
-      <p>{SCENARIOS[step - SCENARIO_START_STEP].question}</p>
-      {SCENARIOS[step - SCENARIO_START_STEP].options.map((opt, i) => <label key={i} className="persona-checkbox">
-        <input type="radio" name={`scenario-${step}`} checked={answers[step - SCENARIO_START_STEP] === i}
-          onChange={() => setAnswers(a => { const next = [...a]; next[step - SCENARIO_START_STEP] = i; return next })} />
-        {opt}
-      </label>)}
+    {step === DETAILS_STEP && <div className="persona-fields">
+      <p className="hint">Optional — skip anything you'd rather not share now; you can always fill it in later from Settings.</p>
+      <label>Age<input type="number" min={0} max={120} value={age} onChange={e => setAge(e.target.value)} /></label>
+      <label>Occupation<input value={occupation} onChange={e => setOccupation(e.target.value)} placeholder="e.g. Software engineer" /></label>
+      <label>Annual salary range
+        <select value={salaryRange} onChange={e => setSalaryRange(e.target.value as SalaryRange)}>
+          <option value="">Select…</option>
+          {SALARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </label>
+      <label>How long have you been actively investing?
+        <select value={investingTenure} onChange={e => setInvestingTenure(e.target.value as InvestingTenure)}>
+          <option value="">Select…</option>
+          {TENURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </label>
     </div>}
 
     <div className="onboarding-dots">

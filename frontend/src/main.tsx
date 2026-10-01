@@ -181,9 +181,9 @@ export function LoginScreen({ initialMode, onBack, onEnter, banner }: { initialM
   const [demoEnabled, setDemoEnabled] = useState(false)
   const [form, setForm] = useState({ email: '', password: '', displayName: '' })
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  // Set once a signup call succeeds — holds the backend's "check your email" message. A local
-  // signup no longer logs straight in: the account exists but can't authenticate until the
-  // emailed activation link is clicked, so there's nothing to enter yet.
+  // Set once a signup call succeeds *and* email verification is required — holds the backend's
+  // "check your email" message. When verification is off, register() logs straight in instead
+  // (see the `loggedIn` check in submit()) and this is never set.
   const [signupMessage, setSignupMessage] = useState('')
   // A failed login against an unverified account offers a "Resend" button right there, rather
   // than leaving the user stuck if the original email never arrived — see LocalAuthService's
@@ -202,11 +202,11 @@ export function LoginScreen({ initialMode, onBack, onEnter, banner }: { initialM
     event.preventDefault(); setBusy(true); setError(''); setResendMessage('')
     try {
       if (mode === 'signup') {
-        const result = await api<{ message: string }>('/api/auth/register', {
+        const result = await api<{ message: string; loggedIn: boolean }>('/api/auth/register', {
           method: 'POST',
           body: JSON.stringify({ email: form.email, displayName: form.displayName || null, password: form.password }),
         })
-        setSignupMessage(result.message)
+        if (result.loggedIn) onEnter(); else setSignupMessage(result.message)
       } else {
         await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: form.email, password: form.password }) })
         onEnter()

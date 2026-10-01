@@ -51,9 +51,13 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    RegisterResponse register(@Valid @RequestBody RegisterRequest request) {
+    RegisterResponse register(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         UserAccount user = localAuth.register(request.email(), request.displayName(), request.password());
-        return new RegisterResponse(user.getEmail(), "Account created. Check your email for a link to verify it before logging in.");
+        if (!localAuth.requiresEmailVerification()) {
+            establishSession(user.getEmail(), httpRequest, httpResponse);
+            return new RegisterResponse(user.getEmail(), "Account created.", true);
+        }
+        return new RegisterResponse(user.getEmail(), "Account created. Check your email for a link to verify it before logging in.", false);
     }
 
     @PostMapping("/verify")
