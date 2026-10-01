@@ -52,6 +52,9 @@ app:
   auth-mode: ${APP_AUTH_MODE:demo}
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   cors-origin: ${CORS_ORIGIN:http://localhost:5173}
+  # Off for now (see LocalAuthService) — set REQUIRE_EMAIL_VERIFICATION=true once Resend/SMTP
+  # delivery is sorted on Render.
+  require-email-verification: ${REQUIRE_EMAIL_VERIFICATION:false}
   # Resend's HTTP API (not SMTP) — Render's free tier blocks outbound SMTP entirely, but this
   # runs over plain HTTPS. Blank api-key (the default) is a valid, supported state: MailService
   # checks for that itself and logs the verification link instead of sending, so local dev/CI

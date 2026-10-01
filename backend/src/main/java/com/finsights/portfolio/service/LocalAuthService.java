@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,11 +22,17 @@ public class LocalAuthService {
     private final UserAccountRepository users;
     private final PasswordEncoder passwordEncoder;
     private final MailService mail;
+    // Off by default for now (app.require-email-verification) while Resend/SMTP delivery on
+    // Render is unresolved — a fresh signup is auto-verified instead of gated on a link it has
+    // no reliable way to receive. Flip back to true once real verification mail is working.
+    private final boolean requireEmailVerification;
 
-    public LocalAuthService(UserAccountRepository users, PasswordEncoder passwordEncoder, MailService mail) {
+    public LocalAuthService(UserAccountRepository users, PasswordEncoder passwordEncoder, MailService mail,
+                             @Value("${app.require-email-verification:false}") boolean requireEmailVerification) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.mail = mail;
+        this.requireEmailVerification = requireEmailVerification;
     }
 
     @Transactional
@@ -40,6 +47,10 @@ public class LocalAuthService {
         String name = displayName == null || displayName.isBlank() ? normalized : displayName.trim();
         UserAccount user = new UserAccount(normalized, name);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        if (!requireEmailVerification) {
+            // Entity default (emailVerified=true) already covers this — nothing to flip.
+            return users.save(user);
+        }
         // Unlike the entity's default (true, for the demo account and Google users, who are
         // never asked to verify), a fresh local signup starts unverified until the emailed link
         // is clicked.
@@ -52,11 +63,13 @@ public class LocalAuthService {
         return user;
     }
 
+    public boolean requiresEmailVerification() { return requireEmailVerification; }
+
     public UserAccount login(String email, String rawPassword) {
         UserAccount user = users.findByEmail(email.trim().toLowerCase())
                 .filter(u -> u.getPasswordHash() != null && passwordEncoder.matches(rawPassword, u.getPasswordHash()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
-        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+        if (requireEmailVerification && !Boolean.TRUE.equals(user.getEmailVerified())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Your account isn't verified yet. Pending verification email? Resend it below.");
         }
         return user;
