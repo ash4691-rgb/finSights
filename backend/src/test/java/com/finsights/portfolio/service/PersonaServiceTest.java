@@ -19,6 +19,7 @@ import com.finsights.portfolio.domain.UserPersona;
 import com.finsights.portfolio.dto.PersonaDetailsRequest;
 import com.finsights.portfolio.dto.PersonaRequest;
 import com.finsights.portfolio.dto.PersonaResponse;
+import com.finsights.portfolio.dto.PersonaRiskRequest;
 import com.finsights.portfolio.repository.UserAccountRepository;
 import com.finsights.portfolio.repository.UserPersonaRepository;
 import java.util.List;
@@ -54,7 +55,7 @@ class PersonaServiceTest {
     private PersonaRequest request(Integer timeHorizon, Integer riskCapacity, Integer riskTolerance,
                                     Integer investmentObjectives, Integer liquidityNeeds) {
         return new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L, InvestorPersona.ACTIVE_ACCUMULATOR,
-                InvestingTenure.ONE_TO_3_YEARS, Set.of(), timeHorizon, riskCapacity, riskTolerance,
+                InvestingTenure.ONE_TO_3_YEARS, Set.of(), Set.of(), Set.of(), timeHorizon, riskCapacity, riskTolerance,
                 investmentObjectives, liquidityNeeds);
     }
 
@@ -133,6 +134,67 @@ class PersonaServiceTest {
         verify(users).save(user);
     }
 
+    // The basic onboarding flow asks no risk questions at all — submit() must leave
+    // riskOnboardingDismissed false so the dedicated risk assessment still prompts on the user's
+    // next login, even though riskProfile already holds a MODERATE default by then.
+    @Test
+    void submitLeavesRiskOnboardingUndismissed() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        PersonaResponse response = service.submit(request(null, null, null, null, null));
+
+        assertThat(response.riskProfile()).isEqualTo(RiskProfile.MODERATE);
+        assertThat(user.getRiskOnboardingDismissed()).isFalse();
+    }
+
+    @Test
+    void submitCarriesInterestedInstrumentsAndPlatformsThrough() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+        when(categoryService.list(null)).thenReturn(List.of());
+
+        PersonaRequest request = new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L,
+                InvestorPersona.WEALTH_BUILDER, InvestingTenure.UNDER_1_YEAR,
+                Set.of(InstrumentType.INDIAN_STOCKS), Set.of(InstrumentType.CRYPTO),
+                Set.of("Zerodha", "Groww"), 1, 1, 1, 1, 1);
+
+        PersonaResponse response = service.submit(request);
+
+        assertThat(response.instrumentTypes()).containsExactly(InstrumentType.INDIAN_STOCKS);
+        assertThat(response.interestedInstrumentTypes()).containsExactly(InstrumentType.CRYPTO);
+        assertThat(response.platforms()).containsExactlyInAnyOrder("Zerodha", "Groww");
+        // "Want to invest" instruments don't seed a category — nothing to track yet.
+        verify(categoryService, never()).create(argThat(r -> r.name().equals("Crypto")));
+    }
+
+    @Test
+    void updateRiskRecomputesRiskProfileAndDismissesRiskOnboarding() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        UserPersona existing = new UserPersona();
+        existing.setRiskProfile(RiskProfile.MODERATE);
+        existing.setInvestorPersona(InvestorPersona.WEALTH_BUILDER);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.of(existing));
+
+        // First option on every question — scores CONSERVATIVE.
+        PersonaResponse response = service.updateRisk(new PersonaRiskRequest(0, 0, 0, 0, 0));
+
+        assertThat(response.riskProfile()).isEqualTo(RiskProfile.CONSERVATIVE);
+        assertThat(response.investorPersona()).isEqualTo(InvestorPersona.WEALTH_BUILDER); // untouched
+        assertThat(user.getRiskOnboardingDismissed()).isTrue();
+        verify(users).save(user);
+    }
+
+    @Test
+    void updateRiskWithoutAnExistingPersonaIsRejected() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateRisk(new PersonaRiskRequest(0, 0, 0, 0, 0)))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
+    }
+
     @Test
     void skipSavesModerateDefaultAndDismisses() {
         when(currentUserService.currentUser()).thenReturn(user);
@@ -209,7 +271,7 @@ class PersonaServiceTest {
 
         PersonaRequest request = new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L,
                 InvestorPersona.WEALTH_BUILDER, InvestingTenure.UNDER_1_YEAR,
-                Set.of(InstrumentType.INDIAN_STOCKS, InstrumentType.CRYPTO), 1, 1, 1, 1, 1);
+                Set.of(InstrumentType.INDIAN_STOCKS, InstrumentType.CRYPTO), Set.of(), Set.of(), 1, 1, 1, 1, 1);
 
         service.submit(request);
 

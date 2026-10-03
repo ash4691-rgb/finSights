@@ -180,7 +180,8 @@ public class SettingsService {
                 CurrentUserService.DEMO_EMAIL.equalsIgnoreCase(user.getEmail()), holdingService.list().size(), user.getCreatedAt(),
                 Boolean.TRUE.equals(user.getCustomLayoutOnboardingDismissed()),
                 Boolean.TRUE.equals(user.getUserOnboardingDismissed()),
-                Boolean.TRUE.equals(user.getPersonaOnboardingDismissed()));
+                Boolean.TRUE.equals(user.getPersonaOnboardingDismissed()),
+                Boolean.TRUE.equals(user.getRiskOnboardingDismissed()));
     }
 
     /** "Don't show this again" for the CustomLayoutOnboarding tour — a one-way flip, separate

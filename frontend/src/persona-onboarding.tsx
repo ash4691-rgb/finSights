@@ -22,6 +22,13 @@ const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
   { value: 'REAL_ESTATE', label: 'Real Estate' },
 ]
 
+// A few common Indian brokers/platforms to one-click add on the Platforms step — anything else
+// is free text, since brokers are an open-ended set (Holding.broker is likewise a plain string,
+// not an enum).
+const PLATFORM_SUGGESTIONS = [
+  'Zerodha', 'Groww', 'Upstox', 'ICICI Direct', 'HDFC Securities', 'Angel One', 'Paytm Money', 'INDmoney',
+]
+
 // Self-identified investor persona — how the user describes themselves, not computed. A
 // four-archetype framework built around age, portfolio size, and what the user is actually
 // trying to do, rather than a plain experience level.
@@ -51,8 +58,9 @@ export const TENURE_LABELS: Record<InvestingTenure, string> = {
   THREE_TO_10_YEARS: '3 – 10 years', OVER_10_YEARS: 'More than 10 years',
 }
 
-// RiskProfile is computed server-side (see PersonaService.scoreRisk) from the scenario answers
-// below — the backend's enum constants are stable identifiers; these are just friendlier labels.
+// RiskProfile is computed server-side (see PersonaService.scoreRisk) from RiskAssessment's
+// scenario answers — the backend's enum constants are stable identifiers; these are just
+// friendlier labels, used here (not in RiskAssessment) since Settings is the main consumer.
 export const RISK_LABELS: Record<RiskProfile, string> = {
   CONSERVATIVE: 'Long-term investor', MODERATE: 'Swing trader', AGGRESSIVE: 'High growth trader',
 }
@@ -68,8 +76,8 @@ export const RISK_TAG_CLASS: Record<RiskProfile, string> = {
   CONSERVATIVE: 'profile-tag-conservative', MODERATE: 'profile-tag-moderate', AGGRESSIVE: 'profile-tag-aggressive',
 }
 // Allocation guideline shown alongside the risk profile — not enforced anywhere, purely
-// informational. MODERATE is the framework's default (see the pre-selected scenario answers
-// below and PersonaService.skip on the backend), not just its midpoint.
+// informational. MODERATE is the framework's default (see RiskAssessment's pre-selected answers
+// and PersonaService.skip on the backend), not just its midpoint.
 export const RISK_ALLOCATION: Record<RiskProfile, { equity: string; debtCash: string; coreFocus: string }> = {
   CONSERVATIVE: { equity: '0% – 20%', debtCash: '80% – 100%', coreFocus: 'Capital preservation' },
   MODERATE: { equity: '40% – 50%', debtCash: '50% – 60%', coreFocus: 'Balanced growth' },
@@ -78,100 +86,59 @@ export const RISK_ALLOCATION: Record<RiskProfile, { equity: string; debtCash: st
 export const SALARY_LABELS: Record<SalaryRange, string> = Object.fromEntries(
   SALARY_OPTIONS.map(o => [o.value, o.label])) as Record<SalaryRange, string>
 
-// Five areas from the risk-assessment framework, each with its own number of options (3 to 5) —
-// an option's index is the raw answer sent to the backend; PersonaService.scoreRisk rescales
-// each question against its own option count before combining them into a risk profile, so a
-// 5-option question doesn't quietly outweigh a 3-option one.
-const SCENARIOS: { area: string; question: string; options: string[] }[] = [
-  {
-    area: 'Time Horizon',
-    question: 'When do you expect to start withdrawing a major portion of your investments?',
-    options: ['Under 3 years', '3–5 years', '6–10 years', 'More than 10 years'],
-  },
-  {
-    area: 'Risk Capacity',
-    question: 'Over the next few years, how do you expect your annual income to change?',
-    options: ['Decrease substantially', 'Decrease moderately', 'Stay the same', 'Grow moderately', 'Grow substantially'],
-  },
-  {
-    area: 'Risk Tolerance',
-    question: 'If the performance of your investment dropped by 20% over a short period, how would you feel?',
-    options: ['Highly panicked and sell immediately', 'Uneasy but hold', 'View it as an opportunity to buy more'],
-  },
-  {
-    area: 'Investment Objectives',
-    question: 'Which statement best describes your overall investment philosophy?',
-    options: ['Seeking stable, low-risk capital preservation', 'Balancing moderate growth and safety', 'Seeking high/aggressive capital growth despite major fluctuations'],
-  },
-  {
-    area: 'Liquidity Needs',
-    question: 'How much of your total portfolio might you need to access in an emergency within the next 12 months?',
-    options: ['None', 'Less than 10%', '10%–30%', 'More than 30%'],
-  },
-]
-// The middle-normalizing index for each question's own option count (matches
-// PersonaService.normalize's rounding) — pre-selecting it means a user who clicks straight
-// through without touching a scenario question still ends up "moderate" on that question.
-const MODERATE_ANSWERS = SCENARIOS.map(s => Math.floor((s.options.length - 1) / 2))
-
-// Persona (the hook) and the risk read it most affects come first; the optional, more sensitive
+// Persona (the hook) comes first; categories and platforms follow; the optional, more sensitive
 // demographic questions are deferred to the end, where skipping them costs nothing — Finish
-// works with or without them, and they're always editable later from Settings.
+// works with or without them, and they're always editable later from Settings. No risk questions
+// here at all — those are a separate RiskAssessment prompted on a later login (see App.tsx).
 const PERSONA_STEP = 1
-const SCENARIO_START_STEP = 2
-const INSTRUMENTS_STEP = SCENARIO_START_STEP + SCENARIOS.length
-const DETAILS_STEP = INSTRUMENTS_STEP + 1
+const CATEGORIES_STEP = 2
+const PLATFORMS_STEP = 3
+const DETAILS_STEP = 4
 const TOTAL_STEPS = DETAILS_STEP + 1
 
 // A data-collecting, skippable onboarding widget — identifies a starter persona (basic profile,
-// a self-identified investor archetype, and a risk read from five scenario questions) used to
-// seed a few starter categories. Same skip / "don't show again" pattern as CustomLayoutOnboarding
-// and UserOnboarding, but "don't show again" here also saves a MODERATE-default persona (via
-// skipPersona) rather than leaving the user with none at all — completing the full flow instead
-// saves the real answers.
-//
-// mode="risk-only" (Settings' "Reassess risk profile") skips straight to the five scenario
-// questions — age/occupation/salary/persona/instruments stay exactly as they were (the state
-// below is still seeded from `initial`, just never edited in this mode), so re-submitting only
-// ever changes the computed risk profile. No "don't show again" checkbox (nothing to dismiss —
-// onboarding is already long done), and the close/Skip button is a plain Cancel.
-export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = 'onboarding' }: {
-  onClose: () => void; onDismissForever: () => void; initial?: Persona | null; mode?: 'onboarding' | 'risk-only'
+// a self-identified investor archetype, the instrument categories the user already holds or
+// wants to, and the platforms they use) used to seed a few starter categories. Same skip /
+// "don't show again" pattern as CustomLayoutOnboarding and UserOnboarding, but "don't show
+// again" here also saves a MODERATE-default persona (via skipPersona) rather than leaving the
+// user with none at all — completing the full flow instead saves the real answers.
+export function PersonaOnboarding({ onClose, onDismissForever, initial }: {
+  onClose: () => void; onDismissForever: () => void; initial?: Persona | null
 }) {
-  const isRiskOnly = mode === 'risk-only'
-  const startStep = isRiskOnly ? SCENARIO_START_STEP : 0
-  const [step, setStep] = useState(startStep)
+  const [step, setStep] = useState(0)
   const [dontShowAgain, setDontShowAgain] = useState(false)
   const [age, setAge] = useState(initial?.age ? String(initial.age) : '')
   const [occupation, setOccupation] = useState(initial?.occupation ?? '')
   const [salaryRange, setSalaryRange] = useState<SalaryRange | ''>(initial?.salaryRange ?? '')
   const [investorPersona, setInvestorPersona] = useState<InvestorPersona | ''>(initial?.investorPersona ?? '')
   const [investingTenure, setInvestingTenure] = useState<InvestingTenure | ''>(initial?.investingTenure ?? '')
-  const [instruments, setInstruments] = useState<Set<InstrumentType>>(new Set(initial?.instrumentTypes ?? []))
-  // Pre-selected to each question's moderate option — matches the backend's own default (a
-  // missing answer normalizes to "moderate", and skipping saves MODERATE outright), so a user
-  // who clicks straight through without changing anything ends up with the same result either
-  // way, rather than an implicit "most conservative" default from an all-null start.
-  const [answers, setAnswers] = useState<number[]>(MODERATE_ANSWERS)
+  const [currentInstruments, setCurrentInstruments] = useState<Set<InstrumentType>>(new Set(initial?.instrumentTypes ?? []))
+  const [interestedInstruments, setInterestedInstruments] = useState<Set<InstrumentType>>(new Set(initial?.interestedInstrumentTypes ?? []))
+  const [platforms, setPlatforms] = useState<Set<string>>(new Set(initial?.platforms ?? []))
+  const [platformInput, setPlatformInput] = useState('')
   const [busy, setBusy] = useState(false)
   useEscToClose(onClose)
 
-  // Risk-only mode only ever walks the five scenario steps (see the mode doc above) — it must
-  // stop there, not fall through into Instruments/Details, which now sit after the scenarios.
-  const lastStep = isRiskOnly ? SCENARIO_START_STEP + SCENARIOS.length - 1 : TOTAL_STEPS - 1
-  const isLast = step === lastStep
-  const canGoBack = step > startStep
+  const isLast = step === TOTAL_STEPS - 1
+  const canGoBack = step > 0
 
-  const toggleInstrument = (value: InstrumentType) => {
-    setInstruments(current => {
-      const next = new Set(current)
-      if (next.has(value)) next.delete(value); else next.add(value)
-      return next
-    })
+  const toggle = (set: Set<InstrumentType>, setSet: (next: Set<InstrumentType>) => void, value: InstrumentType) => {
+    const next = new Set(set)
+    if (next.has(value)) next.delete(value); else next.add(value)
+    setSet(next)
+  }
+
+  const addPlatform = () => {
+    const name = platformInput.trim()
+    if (!name) return
+    setPlatforms(current => new Set(current).add(name))
+    setPlatformInput('')
+  }
+  const removePlatform = (name: string) => {
+    setPlatforms(current => { const next = new Set(current); next.delete(name); return next })
   }
 
   const skipNow = async () => {
-    if (isRiskOnly) { onClose(); return }
     if (dontShowAgain) { onDismissForever(); await skipPersona() }
     onClose()
   }
@@ -185,36 +152,28 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
         salaryRange: salaryRange || null,
         investorPersona: investorPersona || null,
         investingTenure: investingTenure || null,
-        instrumentTypes: Array.from(instruments),
-        timeHorizonAnswer: answers[0],
-        riskCapacityAnswer: answers[1],
-        riskToleranceAnswer: answers[2],
-        investmentObjectivesAnswer: answers[3],
-        liquidityNeedsAnswer: answers[4],
+        instrumentTypes: Array.from(currentInstruments),
+        interestedInstrumentTypes: Array.from(interestedInstruments),
+        platforms: Array.from(platforms),
       })
     } catch { /* best-effort — still close so the user isn't stuck on a save failure */ }
-    if (!isRiskOnly) onDismissForever()
+    onDismissForever()
     onClose()
   }
 
   const title = step === 0 ? "Let's personalise FinSights"
     : step === PERSONA_STEP ? 'Which investor profile fits you best?'
-    : step === INSTRUMENTS_STEP ? 'What do you invest in?'
-    : step === DETAILS_STEP ? 'A bit about you'
-    : SCENARIOS[step - SCENARIO_START_STEP].area
-
-  // Risk-only mode only ever shows the five scenario steps — number them 1-5 on their own,
-  // rather than as steps 5-9 of a nine-step flow the user never sees the rest of.
-  const displayStepNumber = isRiskOnly ? step - SCENARIO_START_STEP + 1 : step + 1
-  const displayTotalSteps = isRiskOnly ? SCENARIOS.length : TOTAL_STEPS
+    : step === CATEGORIES_STEP ? 'What do you invest in?'
+    : step === PLATFORMS_STEP ? 'Which platforms do you use?'
+    : 'A bit about you'
 
   return <div className="modal-backdrop"><section className="modal narrow onboarding-tour">
     <div className="modal-header">
-      <div><p className="eyebrow">{isRiskOnly ? 'REASSESS RISK PROFILE' : 'GETTING TO KNOW YOU'} · STEP {displayStepNumber} OF {displayTotalSteps}</p><h2>{title}</h2></div>
+      <div><p className="eyebrow">GETTING TO KNOW YOU · STEP {step + 1} OF {TOTAL_STEPS}</p><h2>{title}</h2></div>
       <button className="close" onClick={() => void skipNow()}>×</button>
     </div>
 
-    {step === 0 && <p>A few quick, entirely optional questions — we'll use your answers to set up a couple of starter categories and get a read on your risk comfort. Skip anytime.</p>}
+    {step === 0 && <p>A few quick, entirely optional questions — we'll use your answers to set up a couple of starter categories. Skip anytime.</p>}
 
     {step === PERSONA_STEP && <div className="persona-experience">
       <p className="hint">Which of these best describes you?</p>
@@ -226,20 +185,43 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
       </div>
     </div>}
 
-    {step >= SCENARIO_START_STEP && step < INSTRUMENTS_STEP && <div className="persona-scenario">
-      <p>{SCENARIOS[step - SCENARIO_START_STEP].question}</p>
-      {SCENARIOS[step - SCENARIO_START_STEP].options.map((opt, i) => <label key={i} className="persona-checkbox">
-        <input type="radio" name={`scenario-${step}`} checked={answers[step - SCENARIO_START_STEP] === i}
-          onChange={() => setAnswers(a => { const next = [...a]; next[step - SCENARIO_START_STEP] = i; return next })} />
-        {opt}
-      </label>)}
+    {step === CATEGORIES_STEP && <div className="persona-categories">
+      <div className="persona-category-group">
+        <p className="hint">Currently investing in</p>
+        <div className="persona-instruments">
+          {INSTRUMENT_OPTIONS.map(o => <label key={o.value} className="persona-checkbox">
+            <input type="checkbox" checked={currentInstruments.has(o.value)} onChange={() => toggle(currentInstruments, setCurrentInstruments, o.value)} />
+            {o.label}
+          </label>)}
+        </div>
+      </div>
+      <div className="persona-category-group">
+        <p className="hint">Want to start investing in</p>
+        <div className="persona-instruments">
+          {INSTRUMENT_OPTIONS.map(o => <label key={o.value} className="persona-checkbox">
+            <input type="checkbox" checked={interestedInstruments.has(o.value)} onChange={() => toggle(interestedInstruments, setInterestedInstruments, o.value)} />
+            {o.label}
+          </label>)}
+        </div>
+      </div>
     </div>}
 
-    {step === INSTRUMENTS_STEP && <div className="persona-instruments">
-      {INSTRUMENT_OPTIONS.map(o => <label key={o.value} className="persona-checkbox">
-        <input type="checkbox" checked={instruments.has(o.value)} onChange={() => toggleInstrument(o.value)} />
-        {o.label}
-      </label>)}
+    {step === PLATFORMS_STEP && <div className="persona-platforms">
+      <p className="hint">Add the brokers or platforms you use.</p>
+      <div className="platform-input-row">
+        <input list="platform-suggestions" value={platformInput} onChange={e => setPlatformInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPlatform() } }}
+          placeholder="e.g. Zerodha" />
+        <datalist id="platform-suggestions">
+          {PLATFORM_SUGGESTIONS.map(p => <option key={p} value={p} />)}
+        </datalist>
+        <button type="button" className="outline" onClick={addPlatform}>Add</button>
+      </div>
+      {platforms.size > 0 && <div className="platform-tags">
+        {Array.from(platforms).map(p => <span key={p} className="platform-tag">{p}
+          <button type="button" onClick={() => removePlatform(p)} aria-label={`Remove ${p}`}>×</button>
+        </span>)}
+      </div>}
     </div>}
 
     {step === DETAILS_STEP && <div className="persona-fields">
@@ -261,14 +243,14 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, mode = '
     </div>}
 
     <div className="onboarding-dots">
-      {Array.from({ length: displayTotalSteps }).map((_, i) => <span key={i} className={`onboarding-dot${i === displayStepNumber - 1 ? ' active' : ''}`} />)}
+      {Array.from({ length: TOTAL_STEPS }).map((_, i) => <span key={i} className={`onboarding-dot${i === step ? ' active' : ''}`} />)}
     </div>
     <div className="modal-actions">
-      {!isRiskOnly && <label className="onboarding-dismiss push-start">
+      <label className="onboarding-dismiss push-start">
         <input type="checkbox" checked={dontShowAgain} onChange={e => setDontShowAgain(e.target.checked)} />
         Don't show this again
-      </label>}
-      <button type="button" className={isRiskOnly ? 'outline push-start' : 'outline'} onClick={() => void skipNow()}>{isRiskOnly ? 'Cancel' : 'Skip'}</button>
+      </label>
+      <button type="button" className="outline" onClick={() => void skipNow()}>Skip</button>
       {canGoBack && <button type="button" className="outline" onClick={() => setStep(s => s - 1)}>Back</button>}
       <button type="button" className="primary" disabled={busy} onClick={() => isLast ? void finish() : setStep(s => s + 1)}>
         {isLast ? (busy ? 'Saving…' : 'Finish') : 'Next'}

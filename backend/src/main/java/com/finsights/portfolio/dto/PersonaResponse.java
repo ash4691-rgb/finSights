@@ -14,6 +14,8 @@ public record PersonaResponse(
         InvestorPersona investorPersona,
         InvestingTenure investingTenure,
         Set<InstrumentType> instrumentTypes,
+        Set<InstrumentType> interestedInstrumentTypes,
+        Set<String> platforms,
         RiskProfile riskProfile,
         boolean usedDefaults
 ) { }
