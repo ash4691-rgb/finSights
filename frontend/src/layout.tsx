@@ -45,10 +45,17 @@ export function clearPageLayout(page: string) {
   void saveLayout(page, {})
 }
 
-// Overlay the backend's per-page layout rows (from fetchLayouts()) onto localStorage before
-// first paint, so a signed-in user's saved arrangement follows them across devices.
+// Replace localStorage's per-page zones with the backend's rows (from fetchLayouts()) before
+// first paint, so a signed-in user's saved arrangement follows them across devices. A page absent
+// from byPage means *this* user has no saved row for it — its local zones are dropped too, rather
+// than left as whatever a previous account on this same browser profile cached there. Only called
+// after fetchLayouts() actually succeeds (see App.tsx), so a transient fetch failure never wipes a
+// cache that's still valid.
 export function hydrateLayouts(byPage: Record<string, unknown>) {
   const all = readLayout()
+  for (const key of Object.keys(all)) {
+    if (!(key.split('/')[0] in byPage)) delete all[key]
+  }
   for (const [page, config] of Object.entries(byPage)) {
     if (!config || typeof config !== 'object') continue
     for (const key of Object.keys(all)) if (key.startsWith(`${page}/`)) delete all[key]
