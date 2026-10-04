@@ -78,6 +78,14 @@ public class UserAccount {
     @Column(nullable = false)
     @ColumnDefault("false")
     private Boolean personaOnboardingDismissed = false;
+    /** Set by PersonaService.updateRisk once the five-question risk assessment has actually been
+     *  completed — deliberately separate from personaOnboardingDismissed: the basic persona
+     *  questionnaire asks no risk questions at all, so a brand-new persona row always starts with
+     *  this false, prompting the risk assessment on the user's next login rather than in the same
+     *  sitting. */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private Boolean riskOnboardingDismissed = false;
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -136,5 +144,7 @@ public class UserAccount {
     public void setUserOnboardingDismissed(Boolean userOnboardingDismissed) { this.userOnboardingDismissed = userOnboardingDismissed; }
     public Boolean getPersonaOnboardingDismissed() { return personaOnboardingDismissed; }
     public void setPersonaOnboardingDismissed(Boolean personaOnboardingDismissed) { this.personaOnboardingDismissed = personaOnboardingDismissed; }
+    public Boolean getRiskOnboardingDismissed() { return riskOnboardingDismissed; }
+    public void setRiskOnboardingDismissed(Boolean riskOnboardingDismissed) { this.riskOnboardingDismissed = riskOnboardingDismissed; }
     public Instant getCreatedAt() { return createdAt; }
 }

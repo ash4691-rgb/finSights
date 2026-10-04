@@ -8,6 +8,7 @@ import { CustomLayoutOnboarding } from './custom-layout-onboarding'
 import { UserOnboarding } from './user-onboarding'
 import { TourNudge } from './tour-nudge'
 import { PersonaOnboarding } from './persona-onboarding'
+import { RiskAssessment } from './risk-assessment'
 import { fetchPersona } from './persona-api'
 import { GokuAdminButton, GokuAdminModal, GokuLauncher, GokuPanel, useGoku } from './goku'
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme, Persona } from './types'
@@ -71,17 +72,19 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [showLayoutOnboarding, setShowLayoutOnboarding] = useState(false)
   const [showUserOnboarding, setShowUserOnboarding] = useState(false)
   const [showPersonaOnboarding, setShowPersonaOnboarding] = useState(false)
+  // The five-question risk assessment — shown automatically on a login after persona onboarding
+  // is done (see load()'s first-load check below) but deliberately NOT chained into the same
+  // sitting as persona onboarding itself; also reused as-is for Settings' "Reassess risk profile".
+  const [showRiskAssessment, setShowRiskAssessment] = useState(false)
   // A small, non-blocking corner card offering the app-concepts tour — replaces auto-popping
   // UserOnboarding as a full-screen modal the instant persona onboarding ends or a returning
   // user logs in. Dismissing it (without "Don't show again" inside the tour itself) just hides
   // it for this session; it offers again next login, same as the tour's own Skip always did.
   const [showTourNudge, setShowTourNudge] = useState(false)
   const [persona, setPersona] = useState<Persona | null>(null)
-  // Reopens PersonaOnboarding from Settings — separate from showPersonaOnboarding so it never
-  // re-triggers the setup-transition/UserOnboarding chain. 'onboarding' for a user who never
-  // completed it (Settings' "Start now"); 'risk-only' for "Reassess risk profile", which skips
-  // straight to the five scenario questions.
-  const [settingsPersonaMode, setSettingsPersonaMode] = useState<'onboarding' | 'risk-only' | null>(null)
+  // Reopens PersonaOnboarding from Settings' "Start now" — separate from showPersonaOnboarding
+  // so it never re-triggers the tour-nudge chain that follows the first-login flow.
+  const [showPersonaOnboardingFromSettings, setShowPersonaOnboardingFromSettings] = useState(false)
   const bootstrapped = useRef(false)
   const goku = useGoku()
 
@@ -174,11 +177,13 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (isFirstLoad) {
       bootstrapped.current = true
       setLoading(false)
-      // PersonaOnboarding (persona + risk assessment) comes first for a brand-new user — its
-      // own onClose below offers the tour nudge next rather than that being decided here. A
-      // returning user who's already done persona onboarding but not the tour gets the nudge
-      // directly, with no blocking modal and no transition screen in between either way.
+      // PersonaOnboarding comes first for a brand-new user. The five-question risk assessment
+      // is deliberately a SEPARATE gate, not chained into that same sitting — it only shows up
+      // here, on a later login, once persona onboarding is already dismissed. Either of those
+      // closing offers the tour nudge next (see their own onClose/onDone below) rather than that
+      // being decided here; a returning user past all three gates gets nothing further.
       if (nextSettings && !nextSettings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
+      else if (nextSettings && !nextSettings.riskOnboardingDismissed) setShowRiskAssessment(true)
       else if (nextSettings && !nextSettings.userOnboardingDismissed) setShowTourNudge(true)
       if (!currency && nextSettings?.baseCurrency && nextSettings.baseCurrency !== cur) {
         void load(nextSettings.baseCurrency)
@@ -334,7 +339,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} />}
       {page === 'settings' && (settings
         ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme}
-            persona={persona} onStartOnboarding={() => setSettingsPersonaMode('onboarding')} onReassessRisk={() => setSettingsPersonaMode('risk-only')} />
+            persona={persona} onStartOnboarding={() => setShowPersonaOnboardingFromSettings(true)} onReassessRisk={() => setShowRiskAssessment(true)} />
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
@@ -353,10 +358,20 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       initial={persona}
       onClose={() => {
         setShowPersonaOnboarding(false)
+        // The risk assessment is a separate, later-login gate (see load()'s first-load check) —
+        // never chained in right after persona onboarding. The tour nudge still is.
         if (settings && !settings.userOnboardingDismissed) setShowTourNudge(true)
         void load()
       }}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
+    {showRiskAssessment && <RiskAssessment
+      onClose={() => setShowRiskAssessment(false)}
+      onDone={() => {
+        setShowRiskAssessment(false)
+        setSettings(s => s ? { ...s, riskOnboardingDismissed: true } : s)
+        if (settings && !settings.userOnboardingDismissed) setShowTourNudge(true)
+        void load()
+      }} />}
     {showTourNudge && <TourNudge
       stackedAboveGoku={goku.available}
       onDismiss={() => setShowTourNudge(false)}
@@ -364,10 +379,9 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showUserOnboarding && <UserOnboarding
       onClose={() => setShowUserOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}
-    {settingsPersonaMode && <PersonaOnboarding
-      mode={settingsPersonaMode}
+    {showPersonaOnboardingFromSettings && <PersonaOnboarding
       initial={persona}
-      onClose={() => { setSettingsPersonaMode(null); void load() }}
+      onClose={() => { setShowPersonaOnboardingFromSettings(false); void load() }}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
     {goku.available && <GokuLauncher goku={goku} />}
     <GokuPanel goku={goku} />

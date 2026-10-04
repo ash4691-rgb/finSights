@@ -9,5 +9,5 @@ public record SettingsResponse(
         BigDecimal dailyThresholdPercent, BigDecimal weeklyThresholdPercent, BigDecimal monthlyThresholdPercent,
         BigDecimal quarterlyThresholdPercent, BigDecimal yearlyThresholdPercent,
         boolean demoMode, int holdingCount, Instant memberSince, boolean customLayoutOnboardingDismissed,
-        boolean userOnboardingDismissed, boolean personaOnboardingDismissed
+        boolean userOnboardingDismissed, boolean personaOnboardingDismissed, boolean riskOnboardingDismissed
 ) { }

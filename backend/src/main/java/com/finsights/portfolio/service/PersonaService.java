@@ -10,6 +10,7 @@ import com.finsights.portfolio.dto.CategoryRequest;
 import com.finsights.portfolio.dto.PersonaDetailsRequest;
 import com.finsights.portfolio.dto.PersonaRequest;
 import com.finsights.portfolio.dto.PersonaResponse;
+import com.finsights.portfolio.dto.PersonaRiskRequest;
 import com.finsights.portfolio.repository.UserAccountRepository;
 import com.finsights.portfolio.repository.UserPersonaRepository;
 import java.util.LinkedHashSet;
@@ -71,6 +72,12 @@ public class PersonaService {
         persona.setInvestingTenure(request.investingTenure());
         Set<InstrumentType> instruments = request.instrumentTypes() == null ? Set.of() : request.instrumentTypes();
         persona.setInstrumentTypes(new LinkedHashSet<>(instruments));
+        persona.setInterestedInstrumentTypes(new LinkedHashSet<>(
+                request.interestedInstrumentTypes() == null ? Set.of() : request.interestedInstrumentTypes()));
+        persona.setPlatforms(new LinkedHashSet<>(request.platforms() == null ? Set.of() : request.platforms()));
+        // The basic onboarding flow asks no risk questions at all (they're null here) — that
+        // scores as a MODERATE default, same as the skip() path below, until updateRisk() runs
+        // the dedicated assessment on a later login.
         persona.setRiskProfile(scoreRisk(request.timeHorizonAnswer(), request.riskCapacityAnswer(),
                 request.riskToleranceAnswer(), request.investmentObjectivesAnswer(), request.liquidityNeedsAnswer()));
         persona.setUsedDefaults(false);
@@ -79,6 +86,24 @@ public class PersonaService {
         seedCategories(instruments);
 
         user.setPersonaOnboardingDismissed(true);
+        users.save(user);
+        return toResponse(persona);
+    }
+
+    /** The five-question risk assessment on its own — shown on a login after the basic
+     *  onboarding is done (see UserAccount.riskOnboardingDismissed) or re-run anytime from
+     *  Settings' "Reassess risk profile". Only riskProfile and the dismissal flag change. */
+    @Transactional
+    public PersonaResponse updateRisk(PersonaRiskRequest request) {
+        UserAccount user = currentUser.currentUser();
+        UserPersona persona = personas.findByUser_Id(user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Complete the persona questionnaire before assessing risk"));
+        persona.setRiskProfile(scoreRisk(request.timeHorizonAnswer(), request.riskCapacityAnswer(),
+                request.riskToleranceAnswer(), request.investmentObjectivesAnswer(), request.liquidityNeedsAnswer()));
+        personas.save(persona);
+
+        user.setRiskOnboardingDismissed(true);
         users.save(user);
         return toResponse(persona);
     }
@@ -172,6 +197,7 @@ public class PersonaService {
     private PersonaResponse toResponse(UserPersona persona) {
         return new PersonaResponse(persona.getAge(), persona.getOccupation(), persona.getSalaryRange(),
                 persona.getInvestorPersona(), persona.getInvestingTenure(), persona.getInstrumentTypes(),
+                persona.getInterestedInstrumentTypes(), persona.getPlatforms(),
                 persona.getRiskProfile(), persona.isUsedDefaults());
     }
 }

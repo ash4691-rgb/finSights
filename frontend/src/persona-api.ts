@@ -1,6 +1,9 @@
 import { api } from './api'
 import type { InstrumentType, InvestingTenure, InvestorPersona, Persona, SalaryRange } from './types'
 
+// No risk-answer fields — the basic onboarding flow (persona-onboarding.tsx) no longer asks
+// them at all; submitting here always scores a MODERATE risk default until the dedicated
+// RiskAssessment (risk-assessment.tsx) runs separately via updateRisk() below.
 export type PersonaSubmission = {
   age: number | null
   occupation: string | null
@@ -8,11 +11,8 @@ export type PersonaSubmission = {
   investorPersona: InvestorPersona | null
   investingTenure: InvestingTenure | null
   instrumentTypes: InstrumentType[]
-  timeHorizonAnswer: number | null
-  riskCapacityAnswer: number | null
-  riskToleranceAnswer: number | null
-  investmentObjectivesAnswer: number | null
-  liquidityNeedsAnswer: number | null
+  interestedInstrumentTypes: InstrumentType[]
+  platforms: string[]
 }
 
 // Null both when the request fails and when the user hasn't completed or skipped the
@@ -46,4 +46,19 @@ export type PersonaDetails = {
 // an already-computed risk profile back to the "missing answers" default).
 export async function updatePersonaDetails(payload: PersonaDetails): Promise<Persona> {
   return api<Persona>('/api/persona/details', { method: 'PUT', body: JSON.stringify(payload) })
+}
+
+export type RiskAssessmentSubmission = {
+  timeHorizonAnswer: number | null
+  riskCapacityAnswer: number | null
+  riskToleranceAnswer: number | null
+  investmentObjectivesAnswer: number | null
+  liquidityNeedsAnswer: number | null
+}
+
+// The five-question risk assessment on its own — used both by Settings' "Reassess risk profile"
+// and the dedicated prompt shown on a later login (see RiskAssessment). Never touches
+// demographics/persona/instruments/platforms, which this screen has no way to resupply.
+export async function updateRisk(payload: RiskAssessmentSubmission): Promise<Persona> {
+  return api<Persona>('/api/persona/risk', { method: 'PUT', body: JSON.stringify(payload) })
 }
