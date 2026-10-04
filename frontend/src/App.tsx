@@ -112,7 +112,6 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const load = async (currency?: string) => {
     const isFirstLoad = !bootstrapped.current
     if (isFirstLoad) { setLoading(true); setError('') }
-    const cur = currency ?? displayCurrency
 
     let me: User
     try {
@@ -128,8 +127,24 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     }
     setUser(me)
 
+    // On the very first load there's no displayCurrency to fall back on yet beyond the
+    // placeholder useState default — so rather than fetch the dashboard/categories/holdings in
+    // that placeholder currency and silently re-fetch everything a moment later once settings
+    // reveals the account's real base currency (the old behavior: a visible flash of the wrong
+    // currency, plus a doubled set of network calls on every first load), settings is fetched
+    // first, on its own, purely to learn that currency before anything currency-scoped goes out.
+    // Every later load (a manual "View in" switch, a background refresh) already knows its
+    // currency from the caller or from displayCurrency, so it skips straight to the normal
+    // parallel fetch below.
+    let settingsForCurrency: Settings | undefined
+    if (isFirstLoad && !currency) {
+      try { settingsForCurrency = await api<Settings>('/api/settings') } catch { /* retried below; errors recorded there */ }
+    }
+    const cur = currency ?? settingsForCurrency?.baseCurrency ?? displayCurrency
+
     const [settingsR, fxR, countriesR, dashboardR, categoriesR, holdingsR, layoutsR, personaR] = await Promise.allSettled([
-      api<Settings>('/api/settings'), api<FxRates>('/api/fx-rates'), api<Country[]>('/api/countries'),
+      settingsForCurrency ? Promise.resolve(settingsForCurrency) : api<Settings>('/api/settings'),
+      api<FxRates>('/api/fx-rates'), api<Country[]>('/api/countries'),
       api<Dashboard>(`/api/dashboard?currency=${cur}`), api<Category[]>(`/api/categories?currency=${cur}`),
       api<Holding[]>(`/api/holdings?currency=${cur}`), fetchLayouts(), fetchPersona(),
     ])
@@ -185,9 +200,6 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       if (nextSettings && !nextSettings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
       else if (nextSettings && !nextSettings.riskOnboardingDismissed) setShowRiskAssessment(true)
       else if (nextSettings && !nextSettings.userOnboardingDismissed) setShowTourNudge(true)
-      if (!currency && nextSettings?.baseCurrency && nextSettings.baseCurrency !== cur) {
-        void load(nextSettings.baseCurrency)
-      }
     }
   }
   useEffect(() => { void load() }, [])
@@ -372,12 +384,16 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       initial={persona}
       countries={countries}
       settings={settings}
-      onClose={() => {
+      onClose={newBaseCurrency => {
         setShowPersonaOnboarding(false)
         // The risk assessment is a separate, later-login gate (see load()'s first-load check) —
         // never chained in right after persona onboarding. The tour nudge still is.
         if (settings && !settings.userOnboardingDismissed) setShowTourNudge(true)
-        void load()
+        // Onboarding may have just changed the account's country, and with it its base currency
+        // — reload straight into that currency instead of load()'s normal "keep whatever's
+        // currently selected" default, so finishing onboarding shows the dashboard in the new
+        // base currency right away rather than leaving it on whatever was selected before.
+        void load(newBaseCurrency)
       }}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
     {showRiskAssessment && <RiskAssessment
@@ -399,7 +415,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       initial={persona}
       countries={countries}
       settings={settings}
-      onClose={() => { setShowPersonaOnboardingFromSettings(false); void load() }}
+      onClose={newBaseCurrency => { setShowPersonaOnboardingFromSettings(false); void load(newBaseCurrency) }}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
     {goku.available && <GokuLauncher goku={goku} />}
     <GokuPanel goku={goku} />

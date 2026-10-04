@@ -141,7 +141,9 @@ const TOTAL_STEPS = PLATFORMS_STEP + 1
 // MODERATE-default persona (via skipPersona) rather than leaving the user with none at all —
 // completing the full flow instead saves the real answers.
 export function PersonaOnboarding({ onClose, onDismissForever, initial, countries, settings }: {
-  onClose: () => void; onDismissForever: () => void; initial?: Persona | null; countries: Country[]; settings: Settings
+  // Takes the account's possibly-just-changed base currency so the caller can reload the app in
+  // that currency immediately — finish() passes it, skipNow() doesn't (it never touched country).
+  onClose: (newBaseCurrency?: string) => void; onDismissForever: () => void; initial?: Persona | null; countries: Country[]; settings: Settings
 }) {
   const [step, setStep] = useState(0)
   const [dontShowAgain, setDontShowAgain] = useState(false)
@@ -219,7 +221,7 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, countrie
       })
     } catch { /* best-effort — still close so the user isn't stuck on a save failure */ }
     onDismissForever()
-    onClose()
+    onClose(currency)
   }
 
   const title = step === 0 ? "Let's personalise FinSights"
