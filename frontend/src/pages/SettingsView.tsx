@@ -7,10 +7,10 @@ import { updatePersonaDetails } from '../persona-api'
 import { PERSONA_DESCRIPTIONS, PERSONA_ICONS, PERSONA_LABELS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, RISK_TAG_CLASS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
 import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, SalaryRange } from '../types'
 
-export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onStartOnboarding, onReassessRisk }: {
+export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onStartOnboarding, onReassessRisk, onAccountDeleted }: {
   settings: Settings; countries: Country[]; dashboard: Dashboard | null; holdings: Holding[]
   reload: () => Promise<void>; theme: Theme; setTheme: React.Dispatch<React.SetStateAction<Theme>>
-  persona: Persona | null; onStartOnboarding: () => void; onReassessRisk: () => void
+  persona: Persona | null; onStartOnboarding: () => void; onReassessRisk: () => void; onAccountDeleted: () => void
 }) {
   const [form, setForm] = useState({
     displayName: settings.displayName, phone: settings.phone || '', country: settings.country,
@@ -24,6 +24,8 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
   })
   const [status, setStatus] = useState('')
   const [confirmText, setConfirmText] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   // Accordion — at most one section open at a time.
   const [openSection, setOpenSection] = useState('User profile')
   const sectionProps = (title: string) => ({
@@ -60,20 +62,35 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
     link.href = url; link.download = 'finsights-export.json'; link.click()
     URL.revokeObjectURL(url)
   }
-  const deleteHoldings = async () => {
-    if (confirmText !== 'DELETE HOLDINGS') return
-    await api('/api/account/holdings', { method: 'DELETE' })
-    setConfirmText(''); await reload()
+  // One phrase-gated action, keyed by the exact confirm text — the button itself relabels to
+  // match whichever phrase is currently typed, rather than offering three separate buttons that
+  // are mostly just sitting there disabled. DELETE ACCOUNT skips reload(): the account (and its
+  // session) is gone at that point, and reload() would otherwise immediately re-authenticate as
+  // the shared demo identity (every request carries an X-Demo-User fallback header — see api.ts)
+  // instead of actually landing back on the sign-in screen, making deletion look like it silently
+  // "didn't work." onAccountDeleted runs the same client-side sign-out App.tsx uses elsewhere,
+  // with no further API call in between.
+  const DELETE_ACTIONS: Record<string, { label: string; run: () => Promise<void> }> = {
+    'DELETE HOLDINGS': {
+      label: 'Delete holdings & transactions',
+      run: async () => { await api('/api/account/holdings', { method: 'DELETE' }); await reload() },
+    },
+    'DELETE TRANSACTIONS': {
+      label: 'Delete transactions',
+      run: async () => { await api('/api/account/transactions', { method: 'DELETE' }); await reload() },
+    },
+    'DELETE ACCOUNT': {
+      label: 'Delete everything',
+      run: async () => { await api('/api/account', { method: 'DELETE' }); onAccountDeleted() },
+    },
   }
-  const deleteTransactions = async () => {
-    if (confirmText !== 'DELETE TRANSACTIONS') return
-    await api('/api/account/transactions', { method: 'DELETE' })
-    setConfirmText(''); await reload()
-  }
-  const deleteAccount = async () => {
-    if (confirmText !== 'DELETE ACCOUNT') return
-    await api('/api/account', { method: 'DELETE' })
-    await reload()
+  const deleteAction = DELETE_ACTIONS[confirmText]
+  const runDelete = async () => {
+    if (!deleteAction) return
+    setDeleteBusy(true); setDeleteError(''); setConfirmText('')
+    try { await deleteAction.run() }
+    catch (e) { setDeleteError(e instanceof Error ? e.message : 'Could not complete that — try again.') }
+    finally { setDeleteBusy(false) }
   }
   const brokersConnected = new Set(holdings.map(h => h.broker).filter((b): b is string => !!b)).size
   const saveBar = <>
@@ -174,19 +191,18 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       <button className="outline" onClick={() => void exportJson()}>Export all data (JSON)</button>
       <div className="danger-zone-inline">
         <div className="panel-heading"><h3>Delete data</h3><span>Cannot be undone</span></div>
-        <p className="hint">Choose how much to remove, then type the matching phrase to enable that button.</p>
-        <div className="settings-field"><input value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="Type a phrase below" /></div>
-        <div className="danger-zone-option">
-          <p className="hint">Type <b>DELETE HOLDINGS</b> to remove every holding and its transactions. Categories and your profile are kept.</p>
-          <button className="danger-btn" onClick={() => void deleteHoldings()} disabled={confirmText !== 'DELETE HOLDINGS'}>Delete holdings &amp; transactions</button>
+        <div className="danger-zone-row">
+          <input value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder="Type a phrase below" disabled={deleteBusy} />
+          <button className="danger-btn" onClick={() => void runDelete()} disabled={!deleteAction || deleteBusy}>
+            {deleteBusy ? 'Deleting…' : deleteAction?.label ?? 'Delete'}
+          </button>
         </div>
-        <div className="danger-zone-option">
-          <p className="hint">Type <b>DELETE TRANSACTIONS</b> to remove transaction history only. Holdings are retained, reset to zero value.</p>
-          <button className="danger-btn" onClick={() => void deleteTransactions()} disabled={confirmText !== 'DELETE TRANSACTIONS'}>Delete transactions</button>
-        </div>
-        <div className="danger-zone-option">
-          <p className="hint">Type <b>DELETE ACCOUNT</b> to permanently remove every instrument, holding, transaction, and your profile.</p>
-          <button className="danger-btn" onClick={() => void deleteAccount()} disabled={confirmText !== 'DELETE ACCOUNT'}>Delete everything</button>
+        {deleteBusy && <p className="hint">Deleting… this may take a moment — please don't close this page.</p>}
+        {deleteError && <p className="form-error">{deleteError}</p>}
+        <div className="danger-zone-info">
+          <p><b>DELETE HOLDINGS</b> — removes every holding and its transactions. Categories and your profile are kept.</p>
+          <p><b>DELETE TRANSACTIONS</b> — removes transaction history only. Holdings are retained, reset to zero value.</p>
+          <p><b>DELETE ACCOUNT</b> — permanently removes every instrument, holding, transaction, and your profile.</p>
         </div>
       </div>
     </SettingsSection>

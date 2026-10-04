@@ -558,8 +558,13 @@ th.sortable:hover{color:var(--text)}
 .settings-status{font-size:12px;color:var(--positive);margin-left:10px}
 .danger-zone{border-color:var(--danger-border)}
 .danger-zone-inline{margin-top:18px;padding-top:16px;border-top:1px dashed var(--danger-border)}
-.danger-zone-option{margin-top:14px;padding-top:14px;border-top:1px solid var(--border-soft)}
-.danger-zone-option:first-of-type{margin-top:0;padding-top:0;border-top:0}
+.danger-zone-row{display:flex;gap:10px;margin-bottom:10px}
+.danger-zone-row input{flex:1;background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px;max-width:340px}
+/* Highlighted usage notes for the delete-data actions above — a tinted box (reusing the danger
+   button's own soft background) so it reads as "important context", not just another hint line. */
+.danger-zone-info{background:var(--danger-btn-bg);border:1px solid var(--danger-border);border-radius:8px;padding:10px 14px;margin-top:4px}
+.danger-zone-info p{font-size:12px;line-height:1.6;color:var(--text-2);margin:4px 0}
+.danger-zone-info b{color:var(--text)}
 .settings-subsection{margin-top:18px;padding-top:16px;border-top:1px dashed var(--border-soft)}
 .settings-subheading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-3);margin:0 0 12px}
 .settings-fields-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
