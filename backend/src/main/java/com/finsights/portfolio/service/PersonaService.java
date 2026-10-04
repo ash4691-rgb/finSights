@@ -2,7 +2,10 @@ package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.domain.HoldingKind;
 import com.finsights.portfolio.domain.InstrumentType;
+import com.finsights.portfolio.domain.InvestorPersona;
+import com.finsights.portfolio.domain.PortfolioSize;
 import com.finsights.portfolio.domain.RiskProfile;
+import com.finsights.portfolio.domain.SalaryRange;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.UserPersona;
 import com.finsights.portfolio.domain.ValuationMethod;
@@ -23,9 +26,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Persona onboarding: a few questions used to seed starter categories and compute a risk
- *  profile from five scenario answers. Skippable — dismissing without completing saves a
- *  MODERATE default instead of leaving the user with no persona at all. */
+/** Persona onboarding: a few questions used to seed starter categories and derive an
+ *  InvestorPersona archetype from age/wealth signals (see derivePersona) — the risk profile
+ *  itself comes from a separate five-question assessment (see updateRisk). Skippable —
+ *  dismissing without completing saves a MODERATE default instead of leaving the user with no
+ *  persona at all. */
 @Service
 public class PersonaService {
     private static final Map<InstrumentType, String> CATEGORY_NAMES = Map.of(
@@ -68,12 +73,11 @@ public class PersonaService {
         persona.setAge(request.age());
         persona.setOccupation(request.occupation());
         persona.setSalaryRange(request.salaryRange());
-        persona.setInvestorPersona(request.investorPersona());
+        persona.setPortfolioSize(request.portfolioSize());
+        persona.setInvestorPersona(derivePersona(request.age(), request.salaryRange(), request.portfolioSize()));
         persona.setInvestingTenure(request.investingTenure());
         Set<InstrumentType> instruments = request.instrumentTypes() == null ? Set.of() : request.instrumentTypes();
         persona.setInstrumentTypes(new LinkedHashSet<>(instruments));
-        persona.setInterestedInstrumentTypes(new LinkedHashSet<>(
-                request.interestedInstrumentTypes() == null ? Set.of() : request.interestedInstrumentTypes()));
         persona.setPlatforms(new LinkedHashSet<>(request.platforms() == null ? Set.of() : request.platforms()));
         // The basic onboarding flow asks no risk questions at all (they're null here) — that
         // scores as a MODERATE default, same as the skip() path below, until updateRisk() runs
@@ -115,9 +119,11 @@ public class PersonaService {
         return personas.findByUser_Id(user.getId()).map(this::toResponse);
     }
 
-    /** Settings' inline "edit your details" path — updates only age/occupation/salaryRange/
-     *  investingTenure, leaving riskProfile, investorPersona, instrumentTypes and usedDefaults
-     *  exactly as they were. Requires an existing persona row (Settings only offers this once the
+    /** Settings' inline "edit your details" path — updates age/occupation/salaryRange/
+     *  portfolioSize/investingTenure, leaving riskProfile, instrumentTypes and usedDefaults
+     *  exactly as they were. investorPersona IS recomputed here (age/salaryRange/portfolioSize
+     *  are exactly its inputs — see derivePersona), so it stays in sync with whatever the user
+     *  just edited. Requires an existing persona row (Settings only offers this once the
      *  questionnaire has been completed or skipped at least once — see PersonaController). */
     @Transactional
     public PersonaResponse updateDetails(PersonaDetailsRequest request) {
@@ -128,7 +134,9 @@ public class PersonaService {
         persona.setAge(request.age());
         persona.setOccupation(request.occupation());
         persona.setSalaryRange(request.salaryRange());
+        persona.setPortfolioSize(request.portfolioSize());
         persona.setInvestingTenure(request.investingTenure());
+        persona.setInvestorPersona(derivePersona(request.age(), request.salaryRange(), request.portfolioSize()));
         personas.save(persona);
         return toResponse(persona);
     }
@@ -178,6 +186,22 @@ public class PersonaService {
         return (int) Math.round(answer * 2.0 / (optionCount - 1));
     }
 
+    private static final Set<PortfolioSize> HIGH_WEALTH_PORTFOLIO = Set.of(PortfolioSize.L50_TO_2CR, PortfolioSize.ABOVE_2CR);
+
+    /** Picks an InvestorPersona archetype from age and wealth signals instead of asking the user
+     *  to self-select one — age bands match the framework documented on InvestorPersona itself:
+     *  under 35 → WEALTH_BUILDER, 55+ → DEFENSIVE_CONSUMER, and the 35-54 band in between splits
+     *  on wealth (a large portfolio or top-bracket income) into HIGH_NET_WORTH_TACTICIAN vs. the
+     *  more typical ACTIVE_ACCUMULATOR. Null age means not enough signal yet — no persona row has
+     *  reached the demographics step — so this returns null rather than guessing. */
+    private InvestorPersona derivePersona(Integer age, SalaryRange salaryRange, PortfolioSize portfolioSize) {
+        if (age == null) return null;
+        if (age >= 55) return InvestorPersona.DEFENSIVE_CONSUMER;
+        if (age < 35) return InvestorPersona.WEALTH_BUILDER;
+        boolean highWealth = HIGH_WEALTH_PORTFOLIO.contains(portfolioSize) || salaryRange == SalaryRange.ABOVE_50L;
+        return highWealth ? InvestorPersona.HIGH_NET_WORTH_TACTICIAN : InvestorPersona.ACTIVE_ACCUMULATOR;
+    }
+
     /** One starter category per selected instrument type the user doesn't already have a
      *  category for (matched by name) — a personalised head start, not a rigid taxonomy: every
      *  category created here is a completely ordinary, editable/deletable one afterward. */
@@ -196,8 +220,8 @@ public class PersonaService {
 
     private PersonaResponse toResponse(UserPersona persona) {
         return new PersonaResponse(persona.getAge(), persona.getOccupation(), persona.getSalaryRange(),
-                persona.getInvestorPersona(), persona.getInvestingTenure(), persona.getInstrumentTypes(),
-                persona.getInterestedInstrumentTypes(), persona.getPlatforms(),
+                persona.getPortfolioSize(), persona.getInvestorPersona(), persona.getInvestingTenure(),
+                persona.getInstrumentTypes(), persona.getPlatforms(),
                 persona.getRiskProfile(), persona.isUsedDefaults());
     }
 }

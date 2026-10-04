@@ -323,8 +323,6 @@ th.sortable:hover{color:var(--text)}
 .persona-fields label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--text-2)}
 .persona-fields input,.persona-fields select{background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px;font-weight:400}
 .persona-instruments{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.persona-categories{display:grid;gap:18px}
-.persona-category-group>.hint{font-weight:700;color:var(--text-2);margin:0 0 8px}
 .persona-platforms{display:grid;gap:12px}
 .platform-input-row{display:flex;gap:8px}
 .platform-input-row input{flex:1;background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px}
