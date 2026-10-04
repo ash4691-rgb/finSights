@@ -33,9 +33,14 @@ import org.springframework.web.server.ResponseStatusException;
  *  persona at all. */
 @Service
 public class PersonaService {
+    // "Domestic"/"International" rather than a literal country name — these feed straight into
+    // seedCategories() below with no notion of which country the user is in, and (like the
+    // onboarding instrument checklist itself, see persona-onboarding.tsx's INSTRUMENT_OPTIONS)
+    // "domestic" is relative to the user by construction, so it's correct for every country
+    // without the category-naming code needing to know what that country is.
     private static final Map<InstrumentType, String> CATEGORY_NAMES = Map.of(
-            InstrumentType.INDIAN_STOCKS, "Indian Stocks",
-            InstrumentType.FOREIGN_STOCKS, "Foreign Stocks",
+            InstrumentType.INDIAN_STOCKS, "Domestic Stocks",
+            InstrumentType.FOREIGN_STOCKS, "International Stocks",
             InstrumentType.MUTUAL_FUNDS, "Mutual Funds",
             InstrumentType.CRYPTO, "Crypto",
             InstrumentType.COMMODITIES, "Commodities",
