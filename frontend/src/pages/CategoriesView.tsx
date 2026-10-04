@@ -135,7 +135,7 @@ export function CategoryDrawer({ category, holdings, onClose, onEdit, onAddHoldi
   </section></div>
 }
 
-export function CategoryModal({ category, holdings, onClose, onSaved }: { category: Category | null; holdings: Holding[]; onClose: () => void; onSaved: () => void }) {
+export function CategoryModal({ category, holdings, onClose, onSaved }: { category: Category | null; holdings: Holding[]; onClose: () => void; onSaved: (saved: Category) => void }) {
   const [form, setForm] = useState(() => category
     ? { name: category.name, kind: category.kind, description: category.description || '', allowedValuationMethods: category.allowedValuationMethods ?? [] }
     : blankCategoryForm())
@@ -154,8 +154,8 @@ export function CategoryModal({ category, holdings, onClose, onSaved }: { catego
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('')
     try {
-      await api(category ? `/api/categories/${category.id}` : '/api/categories', { method: category ? 'PUT' : 'POST', body: JSON.stringify(form) })
-      onSaved()
+      const saved = await api<Category>(category ? `/api/categories/${category.id}` : '/api/categories', { method: category ? 'PUT' : 'POST', body: JSON.stringify(form) })
+      onSaved(saved)
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save category') } finally { setSaving(false) }
   }
   return <div className="modal-backdrop"><section className="modal narrow"><div className="modal-header"><div><p className="eyebrow">{category ? 'EDIT CATEGORY' : 'NEW CATEGORY'}</p><h2>{category ? category.name : 'Add a category'}</h2></div><button className="close" onClick={onClose}>×</button></div>
