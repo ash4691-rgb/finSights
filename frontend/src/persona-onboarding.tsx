@@ -4,31 +4,50 @@ import { api } from './api'
 import { submitPersona, skipPersona } from './persona-api'
 import type { Country, InstrumentType, InvestingTenure, InvestorPersona, Persona, PortfolioSize, RiskProfile, SalaryRange, Settings } from './types'
 
-export const SALARY_OPTIONS: { value: SalaryRange; label: string }[] = [
-  { value: 'UNDER_5L', label: 'Under ₹5L' },
-  { value: 'L5_TO_10L', label: '₹5L – ₹10L' },
-  { value: 'L10_TO_25L', label: '₹10L – ₹25L' },
-  { value: 'L25_TO_50L', label: '₹25L – ₹50L' },
-  { value: 'ABOVE_50L', label: 'Above ₹50L' },
-  { value: 'PREFER_NOT_TO_SAY', label: 'Prefer not to say' },
-]
+// SalaryRange/PortfolioSize's enum values (UNDER_5L, L5_TO_10L, …) are relative income/wealth
+// *tiers*, not literal INR amounts — the backend only ever compares their rank (see
+// PersonaService.derivePersona). What that tier is called is a display concern, and showing an
+// INR-denominated label to someone who just picked Germany as their country makes no sense — so
+// the five label sets below are keyed by currency and picked at render time from whichever
+// country is currently selected, not hard-coded to one option list.
+const SALARY_TIER_VALUES: SalaryRange[] = ['UNDER_5L', 'L5_TO_10L', 'L10_TO_25L', 'L25_TO_50L', 'ABOVE_50L']
+const SALARY_LABELS_BY_CURRENCY: Record<string, string[]> = {
+  INR: ['Under ₹5L', '₹5L – ₹10L', '₹10L – ₹25L', '₹25L – ₹50L', 'Above ₹50L'],
+  USD: ['Under $25K', '$25K – $50K', '$50K – $100K', '$100K – $200K', 'Above $200K'],
+  GBP: ['Under £20K', '£20K – £40K', '£40K – £80K', '£80K – £150K', 'Above £150K'],
+  SGD: ['Under S$30K', 'S$30K – S$60K', 'S$60K – S$120K', 'S$120K – S$250K', 'Above S$250K'],
+  AED: ['Under AED 100K', 'AED 100K – 200K', 'AED 200K – 400K', 'AED 400K – 800K', 'Above AED 800K'],
+  EUR: ['Under €20K', '€20K – €40K', '€40K – €80K', '€80K – €150K', 'Above €150K'],
+}
+export function salaryOptionsFor(currency: string): { value: SalaryRange; label: string }[] {
+  const labels = SALARY_LABELS_BY_CURRENCY[currency] ?? SALARY_LABELS_BY_CURRENCY.USD
+  return [...SALARY_TIER_VALUES.map((value, i) => ({ value, label: labels[i] })),
+    { value: 'PREFER_NOT_TO_SAY' as SalaryRange, label: 'Prefer not to say' }]
+}
 
-// Current total portfolio value — one of the signals (alongside age) the backend derives an
-// InvestorPersona archetype from, instead of asking the user to self-select one.
-export const PORTFOLIO_SIZE_OPTIONS: { value: PortfolioSize; label: string }[] = [
-  { value: 'UNDER_1L', label: 'Under ₹1L' },
-  { value: 'L1_TO_10L', label: '₹1L – ₹10L' },
-  { value: 'L10_TO_50L', label: '₹10L – ₹50L' },
-  { value: 'L50_TO_2CR', label: '₹50L – ₹2Cr' },
-  { value: 'ABOVE_2CR', label: 'Above ₹2Cr' },
-  { value: 'PREFER_NOT_TO_SAY', label: 'Prefer not to say' },
-]
-export const PORTFOLIO_SIZE_LABELS: Record<PortfolioSize, string> = Object.fromEntries(
-  PORTFOLIO_SIZE_OPTIONS.map(o => [o.value, o.label])) as Record<PortfolioSize, string>
+// Current total net worth — one of the signals (alongside age) the backend derives an
+// InvestorPersona archetype from, instead of asking the user to self-select one. Same
+// rank-not-amount reasoning as SalaryRange above — labels are picked by currency, not fixed.
+const PORTFOLIO_TIER_VALUES: PortfolioSize[] = ['UNDER_1L', 'L1_TO_10L', 'L10_TO_50L', 'L50_TO_2CR', 'ABOVE_2CR']
+const PORTFOLIO_LABELS_BY_CURRENCY: Record<string, string[]> = {
+  INR: ['Under ₹1L', '₹1L – ₹10L', '₹10L – ₹50L', '₹50L – ₹2Cr', 'Above ₹2Cr'],
+  USD: ['Under $5K', '$5K – $50K', '$50K – $250K', '$250K – $1M', 'Above $1M'],
+  GBP: ['Under £5K', '£5K – £40K', '£40K – £200K', '£200K – £800K', 'Above £800K'],
+  SGD: ['Under S$10K', 'S$10K – S$70K', 'S$70K – S$350K', 'S$350K – S$1.4M', 'Above S$1.4M'],
+  AED: ['Under AED 20K', 'AED 20K – 200K', 'AED 200K – 1M', 'AED 1M – 4M', 'Above AED 4M'],
+  EUR: ['Under €5K', '€5K – €40K', '€40K – €200K', '€200K – €800K', 'Above €800K'],
+}
+export function portfolioSizeOptionsFor(currency: string): { value: PortfolioSize; label: string }[] {
+  const labels = PORTFOLIO_LABELS_BY_CURRENCY[currency] ?? PORTFOLIO_LABELS_BY_CURRENCY.USD
+  return [...PORTFOLIO_TIER_VALUES.map((value, i) => ({ value, label: labels[i] })),
+    { value: 'PREFER_NOT_TO_SAY' as PortfolioSize, label: 'Prefer not to say' }]
+}
 
+// "Domestic" / "International" rather than "Indian" / "Foreign" — relative to whatever country
+// the user picked on the previous step, not hard-coded to India.
 const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
-  { value: 'INDIAN_STOCKS', label: 'Indian Stocks' },
-  { value: 'FOREIGN_STOCKS', label: 'Foreign Stocks' },
+  { value: 'INDIAN_STOCKS', label: 'Domestic Stocks' },
+  { value: 'FOREIGN_STOCKS', label: 'International Stocks' },
   { value: 'MUTUAL_FUNDS', label: 'Mutual Funds' },
   { value: 'CRYPTO', label: 'Crypto' },
   { value: 'COMMODITIES', label: 'Commodities' },
@@ -36,12 +55,21 @@ const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
   { value: 'REAL_ESTATE', label: 'Real Estate' },
 ]
 
-// A few common Indian brokers/platforms to one-click add on the Platforms step — anything else
-// is free text, since brokers are an open-ended set (Holding.broker is likewise a plain string,
-// not an enum).
-const PLATFORM_SUGGESTIONS = [
-  'Zerodha', 'Groww', 'Upstox', 'ICICI Direct', 'HDFC Securities', 'Angel One', 'Paytm Money', 'INDmoney',
-]
+// A few common brokers/platforms to one-click add on the Platforms step, keyed by the country
+// picked earlier in the flow — anything else is still free text, since brokers are an open-ended
+// set (Holding.broker is likewise a plain string, not an enum). The EUR-currency countries share
+// one pan-European list rather than ten near-identical per-country ones.
+const EU_PLATFORM_SUGGESTIONS = ['Trade Republic', 'DEGIRO', 'Scalable Capital', 'Interactive Brokers', 'eToro']
+const PLATFORM_SUGGESTIONS_BY_COUNTRY: Record<string, string[]> = {
+  IN: ['Zerodha', 'Groww', 'Upstox', 'ICICI Direct', 'HDFC Securities', 'Angel One', 'Paytm Money', 'INDmoney'],
+  US: ['Fidelity', 'Charles Schwab', 'Vanguard', 'Robinhood', 'E*TRADE', 'TD Ameritrade'],
+  GB: ['Hargreaves Lansdown', 'AJ Bell', 'Interactive Investor', 'Freetrade', 'Trading 212'],
+  SG: ['DBS Vickers', 'OCBC Securities', 'Tiger Brokers', 'moomoo', 'Saxo'],
+  AE: ['Sarwa', 'Interactive Brokers', 'ADCB Securities', 'Emirates NBD Securities'],
+  DE: EU_PLATFORM_SUGGESTIONS, FR: EU_PLATFORM_SUGGESTIONS, ES: EU_PLATFORM_SUGGESTIONS, IT: EU_PLATFORM_SUGGESTIONS,
+  NL: EU_PLATFORM_SUGGESTIONS, IE: EU_PLATFORM_SUGGESTIONS, PT: EU_PLATFORM_SUGGESTIONS, BE: EU_PLATFORM_SUGGESTIONS,
+  AT: EU_PLATFORM_SUGGESTIONS, FI: EU_PLATFORM_SUGGESTIONS,
+}
 
 // Four-archetype framework, built around age and portfolio size — the backend derives one of
 // these (see PersonaService.derivePersona) rather than asking the user to self-select. Kept here
@@ -97,9 +125,6 @@ export const RISK_ALLOCATION: Record<RiskProfile, { equity: string; debtCash: st
   MODERATE: { equity: '40% – 50%', debtCash: '50% – 60%', coreFocus: 'Balanced growth' },
   AGGRESSIVE: { equity: '70% – 90%', debtCash: '10% – 30%', coreFocus: 'Long-term wealth' },
 }
-export const SALARY_LABELS: Record<SalaryRange, string> = Object.fromEntries(
-  SALARY_OPTIONS.map(o => [o.value, o.label])) as Record<SalaryRange, string>
-
 // No persona-selection step — the archetype is derived server-side from age + portfolio size
 // (see PersonaService.derivePersona), not asked directly. Demographics come first (the signals
 // the derivation needs), then what/where the user invests. No risk questions here at all —
@@ -116,7 +141,9 @@ const TOTAL_STEPS = PLATFORMS_STEP + 1
 // MODERATE-default persona (via skipPersona) rather than leaving the user with none at all —
 // completing the full flow instead saves the real answers.
 export function PersonaOnboarding({ onClose, onDismissForever, initial, countries, settings }: {
-  onClose: () => void; onDismissForever: () => void; initial?: Persona | null; countries: Country[]; settings: Settings
+  // Takes the account's possibly-just-changed base currency so the caller can reload the app in
+  // that currency immediately — finish() passes it, skipNow() doesn't (it never touched country).
+  onClose: (newBaseCurrency?: string) => void; onDismissForever: () => void; initial?: Persona | null; countries: Country[]; settings: Settings
 }) {
   const [step, setStep] = useState(0)
   const [dontShowAgain, setDontShowAgain] = useState(false)
@@ -134,6 +161,10 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, countrie
 
   const isLast = step === TOTAL_STEPS - 1
   const canGoBack = step > 0
+  // Drives which currency's income/net-worth buckets and broker suggestions show — the country
+  // picked on the previous step, not the (possibly stale) one the account already had.
+  const currency = countries.find(c => c.code === country)?.currency ?? 'INR'
+  const platformSuggestions = PLATFORM_SUGGESTIONS_BY_COUNTRY[country] ?? EU_PLATFORM_SUGGESTIONS
 
   const toggleInstrument = (value: InstrumentType) => {
     setInstruments(current => {
@@ -190,7 +221,7 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, countrie
       })
     } catch { /* best-effort — still close so the user isn't stuck on a save failure */ }
     onDismissForever()
-    onClose()
+    onClose(currency)
   }
 
   const title = step === 0 ? "Let's personalise FinSights"
@@ -219,22 +250,22 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, countrie
     </div>}
 
     {step === FINANCES_STEP && <div className="persona-fields">
-      <label>Annual income range
+      <label>Annual income
         <select value={salaryRange} onChange={e => setSalaryRange(e.target.value as SalaryRange)}>
           <option value="">Select…</option>
-          {SALARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {salaryOptionsFor(currency).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </label>
+      <label>Net worth
+        <select value={portfolioSize} onChange={e => setPortfolioSize(e.target.value as PortfolioSize)}>
+          <option value="">Select…</option>
+          {portfolioSizeOptionsFor(currency).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>
       <label>How long have you been actively investing?
         <select value={investingTenure} onChange={e => setInvestingTenure(e.target.value as InvestingTenure)}>
           <option value="">Select…</option>
           {TENURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </label>
-      <label>Current portfolio size
-        <select value={portfolioSize} onChange={e => setPortfolioSize(e.target.value as PortfolioSize)}>
-          <option value="">Select…</option>
-          {PORTFOLIO_SIZE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>
     </div>}
@@ -254,9 +285,9 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial, countrie
       <div className="platform-input-row">
         <input list="platform-suggestions" value={platformInput} onChange={e => setPlatformInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPlatform() } }}
-          placeholder="e.g. Zerodha" />
+          placeholder={`e.g. ${platformSuggestions[0]}`} />
         <datalist id="platform-suggestions">
-          {PLATFORM_SUGGESTIONS.map(p => <option key={p} value={p} />)}
+          {platformSuggestions.map(p => <option key={p} value={p} />)}
         </datalist>
         <button type="button" className="outline" onClick={addPlatform}>Add</button>
       </div>

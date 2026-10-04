@@ -4,7 +4,7 @@ import { api, API_URL } from '../api'
 import { money, since, numeric, toggleLabel } from '../util'
 import { Switch } from '../ui'
 import { updatePersonaDetails } from '../persona-api'
-import { PERSONA_DESCRIPTIONS, PERSONA_ICONS, PERSONA_LABELS, PORTFOLIO_SIZE_OPTIONS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, RISK_TAG_CLASS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
+import { PERSONA_DESCRIPTIONS, PERSONA_ICONS, PERSONA_LABELS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, RISK_TAG_CLASS, TENURE_OPTIONS, portfolioSizeOptionsFor, salaryOptionsFor } from '../persona-onboarding'
 import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, PortfolioSize, SalaryRange } from '../types'
 
 export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onStartOnboarding, onReassessRisk, onAccountDeleted }: {
@@ -132,10 +132,17 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
             <div className="settings-field"><label>Age</label><input type="number" min={0} max={120} value={form.age} onChange={e => set('age', e.target.value)} /></div>
             <div className="settings-field"><label>Occupation</label><input value={form.occupation} onChange={e => set('occupation', e.target.value)} placeholder="e.g. Software engineer" /></div>
             <div className="settings-field">
-              <label>Annual salary range</label>
+              <label>Annual income</label>
               <select value={form.salaryRange} onChange={e => set('salaryRange', e.target.value as SalaryRange)}>
                 <option value="">Select…</option>
-                {SALARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {salaryOptionsFor(settings.baseCurrency).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="settings-field">
+              <label>Net worth</label>
+              <select value={form.portfolioSize} onChange={e => set('portfolioSize', e.target.value as PortfolioSize)}>
+                <option value="">Select…</option>
+                {portfolioSizeOptionsFor(settings.baseCurrency).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div className="settings-field">
@@ -143,13 +150,6 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
               <select value={form.investingTenure} onChange={e => set('investingTenure', e.target.value as InvestingTenure)}>
                 <option value="">Select…</option>
                 {TENURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-            <div className="settings-field">
-              <label>Portfolio size</label>
-              <select value={form.portfolioSize} onChange={e => set('portfolioSize', e.target.value as PortfolioSize)}>
-                <option value="">Select…</option>
-                {PORTFOLIO_SIZE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
           </div>
