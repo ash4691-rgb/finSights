@@ -212,6 +212,19 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     setHoldingDetail(current => current && current.id === saved.id ? saved : current)
   }
 
+  // Same instant-splice trick as applyHoldingUpdate above — a just-created category's own figures
+  // (0 invested, 0 holdings, 0 weightage) are already final the moment the server echoes it back,
+  // so there's nothing to wait on load() for here; this is what used to make a new category sit
+  // invisible on the Categories page until the next full reload (up to several seconds away,
+  // mostly spent re-pricing MARKET_PRICE holdings) resolved.
+  const applyCategoryUpdate = (saved: Category) => {
+    setCategories(current => {
+      const index = current.findIndex(c => c.id === saved.id)
+      return index === -1 ? [...current, saved] : current.map((c, i) => i === index ? saved : c)
+    })
+    setCategoryDetail(current => current && current.id === saved.id ? saved : current)
+  }
+
   const mergeSavedHolding = (saved: Holding) => {
     setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null)
     applyHoldingUpdate(saved)
@@ -342,7 +355,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
             persona={persona} onStartOnboarding={() => setShowPersonaOnboardingFromSettings(true)} onReassessRisk={() => setShowRiskAssessment(true)} />
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
-    {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={() => { setCreatingCategory(false); setEditingCategory(null); void load() }} />}
+    {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={saved => { setCreatingCategory(false); setEditingCategory(null); applyCategoryUpdate(saved); void load() }} />}
     {/* CategoryDrawer renders before HoldingModal so the modal paints on top when "+ Add holding"
         is opened from within an already-open drawer — the drawer now deliberately stays open
         behind it (see onAddHolding below) instead of closing, so this stacking order matters:
