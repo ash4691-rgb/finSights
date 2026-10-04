@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useEscToClose } from './ui'
+import { api } from './api'
 import { submitPersona, skipPersona } from './persona-api'
-import type { InstrumentType, InvestingTenure, InvestorPersona, Persona, RiskProfile, SalaryRange } from './types'
+import type { Country, InstrumentType, InvestingTenure, InvestorPersona, Persona, PortfolioSize, RiskProfile, SalaryRange, Settings } from './types'
 
 export const SALARY_OPTIONS: { value: SalaryRange; label: string }[] = [
   { value: 'UNDER_5L', label: 'Under ₹5L' },
@@ -11,6 +12,19 @@ export const SALARY_OPTIONS: { value: SalaryRange; label: string }[] = [
   { value: 'ABOVE_50L', label: 'Above ₹50L' },
   { value: 'PREFER_NOT_TO_SAY', label: 'Prefer not to say' },
 ]
+
+// Current total portfolio value — one of the signals (alongside age) the backend derives an
+// InvestorPersona archetype from, instead of asking the user to self-select one.
+export const PORTFOLIO_SIZE_OPTIONS: { value: PortfolioSize; label: string }[] = [
+  { value: 'UNDER_1L', label: 'Under ₹1L' },
+  { value: 'L1_TO_10L', label: '₹1L – ₹10L' },
+  { value: 'L10_TO_50L', label: '₹10L – ₹50L' },
+  { value: 'L50_TO_2CR', label: '₹50L – ₹2Cr' },
+  { value: 'ABOVE_2CR', label: 'Above ₹2Cr' },
+  { value: 'PREFER_NOT_TO_SAY', label: 'Prefer not to say' },
+]
+export const PORTFOLIO_SIZE_LABELS: Record<PortfolioSize, string> = Object.fromEntries(
+  PORTFOLIO_SIZE_OPTIONS.map(o => [o.value, o.label])) as Record<PortfolioSize, string>
 
 const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string }[] = [
   { value: 'INDIAN_STOCKS', label: 'Indian Stocks' },
@@ -29,9 +43,9 @@ const PLATFORM_SUGGESTIONS = [
   'Zerodha', 'Groww', 'Upstox', 'ICICI Direct', 'HDFC Securities', 'Angel One', 'Paytm Money', 'INDmoney',
 ]
 
-// Self-identified investor persona — how the user describes themselves, not computed. A
-// four-archetype framework built around age, portfolio size, and what the user is actually
-// trying to do, rather than a plain experience level.
+// Four-archetype framework, built around age and portfolio size — the backend derives one of
+// these (see PersonaService.derivePersona) rather than asking the user to self-select. Kept here
+// purely as a display lookup for the Settings tag.
 export const PERSONA_OPTIONS: { value: InvestorPersona; label: string; icon: string; hint: string }[] = [
   { value: 'WEALTH_BUILDER', label: 'Wealth Builder', icon: '🙂', hint: '22–35 · Early career — automating contributions, learning the basics, long time horizon' },
   { value: 'ACTIVE_ACCUMULATOR', label: 'Active Accumulator', icon: '🧑‍💼', hint: '35–50 · Peak earning years — maximising 401(k)/IRA, outperforming the market' },
@@ -86,34 +100,33 @@ export const RISK_ALLOCATION: Record<RiskProfile, { equity: string; debtCash: st
 export const SALARY_LABELS: Record<SalaryRange, string> = Object.fromEntries(
   SALARY_OPTIONS.map(o => [o.value, o.label])) as Record<SalaryRange, string>
 
-// Persona (the hook) comes first; categories and platforms follow; the optional, more sensitive
-// demographic questions are deferred to the end, where skipping them costs nothing — Finish
-// works with or without them, and they're always editable later from Settings. No risk questions
-// here at all — those are a separate RiskAssessment prompted on a later login (see App.tsx).
-const PERSONA_STEP = 1
-const CATEGORIES_STEP = 2
-const PLATFORMS_STEP = 3
-const DETAILS_STEP = 4
-const TOTAL_STEPS = DETAILS_STEP + 1
+// No persona-selection step — the archetype is derived server-side from age + portfolio size
+// (see PersonaService.derivePersona), not asked directly. Demographics come first (the signals
+// the derivation needs), then what/where the user invests. No risk questions here at all —
+// those are a separate RiskAssessment prompted on a later login (see App.tsx).
+const DETAILS_STEP = 1
+const FINANCES_STEP = 2
+const CATEGORIES_STEP = 3
+const PLATFORMS_STEP = 4
+const TOTAL_STEPS = PLATFORMS_STEP + 1
 
-// A data-collecting, skippable onboarding widget — identifies a starter persona (basic profile,
-// a self-identified investor archetype, the instrument categories the user already holds or
-// wants to, and the platforms they use) used to seed a few starter categories. Same skip /
-// "don't show again" pattern as CustomLayoutOnboarding and UserOnboarding, but "don't show
-// again" here also saves a MODERATE-default persona (via skipPersona) rather than leaving the
-// user with none at all — completing the full flow instead saves the real answers.
-export function PersonaOnboarding({ onClose, onDismissForever, initial }: {
-  onClose: () => void; onDismissForever: () => void; initial?: Persona | null
+// A data-collecting, skippable onboarding widget — a few demographic and financial signals used
+// to derive a starter persona and seed a few starter categories. Same skip / "don't show again"
+// pattern as CustomLayoutOnboarding and UserOnboarding, but "don't show again" here also saves a
+// MODERATE-default persona (via skipPersona) rather than leaving the user with none at all —
+// completing the full flow instead saves the real answers.
+export function PersonaOnboarding({ onClose, onDismissForever, initial, countries, settings }: {
+  onClose: () => void; onDismissForever: () => void; initial?: Persona | null; countries: Country[]; settings: Settings
 }) {
   const [step, setStep] = useState(0)
   const [dontShowAgain, setDontShowAgain] = useState(false)
   const [age, setAge] = useState(initial?.age ? String(initial.age) : '')
   const [occupation, setOccupation] = useState(initial?.occupation ?? '')
+  const [country, setCountry] = useState(settings.country)
   const [salaryRange, setSalaryRange] = useState<SalaryRange | ''>(initial?.salaryRange ?? '')
-  const [investorPersona, setInvestorPersona] = useState<InvestorPersona | ''>(initial?.investorPersona ?? '')
+  const [portfolioSize, setPortfolioSize] = useState<PortfolioSize | ''>(initial?.portfolioSize ?? '')
   const [investingTenure, setInvestingTenure] = useState<InvestingTenure | ''>(initial?.investingTenure ?? '')
-  const [currentInstruments, setCurrentInstruments] = useState<Set<InstrumentType>>(new Set(initial?.instrumentTypes ?? []))
-  const [interestedInstruments, setInterestedInstruments] = useState<Set<InstrumentType>>(new Set(initial?.interestedInstrumentTypes ?? []))
+  const [instruments, setInstruments] = useState<Set<InstrumentType>>(new Set(initial?.instrumentTypes ?? []))
   const [platforms, setPlatforms] = useState<Set<string>>(new Set(initial?.platforms ?? []))
   const [platformInput, setPlatformInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -122,10 +135,12 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial }: {
   const isLast = step === TOTAL_STEPS - 1
   const canGoBack = step > 0
 
-  const toggle = (set: Set<InstrumentType>, setSet: (next: Set<InstrumentType>) => void, value: InstrumentType) => {
-    const next = new Set(set)
-    if (next.has(value)) next.delete(value); else next.add(value)
-    setSet(next)
+  const toggleInstrument = (value: InstrumentType) => {
+    setInstruments(current => {
+      const next = new Set(current)
+      if (next.has(value)) next.delete(value); else next.add(value)
+      return next
+    })
   }
 
   const addPlatform = () => {
@@ -146,14 +161,31 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial }: {
   const finish = async () => {
     setBusy(true)
     try {
+      // Sequential, not Promise.all: both calls load-modify-save the same UserAccount row (this
+      // one touches country/currency, submitPersona() touches personaOnboardingDismissed),
+      // UserAccount has no optimistic-locking @Version column, and SettingsService persists the
+      // whole entity it loaded — so firing them concurrently is a lost-update race where whichever
+      // request's save() lands second silently overwrites the other's change. Running them one
+      // after another means each starts from the previous one's already-committed state.
+      // Country drives the account's base currency (see Settings) — only worth a write if the
+      // user actually changed it from what's already on file.
+      if (country !== settings.country) {
+        await api('/api/settings', { method: 'PUT', body: JSON.stringify({
+          country, displayName: settings.displayName, phone: settings.phone ?? '', numberFormat: settings.numberFormat,
+          notifyEmail: settings.notifyEmail, notifySms: settings.notifySms, notifyPush: settings.notifyPush,
+          notifyThresholdPercent: settings.notifyThresholdPercent,
+          dailyThresholdPercent: settings.dailyThresholdPercent, weeklyThresholdPercent: settings.weeklyThresholdPercent,
+          monthlyThresholdPercent: settings.monthlyThresholdPercent, quarterlyThresholdPercent: settings.quarterlyThresholdPercent,
+          yearlyThresholdPercent: settings.yearlyThresholdPercent,
+        }) })
+      }
       await submitPersona({
         age: age ? Number(age) : null,
         occupation: occupation || null,
         salaryRange: salaryRange || null,
-        investorPersona: investorPersona || null,
+        portfolioSize: portfolioSize || null,
         investingTenure: investingTenure || null,
-        instrumentTypes: Array.from(currentInstruments),
-        interestedInstrumentTypes: Array.from(interestedInstruments),
+        instrumentTypes: Array.from(instruments),
         platforms: Array.from(platforms),
       })
     } catch { /* best-effort — still close so the user isn't stuck on a save failure */ }
@@ -162,10 +194,10 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial }: {
   }
 
   const title = step === 0 ? "Let's personalise FinSights"
-    : step === PERSONA_STEP ? 'Which investor profile fits you best?'
+    : step === DETAILS_STEP ? 'A bit about you'
+    : step === FINANCES_STEP ? 'Your investments so far'
     : step === CATEGORIES_STEP ? 'What do you invest in?'
-    : step === PLATFORMS_STEP ? 'Which platforms do you use?'
-    : 'A bit about you'
+    : 'Which platforms do you use?'
 
   return <div className="modal-backdrop"><section className="modal narrow onboarding-tour">
     <div className="modal-header">
@@ -175,36 +207,47 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial }: {
 
     {step === 0 && <p>A few quick, entirely optional questions — we'll use your answers to set up a couple of starter categories. Skip anytime.</p>}
 
-    {step === PERSONA_STEP && <div className="persona-experience">
-      <p className="hint">Which of these best describes you?</p>
-      <div className="persona-radio-cards">
-        {PERSONA_OPTIONS.map(o => <label key={o.value} className="persona-radio-card">
-          <input type="radio" name="investor-persona" checked={investorPersona === o.value} onChange={() => setInvestorPersona(o.value)} />
-          <span><b>{o.label}</b><small>{o.hint}</small></span>
-        </label>)}
-      </div>
+    {step === DETAILS_STEP && <div className="persona-fields">
+      <label>Age<input type="number" min={0} max={120} value={age} onChange={e => setAge(e.target.value)} /></label>
+      <label>Occupation<input value={occupation} onChange={e => setOccupation(e.target.value)} placeholder="e.g. Software engineer" /></label>
+      <label>Country of residence
+        <select value={country} onChange={e => setCountry(e.target.value)}>
+          {countries.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </select>
+      </label>
+      <p className="hint">Your country sets your default currency — you can always change it later from Settings.</p>
     </div>}
 
-    {step === CATEGORIES_STEP && <div className="persona-categories">
-      <div className="persona-category-group">
-        <p className="hint">Currently investing in</p>
-        <div className="persona-instruments">
-          {INSTRUMENT_OPTIONS.map(o => <label key={o.value} className="persona-checkbox">
-            <input type="checkbox" checked={currentInstruments.has(o.value)} onChange={() => toggle(currentInstruments, setCurrentInstruments, o.value)} />
-            {o.label}
-          </label>)}
-        </div>
-      </div>
-      <div className="persona-category-group">
-        <p className="hint">Want to start investing in</p>
-        <div className="persona-instruments">
-          {INSTRUMENT_OPTIONS.map(o => <label key={o.value} className="persona-checkbox">
-            <input type="checkbox" checked={interestedInstruments.has(o.value)} onChange={() => toggle(interestedInstruments, setInterestedInstruments, o.value)} />
-            {o.label}
-          </label>)}
-        </div>
-      </div>
+    {step === FINANCES_STEP && <div className="persona-fields">
+      <label>Annual income range
+        <select value={salaryRange} onChange={e => setSalaryRange(e.target.value as SalaryRange)}>
+          <option value="">Select…</option>
+          {SALARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </label>
+      <label>How long have you been actively investing?
+        <select value={investingTenure} onChange={e => setInvestingTenure(e.target.value as InvestingTenure)}>
+          <option value="">Select…</option>
+          {TENURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </label>
+      <label>Current portfolio size
+        <select value={portfolioSize} onChange={e => setPortfolioSize(e.target.value as PortfolioSize)}>
+          <option value="">Select…</option>
+          {PORTFOLIO_SIZE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </label>
     </div>}
+
+    {step === CATEGORIES_STEP && <>
+      <p className="hint">Check everything you're currently investing in, or thinking about investing in.</p>
+      <div className="persona-instruments">
+        {INSTRUMENT_OPTIONS.map(o => <label key={o.value} className="persona-checkbox">
+          <input type="checkbox" checked={instruments.has(o.value)} onChange={() => toggleInstrument(o.value)} />
+          {o.label}
+        </label>)}
+      </div>
+    </>}
 
     {step === PLATFORMS_STEP && <div className="persona-platforms">
       <p className="hint">Add the brokers or platforms you use.</p>
@@ -222,24 +265,6 @@ export function PersonaOnboarding({ onClose, onDismissForever, initial }: {
           <button type="button" onClick={() => removePlatform(p)} aria-label={`Remove ${p}`}>×</button>
         </span>)}
       </div>}
-    </div>}
-
-    {step === DETAILS_STEP && <div className="persona-fields">
-      <p className="hint">Optional — skip anything you'd rather not share now; you can always fill it in later from Settings.</p>
-      <label>Age<input type="number" min={0} max={120} value={age} onChange={e => setAge(e.target.value)} /></label>
-      <label>Occupation<input value={occupation} onChange={e => setOccupation(e.target.value)} placeholder="e.g. Software engineer" /></label>
-      <label>Annual salary range
-        <select value={salaryRange} onChange={e => setSalaryRange(e.target.value as SalaryRange)}>
-          <option value="">Select…</option>
-          {SALARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </label>
-      <label>How long have you been actively investing?
-        <select value={investingTenure} onChange={e => setInvestingTenure(e.target.value as InvestingTenure)}>
-          <option value="">Select…</option>
-          {TENURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </label>
     </div>}
 
     <div className="onboarding-dots">

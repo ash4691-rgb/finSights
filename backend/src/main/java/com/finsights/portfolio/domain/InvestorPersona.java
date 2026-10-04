@@ -1,8 +1,8 @@
 package com.finsights.portfolio.domain;
 
-/** Self-identified during persona onboarding, from a four-archetype framework built around age,
- *  portfolio size, and what the user is actually trying to do — not just an experience level.
- *  Distinct from {@link RiskProfile}, which is computed from the risk-scenario answers.
+/** Derived (not self-selected) during persona onboarding, from a four-archetype framework built
+ *  around age and portfolio size — see PersonaService.derivePersona. Distinct from
+ *  {@link RiskProfile}, which is computed from the separate risk-scenario answers.
  *  Full framework (age range · portfolio size · core goal), shown to the user as onboarding
  *  option hints — see PERSONA_OPTIONS in the frontend's persona-onboarding.tsx:
  *    WEALTH_BUILDER            22-35  · $1K-$50K      · dollar-cost averaging, learning the basics

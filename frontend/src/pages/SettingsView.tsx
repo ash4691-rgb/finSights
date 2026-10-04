@@ -4,8 +4,8 @@ import { api, API_URL } from '../api'
 import { money, since, numeric, toggleLabel } from '../util'
 import { Switch } from '../ui'
 import { updatePersonaDetails } from '../persona-api'
-import { PERSONA_DESCRIPTIONS, PERSONA_ICONS, PERSONA_LABELS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, RISK_TAG_CLASS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
-import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, SalaryRange } from '../types'
+import { PERSONA_DESCRIPTIONS, PERSONA_ICONS, PERSONA_LABELS, PORTFOLIO_SIZE_OPTIONS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, RISK_TAG_CLASS, SALARY_OPTIONS, TENURE_OPTIONS } from '../persona-onboarding'
+import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, PortfolioSize, SalaryRange } from '../types'
 
 export function SettingsView({ settings, countries, dashboard, holdings, reload, theme, setTheme, persona, onStartOnboarding, onReassessRisk, onAccountDeleted }: {
   settings: Settings; countries: Country[]; dashboard: Dashboard | null; holdings: Holding[]
@@ -20,6 +20,7 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
     // blank otherwise, since there's nothing to edit yet.
     age: persona?.age ? String(persona.age) : '', occupation: persona?.occupation ?? '',
     salaryRange: persona?.salaryRange ?? '' as SalaryRange | '',
+    portfolioSize: persona?.portfolioSize ?? '' as PortfolioSize | '',
     investingTenure: persona?.investingTenure ?? '' as InvestingTenure | '',
   })
   const [status, setStatus] = useState('')
@@ -47,7 +48,8 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       if (persona) {
         calls.push(updatePersonaDetails({
           age: form.age ? Number(form.age) : null, occupation: form.occupation || null,
-          salaryRange: form.salaryRange || null, investingTenure: form.investingTenure || null,
+          salaryRange: form.salaryRange || null, portfolioSize: form.portfolioSize || null,
+          investingTenure: form.investingTenure || null,
         }))
       }
       await Promise.all(calls)
@@ -141,6 +143,13 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
               <select value={form.investingTenure} onChange={e => set('investingTenure', e.target.value as InvestingTenure)}>
                 <option value="">Select…</option>
                 {TENURE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="settings-field">
+              <label>Portfolio size</label>
+              <select value={form.portfolioSize} onChange={e => set('portfolioSize', e.target.value as PortfolioSize)}>
+                <option value="">Select…</option>
+                {PORTFOLIO_SIZE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
           </div>

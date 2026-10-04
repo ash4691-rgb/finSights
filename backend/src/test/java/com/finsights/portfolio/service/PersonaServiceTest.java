@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.finsights.portfolio.domain.InstrumentType;
 import com.finsights.portfolio.domain.InvestingTenure;
 import com.finsights.portfolio.domain.InvestorPersona;
+import com.finsights.portfolio.domain.PortfolioSize;
 import com.finsights.portfolio.domain.RiskProfile;
 import com.finsights.portfolio.domain.SalaryRange;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,13 +50,14 @@ class PersonaServiceTest {
         service = new PersonaService(personas, users, currentUserService, categoryService);
     }
 
-    // Options per question: Time Horizon 4, Risk Capacity 5, Risk Tolerance 3,
-    // Investment Objectives 3, Liquidity Needs 4 — deliberately mismatched so tests exercise
-    // PersonaService.normalize()'s per-question rescaling rather than a uniform 0-2 answer.
+    // age=30 → derives WEALTH_BUILDER (under 35). Options per risk question: Time Horizon 4,
+    // Risk Capacity 5, Risk Tolerance 3, Investment Objectives 3, Liquidity Needs 4 —
+    // deliberately mismatched so tests exercise PersonaService.normalize()'s per-question
+    // rescaling rather than a uniform 0-2 answer.
     private PersonaRequest request(Integer timeHorizon, Integer riskCapacity, Integer riskTolerance,
                                     Integer investmentObjectives, Integer liquidityNeeds) {
-        return new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L, InvestorPersona.ACTIVE_ACCUMULATOR,
-                InvestingTenure.ONE_TO_3_YEARS, Set.of(), Set.of(), Set.of(), timeHorizon, riskCapacity, riskTolerance,
+        return new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L, PortfolioSize.L1_TO_10L,
+                InvestingTenure.ONE_TO_3_YEARS, Set.of(), Set.of(), timeHorizon, riskCapacity, riskTolerance,
                 investmentObjectives, liquidityNeeds);
     }
 
@@ -114,12 +116,12 @@ class PersonaServiceTest {
     }
 
     @Test
-    void submitCarriesPersonaAndTenureThrough() {
+    void submitCarriesTenureThroughAndDerivesPersonaFromAge() {
         when(currentUserService.currentUser()).thenReturn(user);
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
         PersonaResponse response = service.submit(request(1, 2, 1, 1, 1));
 
-        assertThat(response.investorPersona()).isEqualTo(InvestorPersona.ACTIVE_ACCUMULATOR);
+        assertThat(response.investorPersona()).isEqualTo(InvestorPersona.WEALTH_BUILDER); // age 30 < 35
         assertThat(response.investingTenure()).isEqualTo(InvestingTenure.ONE_TO_3_YEARS);
         assertThat(response.usedDefaults()).isFalse();
     }
@@ -149,23 +151,87 @@ class PersonaServiceTest {
     }
 
     @Test
-    void submitCarriesInterestedInstrumentsAndPlatformsThrough() {
+    void submitCarriesInstrumentsAndPlatformsThrough() {
         when(currentUserService.currentUser()).thenReturn(user);
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
         when(categoryService.list(null)).thenReturn(List.of());
 
-        PersonaRequest request = new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L,
-                InvestorPersona.WEALTH_BUILDER, InvestingTenure.UNDER_1_YEAR,
-                Set.of(InstrumentType.INDIAN_STOCKS), Set.of(InstrumentType.CRYPTO),
+        PersonaRequest request = new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L, PortfolioSize.L1_TO_10L,
+                InvestingTenure.UNDER_1_YEAR, Set.of(InstrumentType.INDIAN_STOCKS, InstrumentType.CRYPTO),
                 Set.of("Zerodha", "Groww"), 1, 1, 1, 1, 1);
 
         PersonaResponse response = service.submit(request);
 
-        assertThat(response.instrumentTypes()).containsExactly(InstrumentType.INDIAN_STOCKS);
-        assertThat(response.interestedInstrumentTypes()).containsExactly(InstrumentType.CRYPTO);
+        assertThat(response.instrumentTypes()).containsExactlyInAnyOrder(InstrumentType.INDIAN_STOCKS, InstrumentType.CRYPTO);
         assertThat(response.platforms()).containsExactlyInAnyOrder("Zerodha", "Groww");
-        // "Want to invest" instruments don't seed a category — nothing to track yet.
-        verify(categoryService, never()).create(argThat(r -> r.name().equals("Crypto")));
+    }
+
+    // --- derivePersona, exercised through submit() since it's private ---
+
+    @Test
+    void underThirtyFiveDerivesWealthBuilderRegardlessOfWealth() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        PersonaResponse response = service.submit(new PersonaRequest(25, null, SalaryRange.ABOVE_50L,
+                PortfolioSize.ABOVE_2CR, null, Set.of(), Set.of(), null, null, null, null, null));
+
+        assertThat(response.investorPersona()).isEqualTo(InvestorPersona.WEALTH_BUILDER);
+    }
+
+    @Test
+    void fiftyFiveOrOlderDerivesDefensiveConsumerRegardlessOfWealth() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        PersonaResponse response = service.submit(new PersonaRequest(60, null, SalaryRange.UNDER_5L,
+                PortfolioSize.UNDER_1L, null, Set.of(), Set.of(), null, null, null, null, null));
+
+        assertThat(response.investorPersona()).isEqualTo(InvestorPersona.DEFENSIVE_CONSUMER);
+    }
+
+    @Test
+    void midAgeWithModeratePortfolioDerivesActiveAccumulator() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        PersonaResponse response = service.submit(new PersonaRequest(40, null, SalaryRange.L10_TO_25L,
+                PortfolioSize.L10_TO_50L, null, Set.of(), Set.of(), null, null, null, null, null));
+
+        assertThat(response.investorPersona()).isEqualTo(InvestorPersona.ACTIVE_ACCUMULATOR);
+    }
+
+    @Test
+    void midAgeWithLargePortfolioDerivesHighNetWorthTactician() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        PersonaResponse response = service.submit(new PersonaRequest(40, null, SalaryRange.L10_TO_25L,
+                PortfolioSize.ABOVE_2CR, null, Set.of(), Set.of(), null, null, null, null, null));
+
+        assertThat(response.investorPersona()).isEqualTo(InvestorPersona.HIGH_NET_WORTH_TACTICIAN);
+    }
+
+    @Test
+    void midAgeWithTopBracketIncomeDerivesHighNetWorthTacticianEvenWithSmallPortfolio() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        PersonaResponse response = service.submit(new PersonaRequest(45, null, SalaryRange.ABOVE_50L,
+                PortfolioSize.UNDER_1L, null, Set.of(), Set.of(), null, null, null, null, null));
+
+        assertThat(response.investorPersona()).isEqualTo(InvestorPersona.HIGH_NET_WORTH_TACTICIAN);
+    }
+
+    @Test
+    void missingAgeDerivesNoPersona() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+
+        PersonaResponse response = service.submit(new PersonaRequest(null, null, SalaryRange.ABOVE_50L,
+                PortfolioSize.ABOVE_2CR, null, Set.of(), Set.of(), null, null, null, null, null));
+
+        assertThat(response.investorPersona()).isNull();
     }
 
     @Test
@@ -231,24 +297,26 @@ class PersonaServiceTest {
     }
 
     @Test
-    void updateDetailsChangesOnlyDemographicsNotRiskOrPersona() {
+    void updateDetailsChangesDemographicsAndRecomputesPersonaButNotRisk() {
         when(currentUserService.currentUser()).thenReturn(user);
         UserPersona existing = new UserPersona();
         existing.setRiskProfile(RiskProfile.AGGRESSIVE);
-        existing.setInvestorPersona(InvestorPersona.HIGH_NET_WORTH_TACTICIAN);
+        existing.setInvestorPersona(InvestorPersona.WEALTH_BUILDER);
         existing.setInstrumentTypes(new java.util.LinkedHashSet<>(Set.of(InstrumentType.CRYPTO)));
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.of(existing));
 
+        // 41 + top-bracket income -> HIGH_NET_WORTH_TACTICIAN, a change from the prior WEALTH_BUILDER.
         PersonaResponse response = service.updateDetails(
-                new PersonaDetailsRequest(41, "Doctor", SalaryRange.ABOVE_50L, InvestingTenure.OVER_10_YEARS));
+                new PersonaDetailsRequest(41, "Doctor", SalaryRange.ABOVE_50L, PortfolioSize.L50_TO_2CR, InvestingTenure.OVER_10_YEARS));
 
         assertThat(response.age()).isEqualTo(41);
         assertThat(response.occupation()).isEqualTo("Doctor");
         assertThat(response.salaryRange()).isEqualTo(SalaryRange.ABOVE_50L);
+        assertThat(response.portfolioSize()).isEqualTo(PortfolioSize.L50_TO_2CR);
         assertThat(response.investingTenure()).isEqualTo(InvestingTenure.OVER_10_YEARS);
-        // Untouched — Settings has no way to resupply the scenario answers or re-ask the persona question.
-        assertThat(response.riskProfile()).isEqualTo(RiskProfile.AGGRESSIVE);
         assertThat(response.investorPersona()).isEqualTo(InvestorPersona.HIGH_NET_WORTH_TACTICIAN);
+        // Untouched — Settings has no way to resupply the scenario answers.
+        assertThat(response.riskProfile()).isEqualTo(RiskProfile.AGGRESSIVE);
         assertThat(response.instrumentTypes()).containsExactly(InstrumentType.CRYPTO);
     }
 
@@ -258,7 +326,7 @@ class PersonaServiceTest {
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.updateDetails(
-                new PersonaDetailsRequest(41, "Doctor", SalaryRange.ABOVE_50L, InvestingTenure.OVER_10_YEARS)))
+                new PersonaDetailsRequest(41, "Doctor", SalaryRange.ABOVE_50L, PortfolioSize.L50_TO_2CR, InvestingTenure.OVER_10_YEARS)))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("404");
     }
@@ -269,9 +337,9 @@ class PersonaServiceTest {
         when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
         when(categoryService.list(null)).thenReturn(List.of());
 
-        PersonaRequest request = new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L,
-                InvestorPersona.WEALTH_BUILDER, InvestingTenure.UNDER_1_YEAR,
-                Set.of(InstrumentType.INDIAN_STOCKS, InstrumentType.CRYPTO), Set.of(), Set.of(), 1, 1, 1, 1, 1);
+        PersonaRequest request = new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L, PortfolioSize.L1_TO_10L,
+                InvestingTenure.UNDER_1_YEAR, Set.of(InstrumentType.INDIAN_STOCKS, InstrumentType.CRYPTO),
+                Set.of(), 1, 1, 1, 1, 1);
 
         service.submit(request);
 

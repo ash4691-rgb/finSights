@@ -54,17 +54,18 @@ export type Settings = {
   userOnboardingDismissed: boolean; personaOnboardingDismissed: boolean; riskOnboardingDismissed: boolean
 }
 export type SalaryRange = 'UNDER_5L' | 'L5_TO_10L' | 'L10_TO_25L' | 'L25_TO_50L' | 'ABOVE_50L' | 'PREFER_NOT_TO_SAY'
+export type PortfolioSize = 'UNDER_1L' | 'L1_TO_10L' | 'L10_TO_50L' | 'L50_TO_2CR' | 'ABOVE_2CR' | 'PREFER_NOT_TO_SAY'
 export type InstrumentType = 'INDIAN_STOCKS' | 'FOREIGN_STOCKS' | 'MUTUAL_FUNDS' | 'CRYPTO' | 'COMMODITIES' | 'FIXED_RETURN' | 'REAL_ESTATE'
-// Self-identified during persona onboarding, from a four-archetype framework (age, portfolio
-// size, core goal) — distinct from RiskProfile, which is computed from the risk-scenario answers
-// rather than chosen directly.
+// Derived (not self-selected) during persona onboarding, from a four-archetype framework built
+// around age and portfolio size — see the backend's PersonaService.derivePersona. Distinct from
+// RiskProfile, which is computed from the separate risk-scenario answers.
 export type InvestorPersona = 'WEALTH_BUILDER' | 'ACTIVE_ACCUMULATOR' | 'HIGH_NET_WORTH_TACTICIAN' | 'DEFENSIVE_CONSUMER'
 export type InvestingTenure = 'UNDER_1_YEAR' | 'ONE_TO_3_YEARS' | 'THREE_TO_10_YEARS' | 'OVER_10_YEARS'
 export type RiskProfile = 'CONSERVATIVE' | 'MODERATE' | 'AGGRESSIVE'
 export type Persona = {
-  age?: number; occupation?: string; salaryRange?: SalaryRange
+  age?: number; occupation?: string; salaryRange?: SalaryRange; portfolioSize?: PortfolioSize
   investorPersona?: InvestorPersona; investingTenure?: InvestingTenure
-  instrumentTypes: InstrumentType[]; interestedInstrumentTypes: InstrumentType[]; platforms: string[]
+  instrumentTypes: InstrumentType[]; platforms: string[]
   riskProfile: RiskProfile; usedDefaults: boolean
 }
 export type Country = { code: string; name: string; currency: string }

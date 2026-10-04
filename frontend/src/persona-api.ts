@@ -1,17 +1,18 @@
 import { api } from './api'
-import type { InstrumentType, InvestingTenure, InvestorPersona, Persona, SalaryRange } from './types'
+import type { InstrumentType, InvestingTenure, Persona, PortfolioSize, SalaryRange } from './types'
 
-// No risk-answer fields — the basic onboarding flow (persona-onboarding.tsx) no longer asks
-// them at all; submitting here always scores a MODERATE risk default until the dedicated
-// RiskAssessment (risk-assessment.tsx) runs separately via updateRisk() below.
+// No investorPersona field — it's derived server-side from age/salaryRange/portfolioSize (see
+// the backend's PersonaService.derivePersona) rather than submitted directly. No risk-answer
+// fields either — the basic onboarding flow (persona-onboarding.tsx) no longer asks them at
+// all; submitting here always scores a MODERATE risk default until the dedicated RiskAssessment
+// (risk-assessment.tsx) runs separately via updateRisk() below.
 export type PersonaSubmission = {
   age: number | null
   occupation: string | null
   salaryRange: SalaryRange | null
-  investorPersona: InvestorPersona | null
+  portfolioSize: PortfolioSize | null
   investingTenure: InvestingTenure | null
   instrumentTypes: InstrumentType[]
-  interestedInstrumentTypes: InstrumentType[]
   platforms: string[]
 }
 
@@ -37,13 +38,15 @@ export type PersonaDetails = {
   age: number | null
   occupation: string | null
   salaryRange: SalaryRange | null
+  portfolioSize: PortfolioSize | null
   investingTenure: InvestingTenure | null
 }
 
 // Settings' inline "edit your details" save — deliberately narrower than submitPersona: it never
-// touches riskProfile/investorPersona/instrumentTypes (Settings has no way to resupply the
-// five scenario answers, so resubmitting the full questionnaire from here would silently reset
-// an already-computed risk profile back to the "missing answers" default).
+// touches riskProfile/instrumentTypes (Settings has no way to resupply the five scenario
+// answers, so resubmitting the full questionnaire from here would silently reset an
+// already-computed risk profile back to the "missing answers" default). investorPersona DOES get
+// recomputed server-side from the new age/salaryRange/portfolioSize, same as on initial submit.
 export async function updatePersonaDetails(payload: PersonaDetails): Promise<Persona> {
   return api<Persona>('/api/persona/details', { method: 'PUT', body: JSON.stringify(payload) })
 }

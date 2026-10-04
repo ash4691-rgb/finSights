@@ -368,8 +368,10 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showLayoutOnboarding && <CustomLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}
-    {showPersonaOnboarding && <PersonaOnboarding
+    {showPersonaOnboarding && settings && <PersonaOnboarding
       initial={persona}
+      countries={countries}
+      settings={settings}
       onClose={() => {
         setShowPersonaOnboarding(false)
         // The risk assessment is a separate, later-login gate (see load()'s first-load check) —
@@ -393,8 +395,10 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showUserOnboarding && <UserOnboarding
       onClose={() => setShowUserOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}
-    {showPersonaOnboardingFromSettings && <PersonaOnboarding
+    {showPersonaOnboardingFromSettings && settings && <PersonaOnboarding
       initial={persona}
+      countries={countries}
+      settings={settings}
       onClose={() => { setShowPersonaOnboardingFromSettings(false); void load() }}
       onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
     {goku.available && <GokuLauncher goku={goku} />}
