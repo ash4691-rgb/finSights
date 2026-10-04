@@ -343,7 +343,7 @@ class PersonaServiceTest {
 
         service.submit(request);
 
-        verify(categoryService).create(argThat(r -> r.name().equals("Indian Stocks")));
+        verify(categoryService).create(argThat(r -> r.name().equals("Domestic Stocks")));
         verify(categoryService).create(argThat(r -> r.name().equals("Crypto")));
     }
 }
