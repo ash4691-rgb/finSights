@@ -12,6 +12,7 @@ import com.finsights.portfolio.repository.CategoryRepository;
 import com.finsights.portfolio.repository.TagSuggestionRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import com.finsights.portfolio.repository.UserAccountRepository;
+import com.finsights.portfolio.repository.UserPersonaRepository;
 import com.finsights.portfolio.repository.WatchlistRepository;
 import com.finsights.portfolio.repository.DashboardLayoutRepository;
 import java.math.BigDecimal;
@@ -38,6 +39,7 @@ public class SettingsService {
     private final TagSuggestionRepository tagSuggestions;
     private final com.finsights.portfolio.repository.EmiPaymentRepository emiPayments;
     private final DashboardLayoutRepository dashboardLayouts;
+    private final UserPersonaRepository personas;
 
     public SettingsService(UserAccountRepository users, HoldingRepository holdings, CategoryRepository categories,
                            TransactionRepository transactions, HoldingService holdingService, CurrentUserService currentUser,
@@ -45,7 +47,7 @@ public class SettingsService {
                            PortfolioSnapshotService portfolioSnapshots, ActionDismissalService actionDismissals,
                            TagSuggestionRepository tagSuggestions,
                            com.finsights.portfolio.repository.EmiPaymentRepository emiPayments,
-                           DashboardLayoutRepository dashboardLayouts) {
+                           DashboardLayoutRepository dashboardLayouts, UserPersonaRepository personas) {
         this.users = users;
         this.holdings = holdings;
         this.categories = categories;
@@ -60,6 +62,7 @@ public class SettingsService {
         this.tagSuggestions = tagSuggestions;
         this.emiPayments = emiPayments;
         this.dashboardLayouts = dashboardLayouts;
+        this.personas = personas;
     }
 
     public SettingsResponse current() {
@@ -134,6 +137,10 @@ public class SettingsService {
         portfolioSnapshots.deleteForUser(user.getId());
         actionDismissals.deleteForUser(user.getId());
         tagSuggestions.deleteByUser_Id(user.getId());
+        // Must run before users.delete() — user_personas.user_id is a NOT NULL FK back to users,
+        // so deleting the account first throws a referential-integrity violation for anyone who's
+        // ever submitted or skipped the persona questionnaire.
+        personas.deleteByUser_Id(user.getId());
         users.delete(user);
     }
 

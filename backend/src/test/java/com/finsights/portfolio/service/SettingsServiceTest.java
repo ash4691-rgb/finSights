@@ -18,6 +18,7 @@ import com.finsights.portfolio.repository.HoldingRepository;
 import com.finsights.portfolio.repository.TagSuggestionRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import com.finsights.portfolio.repository.UserAccountRepository;
+import com.finsights.portfolio.repository.UserPersonaRepository;
 import com.finsights.portfolio.repository.WatchlistRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -44,6 +45,7 @@ class SettingsServiceTest {
     @Mock TagSuggestionRepository tagSuggestions;
     @Mock EmiPaymentRepository emiPayments;
     @Mock DashboardLayoutRepository dashboardLayouts;
+    @Mock UserPersonaRepository personas;
 
     private SettingsService service;
     private UserAccount user;
@@ -52,9 +54,22 @@ class SettingsServiceTest {
     void setUp() {
         service = new SettingsService(users, holdings, categories, transactions, holdingService, currentUser,
                 countries, watchlist, snapshots, portfolioSnapshots, actionDismissals, tagSuggestions,
-                emiPayments, dashboardLayouts);
+                emiPayments, dashboardLayouts, personas);
         user = new UserAccount("demo@finsights.local", "Demo");
         when(currentUser.currentUser()).thenReturn(user);
+    }
+
+    // Regression test: user_personas.user_id is a NOT NULL FK back to users, so deleting the
+    // account without first clearing its persona row throws a referential-integrity violation
+    // for any user who's ever submitted or skipped the persona questionnaire. Order matters, not
+    // just that both calls happen.
+    @Test
+    void deleteAccountRemovesThePersonaRowBeforeTheAccountItself() {
+        service.deleteAccount();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(personas, users);
+        order.verify(personas).deleteByUser_Id(any());
+        order.verify(users).delete(user);
     }
 
     @Test
