@@ -77,6 +77,14 @@ app:
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
     model: ${GOKU_MODEL:claude-haiku-4-5-20251001}
     daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
+  # CAS (CDSL/NSDL Consolidated Account Statement) upload — extraction only, never writes a
+  # holding directly; see CasImportService. Shares the same Anthropic account as Goku but its own
+  # config block since the two features have nothing else to do with each other, and extraction
+  # accuracy matters more here than chat latency, hence a stronger default model.
+  cas-import:
+    anthropic-api-key: ${ANTHROPIC_API_KEY:}
+    model: ${CAS_IMPORT_MODEL:claude-sonnet-5}
+    daily-upload-limit: ${CAS_IMPORT_DAILY_UPLOAD_LIMIT:10}
 
 ---
 # Google OAuth is only wired when the "google" profile is active, so the demo

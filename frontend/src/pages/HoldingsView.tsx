@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import type * as React from 'react'
 import type { FormEvent } from 'react'
-import { api } from '../api'
+import { api, API_URL } from '../api'
 import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel, checkLoanTerm } from '../util'
 import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
 import { TransactionModal } from './TransactionsView'
-import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
+import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction, ExtractedHolding, CasExtractionResult } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
 // ---------------------------------------------------------------------------
@@ -110,17 +110,21 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
-export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions }: {
+export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft }: {
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
   // Carries the just-saved holding back to the caller so it can be spliced into local state
   // immediately — instant feedback instead of waiting on the reload that follows.
   onSaved: (saved: Holding) => void
   onGoToTransactions?: () => void
+  // Pre-fills part of a brand-new holding's form — a CAS-import draft, say — without faking a
+  // Holding object for `holding` above: that would flip isEdit and lock fields (broker, quantity)
+  // a draft still needs the user to confirm. Ignored once `holding` is set; editing always wins.
+  draft?: Partial<ReturnType<typeof blankHoldingForm>>
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
     ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
-    : blankHoldingForm(startCategoryId))
+    : { ...blankHoldingForm(startCategoryId), ...draft })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
   const selectedCategory = categories.find(c => c.id === form.categoryId)
@@ -437,5 +441,93 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
       <button className="danger-btn" onClick={() => void removeHolding()}>Delete holding</button>
     </div>
     {addingTxn && <TransactionModal transaction={null} holdings={[holding]} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); loadDetail(); refreshHolding(); void reload() }} />}
+  </section></div>
+}
+
+// ---------------------------------------------------------------------------
+// CAS import — upload a CDSL/NSDL Consolidated Account Statement PDF, review each extracted
+// position one at a time through the ordinary Add Holding form (pre-filled, not auto-saved), and
+// save (or skip) it exactly like a manual entry. The upload step only ever extracts; nothing here
+// writes a holding on its own — see the backend's CasImportService for why.
+// ---------------------------------------------------------------------------
+
+// A pre-filled holding is seeded at its own average cost (quantity × avg cost per unit), same
+// reasoning as a fresh MARKET_PRICE holding: a sane non-zero starting value beats leaving current
+// value at 0 until the user has a reason to change it. Left blank when the statement didn't state
+// an average cost — better an empty field the user must fill than a silently wrong one.
+const draftFromExtractedHolding = (row: ExtractedHolding): Partial<ReturnType<typeof blankHoldingForm>> => {
+  const seedValue = row.averageCostPerUnit != null ? String(Math.round(row.quantity * row.averageCostPerUnit * 100) / 100) : ''
+  return {
+    name: row.instrumentName,
+    quantity: String(row.quantity),
+    investedValue: seedValue,
+    currentValue: seedValue,
+    description: row.isin ? `ISIN ${row.isin}` : '',
+  }
+}
+
+export function CasImportModal({ categories, holdings, displayCurrency, onClose, onSaved }: {
+  categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void; onSaved: (saved: Holding) => void
+}) {
+  useEscToClose(onClose)
+  const [busy, setBusy] = useState(false)
+  const [fileName, setFileName] = useState('')
+  const [error, setError] = useState('')
+  const [result, setResult] = useState<CasExtractionResult | null>(null)
+  const [reviewed, setReviewed] = useState<Set<number>>(new Set())
+  const [reviewingIndex, setReviewingIndex] = useState<number | null>(null)
+
+  const upload = async (file: File) => {
+    setBusy(true); setError(''); setResult(null); setReviewed(new Set()); setFileName(file.name)
+    try {
+      const body = await file.arrayBuffer()
+      const response = await fetch(`${API_URL}/api/holdings/import/cas`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/pdf', 'X-Demo-User': 'demo@finsights.local' }, body,
+      })
+      const parsed = await response.json()
+      if (!response.ok) throw new Error(parsed.message ?? 'Could not read that statement')
+      setResult(parsed)
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not read that statement') }
+    finally { setBusy(false) }
+  }
+
+  const markReviewed = (index: number) => setReviewed(current => new Set(current).add(index))
+
+  return <div className="modal-backdrop"><section className="modal" onClick={e => e.stopPropagation()}>
+    <div className="modal-header"><div><p className="eyebrow">BULK IMPORT</p><h2>Import from a CAS statement</h2></div><button className="close" onClick={onClose}>×</button></div>
+    <p className="hint">Upload your CDSL or NSDL Consolidated Account Statement (PDF). Nothing is saved automatically — you'll review and confirm each holding found, the same as adding one by hand.</p>
+
+    <div className="import-upload">
+      <label className="outline file-label">{busy ? 'Reading…' : fileName ? 'Choose a different file' : '↑ Choose a CAS PDF'}
+        <input type="file" accept=".pdf,application/pdf" hidden disabled={busy}
+          onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = '' }} />
+      </label>
+      {fileName && <span className="hint">{fileName}</span>}
+    </div>
+
+    {error && <p className="form-error">{error}</p>}
+
+    {result && <>
+      {result.statementDate && <p className="hint">Statement as of {result.statementDate}.</p>}
+      {result.holdings.length === 0
+        ? <p className="hint">No equity holdings found in this statement.</p>
+        : <div className="mapped-holdings">{result.holdings.map((row, index) => <button key={index} className="mapped-holding" onClick={() => setReviewingIndex(index)}>
+            <div className="mapped-holding-name"><strong title={row.instrumentName}>{row.instrumentName}</strong><small>{row.isin}{row.depository && row.depository !== 'UNKNOWN' ? ` · ${row.depository}` : ''}</small></div>
+            <div className="mapped-holding-value"><span>Qty {row.quantity}</span><small>{reviewed.has(index) ? 'Reviewed ✓' : 'Needs review'}</small></div>
+          </button>)}</div>}
+      {result.warnings.length > 0 && <section className="import-summary">
+        <strong>{result.warnings.length} note{result.warnings.length === 1 ? '' : 's'} from the extraction</strong>
+        {result.warnings.map((w, i) => <span key={i}>{w}</span>)}
+      </section>}
+      {result.holdings.length > 0 && <p className="hint">{reviewed.size} of {result.holdings.length} reviewed.</p>}
+    </>}
+
+    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Done</button></div>
+
+    {reviewingIndex != null && result && <HoldingModal holding={null} category={null} categories={categories} holdings={holdings}
+      displayCurrency={displayCurrency} draft={draftFromExtractedHolding(result.holdings[reviewingIndex])}
+      onClose={() => setReviewingIndex(null)}
+      onSaved={saved => { onSaved(saved); markReviewed(reviewingIndex); setReviewingIndex(null) }} />}
   </section></div>
 }
