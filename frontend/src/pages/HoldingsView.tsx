@@ -512,13 +512,13 @@ export function CasImportModal({ categories, holdings, displayCurrency, onClose,
       {result.statementDate && <p className="hint">Statement as of {result.statementDate}.</p>}
       {result.holdings.length === 0
         ? <p className="hint">No equity holdings found in this statement.</p>
-        : <div className="mapped-holdings">{result.holdings.map((row, index) => <button key={index} className="mapped-holding" onClick={() => setReviewingIndex(index)}>
+        : <div className="mapped-holdings">{result.holdings.map((row, index) => <button key={`${row.isin}:${row.depository ?? ''}`} className="mapped-holding" onClick={() => setReviewingIndex(index)}>
             <div className="mapped-holding-name"><strong title={row.instrumentName}>{row.instrumentName}</strong><small>{row.isin}{row.depository && row.depository !== 'UNKNOWN' ? ` · ${row.depository}` : ''}</small></div>
             <div className="mapped-holding-value"><span>Qty {row.quantity}</span><small>{reviewed.has(index) ? 'Reviewed ✓' : 'Needs review'}</small></div>
           </button>)}</div>}
       {result.warnings.length > 0 && <section className="import-summary">
         <strong>{result.warnings.length} note{result.warnings.length === 1 ? '' : 's'} from the extraction</strong>
-        {result.warnings.map((w, i) => <span key={i}>{w}</span>)}
+        {result.warnings.map(w => <span key={w}>{w}</span>)}
       </section>}
       {result.holdings.length > 0 && <p className="hint">{reviewed.size} of {result.holdings.length} reviewed.</p>}
     </>}

@@ -236,8 +236,15 @@ public class CasImportService {
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 
     private JsonNode callClaude(ObjectNode body) {
+        return callClaude(http, MESSAGES_URI, apiKey, json, body);
+    }
+
+    /** Package-private and static — takes the HTTP client and target URI as parameters so the
+     *  exchange itself (success, non-200, and transport-failure handling) can be exercised in a
+     *  test against a local server, not just mocked away. */
+    static JsonNode callClaude(HttpClient http, URI uri, String apiKey, ObjectMapper json, ObjectNode body) {
         try {
-            HttpRequest request = HttpRequest.newBuilder(MESSAGES_URI)
+            HttpRequest request = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(60)) // a multi-page PDF takes longer than a chat turn
                     .header("x-api-key", apiKey)
                     .header("anthropic-version", ANTHROPIC_VERSION)

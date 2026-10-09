@@ -10,7 +10,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.CasExtractionResponse;
+import com.sun.net.httpserver.HttpServer;
 import java.math.BigDecimal;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -116,5 +122,58 @@ class CasImportServiceTest {
 
         assertThat(result.holdings()).isEmpty();
         assertThat(result.warnings()).isNotEmpty();
+    }
+
+    // --- callClaude: the actual HTTP exchange, against a real local server rather than a mock,
+    // so the success/failure/transport-exception handling is exercised, not just assumed. ---
+
+    private HttpServer server;
+
+    @AfterEach
+    void stopServer() {
+        if (server != null) server.stop(0);
+    }
+
+    @Test
+    void callClaudeParsesA200ResponseBody() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/", exchange -> {
+            byte[] body = "{\"content\": []}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        JsonNode result = CasImportService.callClaude(HttpClient.newHttpClient(),
+                URI.create("http://localhost:" + server.getAddress().getPort() + "/"), "key", json, json.createObjectNode());
+
+        assertThat(result.path("content").isArray()).isTrue();
+    }
+
+    @Test
+    void callClaudeTurnsANon200ResponseIntoABadGateway() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/", exchange -> {
+            byte[] body = "{\"error\": \"nope\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(500, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        assertThatThrownBy(() -> CasImportService.callClaude(HttpClient.newHttpClient(),
+                URI.create("http://localhost:" + server.getAddress().getPort() + "/"), "key", json, json.createObjectNode()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Couldn't read that statement");
+    }
+
+    @Test
+    void callClaudeTurnsATransportFailureIntoABadGateway() {
+        // Nothing listening on this port — connection refused, exercising the catch-all branch.
+        assertThatThrownBy(() -> CasImportService.callClaude(HttpClient.newHttpClient(),
+                URI.create("http://localhost:1/"), "key", json, json.createObjectNode()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Couldn't read that statement");
     }
 }
