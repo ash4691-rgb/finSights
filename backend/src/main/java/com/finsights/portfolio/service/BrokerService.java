@@ -21,18 +21,22 @@ public class BrokerService {
             new Source("kite", "Zerodha Kite", "COMING_SOON",
                     "Official Kite Connect API supports holdings, positions, and mutual-fund data. Sync arrives in Phase 3.",
                     List.of("Equity holdings", "Positions", "Mutual funds"),
-                    "https://kite.trade/docs/connect/v3/portfolio/"),
+                    "https://kite.trade/docs/connect/v3/portfolio/", true, false, null, false),
             new Source("groww", "Groww", "PLANNED",
-                    "Pending confirmation of a supported read API.", List.of("Stocks", "Mutual funds"), null),
+                    "Pending confirmation of a supported read API.", List.of("Stocks", "Mutual funds"), null, false, false, null, false),
             new Source("indmoney", "INDmoney", "PLANNED",
-                    "Pending confirmation of a supported read API.", List.of("Stocks", "US stocks", "Net worth"), null),
+                    "Pending confirmation of a supported read API.", List.of("Stocks", "US stocks", "Net worth"), null, false, false, null, false),
             new Source("epfo", "EPFO", "PLANNED",
-                    "Manual passbook entry for now; no public API.", List.of("Provident fund balance"), null));
+                    "Manual passbook entry for now; no public API.", List.of("Provident fund balance"), null, false, false, null, false));
 
     private final HoldingService holdings;
+    private final BrokerConnectionService connections;
+    private final CurrentUserService currentUser;
 
-    public BrokerService(HoldingService holdings) {
+    public BrokerService(HoldingService holdings, BrokerConnectionService connections, CurrentUserService currentUser) {
         this.holdings = holdings;
+        this.connections = connections;
+        this.currentUser = currentUser;
     }
 
     public BrokersResponse overview(String currency) {
@@ -60,7 +64,22 @@ public class BrokerService {
                     new ArrayList<>(classes), new ArrayList<>(currencies)));
         });
         brokers.sort(Comparator.comparing(BrokerGroup::currentValue).reversed());
-        return new BrokersResponse(brokers, SOURCES);
+        String userId = currentUser.currentUser().getId();
+        List<Source> sources = SOURCES.stream().map(s -> withConnectionStatus(s, userId)).toList();
+        return new BrokersResponse(brokers, sources);
+    }
+
+    /** Fills in this user's own connection status onto the static source entry — the SOURCES list
+     *  itself never carries per-user state. A source nobody can connect to yet (connectable=false)
+     *  is returned untouched. */
+    private Source withConnectionStatus(Source source, String userId) {
+        if (!source.connectable()) return source;
+        return connections.statusFor(userId, source.key())
+                .map(status -> new Source(source.key(), source.name(),
+                        status.needsReauth() ? "NEEDS_REAUTH" : "CONNECTED",
+                        source.description(), source.capabilities(), source.docsUrl(),
+                        true, true, status.lastSyncedAt(), status.needsReauth()))
+                .orElse(source);
     }
 
     private BigDecimal sum(List<HoldingResponse> items, java.util.function.Function<HoldingResponse, BigDecimal> getter) {

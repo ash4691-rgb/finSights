@@ -17,7 +17,7 @@ import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/Categorie
 import { HoldingsView, HoldingModal, HoldingDrawer } from './pages/HoldingsView'
 import { TransactionsView, ImportModal } from './pages/TransactionsView'
 import { InsightsView } from './pages/InsightsView'
-import { BrokersView } from './pages/BrokersView'
+import { BrokersView, type BrokerNotice } from './pages/BrokersView'
 import { SettingsView } from './pages/SettingsView'
 
 // Which independently-fetched piece of the bootstrap failed, keyed by name, with its message —
@@ -85,8 +85,23 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   // Reopens PersonaOnboarding from Settings' "Start now" — separate from showPersonaOnboarding
   // so it never re-triggers the tour-nudge chain that follows the first-login flow.
   const [showPersonaOnboardingFromSettings, setShowPersonaOnboardingFromSettings] = useState(false)
+  const [brokerNotice, setBrokerNotice] = useState<BrokerNotice | null>(null)
   const bootstrapped = useRef(false)
   const goku = useGoku()
+
+  // Lands here right after the Kite OAuth redirect back from BrokerController#callback
+  // (?broker=kite&brokerStatus=connected|failed) — surface it as a banner on the Brokers page,
+  // then strip the query string so refreshing/sharing the URL doesn't replay the same notice.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const broker = params.get('broker')
+    const status = params.get('brokerStatus')
+    if (broker && (status === 'connected' || status === 'failed')) {
+      setBrokerNotice({ broker, status })
+      setPage('brokers')
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }, [])
 
   // Leaving a page always drops out of layout-edit mode.
   useEffect(() => { setLayoutEditing(false) }, [page])
@@ -361,7 +376,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       {page === 'insights' && (settings && dashboard
         ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />
         : <SectionError what="insights" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
-      {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} />}
+      {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} notice={brokerNotice} onDismissNotice={() => setBrokerNotice(null)} />}
       {page === 'settings' && (settings
         ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme}
             persona={persona} onStartOnboarding={() => setShowPersonaOnboardingFromSettings(true)} onReassessRisk={() => setShowRiskAssessment(true)}
