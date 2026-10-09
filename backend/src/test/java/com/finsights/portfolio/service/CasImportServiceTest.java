@@ -209,7 +209,9 @@ class CasImportServiceTest {
         server.createContext("/", exchange -> {
             byte[] body = "{\"content\": []}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
+            try (var out = exchange.getResponseBody()) {
+                out.write(body);
+            }
             exchange.close();
         });
         server.start();
@@ -226,7 +228,9 @@ class CasImportServiceTest {
         server.createContext("/", exchange -> {
             byte[] body = "{\"error\": \"nope\"}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(500, body.length);
-            exchange.getResponseBody().write(body);
+            try (var out = exchange.getResponseBody()) {
+                out.write(body);
+            }
             exchange.close();
         });
         server.start();
