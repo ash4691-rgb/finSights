@@ -14,7 +14,7 @@ import { GokuAdminButton, GokuAdminModal, GokuLauncher, GokuPanel, useGoku } fro
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme, Persona } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
-import { HoldingsView, HoldingModal, HoldingDrawer } from './pages/HoldingsView'
+import { HoldingsView, HoldingModal, HoldingDrawer, CasImportModal } from './pages/HoldingsView'
 import { TransactionsView, ImportModal } from './pages/TransactionsView'
 import { InsightsView } from './pages/InsightsView'
 import { BrokersView } from './pages/BrokersView'
@@ -66,6 +66,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [countries, setCountries] = useState<Country[]>([])
   const [dataVersion, setDataVersion] = useState(0)
   const [showImport, setShowImport] = useState(false)
+  const [showCasImport, setShowCasImport] = useState(false)
   const [exportingTransactions, setExportingTransactions] = useState(false)
   const [layoutEditing, setLayoutEditing] = useState(false)
   const [layoutNonce, setLayoutNonce] = useState(0)
@@ -323,7 +324,10 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
             <button className="tool-action" onClick={() => void exportTransactionsCsv()} disabled={exportingTransactions}>{exportingTransactions ? 'Exporting…' : '↓ Export'}</button>
           </>}
           {page === 'categories' && <button className="tool-action" onClick={exportCategoriesCsv} disabled={!categories.length}>↓ Export</button>}
-          {page === 'holdings' && <button className="tool-action" onClick={exportHoldingsCsv} disabled={!holdings.length}>↓ Export</button>}
+          {page === 'holdings' && <>
+            <button className="tool-action" onClick={() => setShowCasImport(true)} disabled={!categories.length} title={categories.length ? '' : 'Add a category first'}>↑ Import from CAS</button>
+            <button className="tool-action" onClick={exportHoldingsCsv} disabled={!holdings.length}>↓ Export</button>
+          </>}
           {canEditLayout && <>
             {layoutEditing && <LayoutMenu
               onCreatePanel={(title: string) => { createPanel(page, title); setLayoutNonce(n => n + 1) }}
@@ -377,6 +381,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={mergeSavedHolding} onGoToTransactions={() => setPage('transactions')} />}
     {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} onHoldingUpdated={applyHoldingUpdate} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
+    {showCasImport && <CasImportModal categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => setShowCasImport(false)} onSaved={mergeSavedHolding} />}
     {showLayoutOnboarding && <CustomLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}

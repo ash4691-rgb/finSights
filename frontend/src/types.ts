@@ -97,6 +97,11 @@ export type Source = { key: string; name: string; status: string; description: s
 export type Brokers = { brokers: BrokerGroup[]; sources: Source[] }
 export type ValuationDetail = { method: ValuationMethod; investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; steps: string[]; projectedMaturityDate?: string; projectedMaturityValue?: number }
 export type ImportResult = { created: number; updated: number; skipped: number; errors: { row: number; message: string }[] }
+// One equity/ETF position found in an uploaded CAS statement — a draft, not a saved holding. The
+// Holdings page pre-fills the ordinary Add Holding form with this and the user reviews/edits/saves
+// it like any manual entry; nothing here is written to the database on its own.
+export type ExtractedHolding = { instrumentName: string; isin: string; quantity: number; averageCostPerUnit?: number; depository?: string }
+export type CasExtractionResult = { holdings: ExtractedHolding[]; statementDate?: string; warnings: string[] }
 export type FxRates = { base: string; asOf: string; ratesToBase: Record<string, number>; note: string }
 export type Theme = 'light' | 'dark'
 export type GokuConfig = { available: boolean; admin: boolean; reason?: string }
