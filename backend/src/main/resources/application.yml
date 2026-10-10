@@ -62,6 +62,23 @@ app:
   resend:
     api-key: ${RESEND_API_KEY:}
     from: ${RESEND_FROM_ADDRESS:FinSights <onboarding@resend.dev>}
+  # Zerodha Kite Connect — the broker-sync credentials/connect-flow side of issue #90. Blank
+  # api-key/api-secret (the default) is a valid, supported state: KiteConnectClient.isConfigured()
+  # checks for that itself and the Brokers page's Connect button/daily sync job both no-op rather
+  # than error, same shape as Resend's blank-api-key default above. KITE_REDIRECT_URL must match
+  # whatever's registered in the Kite Developer Console exactly (scheme+host+path), e.g.
+  # https://your-backend.onrender.com/api/brokers/kite/callback.
+  #
+  # BROKER_TOKEN_ENCRYPTION_KEY (a separate, required-for-this-feature secret) is read directly
+  # via System.getenv in BrokerTokenEncryption, not through a Spring placeholder here — see that
+  # class's doc comment for why. It encrypts every stored broker access/refresh token at rest;
+  # losing or rotating it makes every existing BrokerConnection row undecryptable (the user would
+  # need to reconnect), so treat a change to it the same as rotating GOOGLE_CLIENT_SECRET: real,
+  # but not something to do casually.
+  kite:
+    api-key: ${KITE_API_KEY:}
+    api-secret: ${KITE_API_SECRET:}
+    redirect-url: ${KITE_REDIRECT_URL:}
   goku:
     enabled: ${GOKU_ENABLED:true}
     # Who can chat with Goku is database-backed (see GokuAllowlistService) and managed from the

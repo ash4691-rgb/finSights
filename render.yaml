@@ -37,3 +37,15 @@ services:
       - key: RESEND_API_KEY
         sync: false   # from resend.com — Render's free tier blocks outbound SMTP, so account-
                        # activation email goes through Resend's HTTP API instead of Gmail SMTP
+      - key: KITE_API_KEY
+        sync: false   # from the Kite Connect developer console — leave unset and broker-sync
+                       # (issue #90) just stays disabled, same as RESEND_API_KEY blank
+      - key: KITE_API_SECRET
+        sync: false
+      - key: KITE_REDIRECT_URL
+        sync: false   # must exactly match the redirect URL registered in the Kite developer
+                       # console, e.g. https://your-backend.onrender.com/api/brokers/kite/callback
+      - key: BROKER_TOKEN_ENCRYPTION_KEY
+        sync: false   # encrypts every stored Kite access/refresh token at rest — generate a long
+                       # random value once (e.g. `openssl rand -base64 32`) and never rotate it
+                       # without expecting every existing connection to need reconnecting

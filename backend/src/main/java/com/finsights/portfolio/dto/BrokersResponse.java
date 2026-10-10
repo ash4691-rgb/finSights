@@ -13,6 +13,10 @@ public record BrokersResponse(List<BrokerGroup> brokers, List<Source> sources) {
 
     public record Source(
             String key, String name, String status, String description,
-            List<String> capabilities, String docsUrl
+            List<String> capabilities, String docsUrl,
+            // Only meaningful for a source with a real connect flow (Kite in v1) — false/null for
+            // everything still PLANNED. BrokerService fills these in per-request from the current
+            // user's own BrokerConnection; the static source list itself never carries them.
+            boolean connectable, boolean connected, Instant lastSyncedAt, boolean needsReauth
     ) { }
 }
