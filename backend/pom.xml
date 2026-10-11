@@ -51,6 +51,14 @@
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- CasImportService uses this to decrypt a password-protected CAS PDF before handing it
+             to Claude — Claude's own PDF support rejects encrypted documents outright. Not used
+             for any text extraction/parsing; that's still entirely Claude's job. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.7</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

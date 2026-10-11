@@ -11,11 +11,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.CasExtractionResponse;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
+import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,7 +47,7 @@ class CasImportServiceTest {
     @Test
     void rejectsAnOversizedUploadWithoutCallingTheModelOrConsumingTheDailyLimit() {
         byte[] tooBig = new byte[CasImportService.MAX_PDF_BYTES + 1];
-        assertThatThrownBy(() -> service.extract(tooBig))
+        assertThatThrownBy(() -> service.extract(tooBig, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("larger than");
         // Rejected before it ever reaches the user/rate-limit lookup — an oversized file is not
@@ -50,20 +57,82 @@ class CasImportServiceTest {
 
     @Test
     void rejectsAnEmptyUpload() {
-        assertThatThrownBy(() -> service.extract(new byte[0]))
+        assertThatThrownBy(() -> service.extract(new byte[0], null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("No file");
     }
 
     @Test
-    void stopsAtTheDailyRateLimitBeforeCallingTheModel() {
+    void stopsAtTheDailyRateLimitBeforeCallingTheModel() throws Exception {
         UserAccount user = new UserAccount("demo@finsights.local", "Demo");
         when(currentUser.currentUser()).thenReturn(user);
         when(rateLimiter.tryConsume(any())).thenReturn(false);
 
-        assertThatThrownBy(() -> service.extract(new byte[] { 1, 2, 3 }))
+        // Must be a PDF that actually decrypts cleanly, so the rate-limit check — not a decrypt
+        // failure — is what this test is actually exercising.
+        assertThatThrownBy(() -> service.extract(unencryptedPdf(), null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("limit");
+    }
+
+    @Test
+    void passesThroughAPdfThatNeedsNoPassword() throws Exception {
+        byte[] decrypted = CasImportService.decryptIfNeeded(unencryptedPdf(), null);
+        assertThat(Loader.loadPDF(decrypted).isEncrypted()).isFalse();
+    }
+
+    @Test
+    void asksForAPasswordWhenTheStatementIsLockedAndNoneWasGiven() throws Exception {
+        byte[] locked = encryptedPdf("ABCDE1234F");
+        assertThatThrownBy(() -> CasImportService.decryptIfNeeded(locked, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("password-protected");
+        assertThatThrownBy(() -> CasImportService.decryptIfNeeded(locked, ""))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("password-protected");
+    }
+
+    @Test
+    void rejectsTheWrongPasswordWithADistinctMessage() throws Exception {
+        byte[] locked = encryptedPdf("ABCDE1234F");
+        assertThatThrownBy(() -> CasImportService.decryptIfNeeded(locked, "WRONGPAN1X"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("didn't work");
+    }
+
+    @Test
+    void decryptsWithTheCorrectPassword() throws Exception {
+        byte[] locked = encryptedPdf("ABCDE1234F");
+        byte[] decrypted = CasImportService.decryptIfNeeded(locked, "ABCDE1234F");
+        assertThat(Loader.loadPDF(decrypted).isEncrypted()).isFalse();
+    }
+
+    @Test
+    void rejectsSomethingThatIsNotAPdfAtAll() {
+        assertThatThrownBy(() -> CasImportService.decryptIfNeeded(new byte[] { 1, 2, 3 }, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Couldn't open");
+    }
+
+    private static byte[] unencryptedPdf() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage());
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            doc.save(out);
+            return out.toByteArray();
+        }
+    }
+
+    private static byte[] encryptedPdf(String password) throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage());
+            StandardProtectionPolicy policy = new StandardProtectionPolicy(password, password, new AccessPermission());
+            policy.setEncryptionKeyLength(128);
+            doc.protect(policy);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            doc.save(out);
+            return out.toByteArray();
+        }
     }
 
     @Test
@@ -140,7 +209,9 @@ class CasImportServiceTest {
         server.createContext("/", exchange -> {
             byte[] body = "{\"content\": []}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
+            try (var out = exchange.getResponseBody()) {
+                out.write(body);
+            }
             exchange.close();
         });
         server.start();
@@ -157,7 +228,9 @@ class CasImportServiceTest {
         server.createContext("/", exchange -> {
             byte[] body = "{\"error\": \"nope\"}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(500, body.length);
-            exchange.getResponseBody().write(body);
+            try (var out = exchange.getResponseBody()) {
+                out.write(body);
+            }
             exchange.close();
         });
         server.start();
