@@ -2,6 +2,8 @@ package com.finsights.portfolio.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finsights.portfolio.domain.BrokerConnection;
+import com.finsights.portfolio.dto.BrokerSnapshot;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -12,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -29,7 +32,7 @@ import org.springframework.stereotype.Service;
  * dead or unreachable Kite API never propagates an exception to a caller.
  */
 @Service
-public class KiteConnectClient {
+public class KiteConnectClient implements BrokerDataClient {
 
     private static final Logger log = LoggerFactory.getLogger(KiteConnectClient.class);
     private static final String LOGIN_URL = "https://kite.zerodha.com/connect/login";
@@ -59,6 +62,20 @@ public class KiteConnectClient {
      *  the same way SymbolSearchInput's Google-sign-in button checks googleEnabled. */
     public boolean isConfigured() {
         return !blank(apiKey) && !blank(apiSecret) && !blank(redirectUrl);
+    }
+
+    @Override
+    public String brokerKey() { return "kite"; }
+
+    @Override
+    public Optional<List<BrokerSnapshot>> fetchSnapshots(BrokerConnection connection) {
+        return fetchHoldings(connection.getAccessToken()).map(holdings -> {
+            Instant now = Instant.now();
+            return holdings.stream()
+                    .map(h -> new BrokerSnapshot("kite:" + h.instrumentToken(), h.quantity(),
+                            h.lastPrice() != null ? h.lastPrice().multiply(h.quantity()) : null, now))
+                    .toList();
+        });
     }
 
     /** The URL to send the browser to for Kite's own login page — the first step of Kite Connect

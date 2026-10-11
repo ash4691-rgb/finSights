@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -51,7 +53,18 @@ public class BrokerController {
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(redirect)).build();
     }
 
+    /** The paste-your-own-credentials connect flow (CoinSwitch, INDstocks) — a plain JSON form
+     *  submission, not a browser redirect, so unlike {@link #callback} a failed validation
+     *  surfaces as a normal 4xx with a message the form can show directly. */
+    @PostMapping("/{key}/connect-with-key")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void connectWithKey(@PathVariable String key, @RequestBody ConnectWithKeyRequest body) {
+        connections.connectWithCredentials(key, body.apiKey(), body.apiSecret());
+    }
+
     @DeleteMapping("/{key}/connect")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void disconnect(@PathVariable String key) { connections.disconnect(key); }
+
+    public record ConnectWithKeyRequest(String apiKey, String apiSecret) { }
 }

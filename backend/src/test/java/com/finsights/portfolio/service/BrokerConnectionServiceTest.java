@@ -29,12 +29,14 @@ class BrokerConnectionServiceTest {
     @Mock BrokerConnectionRepository connections;
     @Mock CurrentUserService currentUser;
     @Mock KiteConnectClient kite;
+    @Mock CoinSwitchClient coinSwitch;
+    @Mock IndmoneyClient indmoney;
     private BrokerConnectionService service;
     private UserAccount user;
 
     @BeforeEach
     void setUp() {
-        service = new BrokerConnectionService(connections, currentUser, kite);
+        service = new BrokerConnectionService(connections, currentUser, kite, coinSwitch, indmoney);
         user = new UserAccount("demo@finsights.local", "Demo");
     }
 
@@ -48,10 +50,11 @@ class BrokerConnectionServiceTest {
     }
 
     @Test
-    void onlyKiteIsConnectableInV1() {
+    void kiteCoinswitchAndIndmoneyAreConnectableGrowwAndEpfoAreNot() {
         assertThat(service.isConnectable("kite")).isTrue();
+        assertThat(service.isConnectable("coinswitch")).isTrue();
+        assertThat(service.isConnectable("indmoney")).isTrue();
         assertThat(service.isConnectable("groww")).isFalse();
-        assertThat(service.isConnectable("indmoney")).isFalse();
         assertThat(service.isConnectable("epfo")).isFalse();
     }
 
@@ -60,6 +63,15 @@ class BrokerConnectionServiceTest {
         assertThatThrownBy(() -> service.beginConnect("groww"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Unsupported");
+    }
+
+    @Test
+    void beginConnectRejectsCoinswitchSinceItUsesThePasteKeyFlowInstead() {
+        // coinswitch IS connectable, but not via Kite's OAuth-redirect flow — isConnectable()
+        // alone isn't the right gate for beginConnect()/completeConnect(), only requireKite() is.
+        assertThatThrownBy(() -> service.beginConnect("coinswitch"))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(kite, never()).loginUrl();
     }
 
     @Test
@@ -162,6 +174,122 @@ class BrokerConnectionServiceTest {
         assertThatThrownBy(() -> service.completeConnect("groww", "token"))
                 .isInstanceOf(ResponseStatusException.class);
         verify(kite, never()).exchangeRequestToken(any());
+    }
+
+    @Test
+    void connectWithCredentialsRejectsKiteSinceItUsesTheRedirectFlowInstead() {
+        assertThatThrownBy(() -> service.connectWithCredentials("kite", "key", "secret"))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(coinSwitch, never()).fetchPortfolio(any(), any());
+    }
+
+    @Test
+    void connectWithCredentialsRejectsAnUnsupportedBroker() {
+        assertThatThrownBy(() -> service.connectWithCredentials("groww", "key", "secret"))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void connectWithCredentialsFailsClearlyWhenTheEncryptionKeyIsntConfigured() {
+        // Real (unmocked) BrokerTokenEncryption.isConfigured() — false in this test JVM.
+        assertThatThrownBy(() -> service.connectWithCredentials("coinswitch", "key", "secret"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("isn't configured");
+        verify(coinSwitch, never()).fetchPortfolio(any(), any());
+    }
+
+    @Test
+    void connectWithCredentialsRejectsABlankApiKey() {
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            assertThatThrownBy(() -> service.connectWithCredentials("coinswitch", "", "secret"))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("API key");
+        }
+    }
+
+    @Test
+    void connectWithCredentialsRejectsCoinswitchWithoutAnApiSecret() {
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            assertThatThrownBy(() -> service.connectWithCredentials("coinswitch", "key", null))
+                    .isInstanceOf(ResponseStatusException.class);
+        }
+        verify(coinSwitch, never()).fetchPortfolio(any(), any());
+    }
+
+    @Test
+    void connectWithCredentialsRejectsCoinswitchCredentialsThatFailLiveValidation() {
+        when(coinSwitch.fetchPortfolio("key", "secret")).thenReturn(Optional.empty());
+
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            assertThatThrownBy(() -> service.connectWithCredentials("coinswitch", "key", "secret"))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("Couldn't verify");
+        }
+        verify(connections, never()).save(any());
+    }
+
+    @Test
+    void connectWithCredentialsStoresAValidatedCoinswitchConnectionWithBothKeyAndSecret() {
+        when(coinSwitch.fetchPortfolio("key", "secret")).thenReturn(Optional.of(java.util.List.of()));
+        when(currentUser.currentUser()).thenReturn(user);
+        when(connections.findByUser_IdAndBrokerKey(user.getId(), "coinswitch")).thenReturn(Optional.empty());
+
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            service.connectWithCredentials("coinswitch", "key", "secret");
+        }
+
+        var captor = org.mockito.ArgumentCaptor.forClass(BrokerConnection.class);
+        verify(connections).save(captor.capture());
+        assertThat(captor.getValue().getAccessToken()).isEqualTo("key");
+        assertThat(captor.getValue().getRefreshToken()).isEqualTo("secret");
+        assertThat(captor.getValue().getBrokerKey()).isEqualTo("coinswitch");
+        assertThat(captor.getValue().getUser()).isEqualTo(user);
+    }
+
+    @Test
+    void connectWithCredentialsRejectsIndmoneyTokenThatFailsLiveValidation() {
+        when(indmoney.fetchHoldings("the-token")).thenReturn(Optional.empty());
+
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            assertThatThrownBy(() -> service.connectWithCredentials("indmoney", "the-token", null))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("Couldn't verify");
+        }
+        verify(connections, never()).save(any());
+    }
+
+    @Test
+    void connectWithCredentialsStoresAValidatedIndmoneyConnectionWithNoSecretNeeded() {
+        when(indmoney.fetchHoldings("the-token")).thenReturn(Optional.of(java.util.List.of()));
+        when(currentUser.currentUser()).thenReturn(user);
+        when(connections.findByUser_IdAndBrokerKey(user.getId(), "indmoney")).thenReturn(Optional.empty());
+
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            service.connectWithCredentials("indmoney", "the-token", null);
+        }
+
+        var captor = org.mockito.ArgumentCaptor.forClass(BrokerConnection.class);
+        verify(connections).save(captor.capture());
+        assertThat(captor.getValue().getAccessToken()).isEqualTo("the-token");
+        assertThat(captor.getValue().getRefreshToken()).isNull();
+    }
+
+    @Test
+    void connectWithCredentialsReplacesAnExistingConnectionRatherThanDuplicatingIt() {
+        when(indmoney.fetchHoldings("new-token")).thenReturn(Optional.of(java.util.List.of()));
+        when(currentUser.currentUser()).thenReturn(user);
+        BrokerConnection existing = new BrokerConnection();
+        existing.setAccessToken("old-token");
+        when(connections.findByUser_IdAndBrokerKey(user.getId(), "indmoney")).thenReturn(Optional.of(existing));
+
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            service.connectWithCredentials("indmoney", "new-token", null);
+        }
+
+        var captor = org.mockito.ArgumentCaptor.forClass(BrokerConnection.class);
+        verify(connections).save(captor.capture());
+        assertThat(captor.getValue()).isSameAs(existing); // same row updated, not a second one inserted
+        assertThat(captor.getValue().getAccessToken()).isEqualTo("new-token");
     }
 
     @Test

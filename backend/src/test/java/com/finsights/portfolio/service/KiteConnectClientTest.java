@@ -2,9 +2,24 @@ package com.finsights.portfolio.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.finsights.portfolio.domain.BrokerConnection;
 import org.junit.jupiter.api.Test;
 
 class KiteConnectClientTest {
+
+    @Test
+    void brokerKeyIsKite() {
+        assertThat(new KiteConnectClient("key", "secret", "https://x/callback").brokerKey()).isEqualTo("kite");
+    }
+
+    @Test
+    void fetchSnapshotsDegradesToEmptyWithoutNetwork() {
+        KiteConnectClient client = new KiteConnectClient("key", "secret", "https://x/callback");
+        BrokerConnection connection = new BrokerConnection();
+        connection.setAccessToken("some-access-token");
+
+        assertThat(client.fetchSnapshots(connection)).isEmpty();
+    }
 
     @Test
     void isConfiguredRequiresAllThreeOfApiKeyApiSecretAndRedirectUrl() {

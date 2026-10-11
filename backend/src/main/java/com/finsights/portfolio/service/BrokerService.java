@@ -19,15 +19,21 @@ public class BrokerService {
 
     private static final List<Source> SOURCES = List.of(
             new Source("kite", "Zerodha Kite", "COMING_SOON",
-                    "Official Kite Connect API supports holdings, positions, and mutual-fund data. Sync arrives in Phase 3.",
+                    "Official Kite Connect API supports holdings, positions, and mutual-fund data.",
                     List.of("Equity holdings", "Positions", "Mutual funds"),
-                    "https://kite.trade/docs/connect/v3/portfolio/", true, false, null, false),
+                    "https://kite.trade/docs/connect/v3/portfolio/", true, false, null, false, "REDIRECT"),
+            new Source("coinswitch", "CoinSwitch", "COMING_SOON",
+                    "Paste your own CoinSwitch PRO API key and secret (Profile → API Trading) — no developer account needed.",
+                    List.of("Crypto holdings"), "https://coinswitch.co/switch/crypto/api-trading-setup-guide/",
+                    true, false, null, false, "API_KEY_SECRET"),
+            new Source("indmoney", "INDmoney", "COMING_SOON",
+                    "Paste your own INDstocks API token (API Trading dashboard) — no developer account needed.",
+                    List.of("Stocks", "US stocks", "Mutual funds"), "https://www.indstocks.com/features/api-trading",
+                    true, false, null, false, "API_KEY_ONLY"),
             new Source("groww", "Groww", "PLANNED",
-                    "Pending confirmation of a supported read API.", List.of("Stocks", "Mutual funds"), null, false, false, null, false),
-            new Source("indmoney", "INDmoney", "PLANNED",
-                    "Pending confirmation of a supported read API.", List.of("Stocks", "US stocks", "Net worth"), null, false, false, null, false),
+                    "Pending confirmation of a supported read API.", List.of("Stocks", "Mutual funds"), null, false, false, null, false, null),
             new Source("epfo", "EPFO", "PLANNED",
-                    "Manual passbook entry for now; no public API.", List.of("Provident fund balance"), null, false, false, null, false));
+                    "Manual passbook entry for now; no public API.", List.of("Provident fund balance"), null, false, false, null, false, null));
 
     private final HoldingService holdings;
     private final BrokerConnectionService connections;
@@ -78,7 +84,7 @@ public class BrokerService {
                 .map(status -> new Source(source.key(), source.name(),
                         status.needsReauth() ? "NEEDS_REAUTH" : "CONNECTED",
                         source.description(), source.capabilities(), source.docsUrl(),
-                        true, true, status.lastSyncedAt(), status.needsReauth()))
+                        true, true, status.lastSyncedAt(), status.needsReauth(), source.connectFlow()))
                 .orElse(source);
     }
 
