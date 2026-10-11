@@ -18,15 +18,15 @@ class CasImportControllerTest {
     @Mock CasImportService casImport;
 
     @Test
-    void delegatesTheUploadedPdfToTheServiceAndReturnsItsResponse() {
+    void delegatesTheUploadedPdfAndPasswordToTheServiceAndReturnsItsResponse() {
         byte[] pdf = { 1, 2, 3 };
         CasExtractionResponse expected = new CasExtractionResponse(List.of(), "2026-09-30", List.of());
-        when(casImport.extract(pdf)).thenReturn(expected);
+        when(casImport.extract(pdf, "ABCDE1234F")).thenReturn(expected);
 
         CasImportController controller = new CasImportController(casImport);
-        CasExtractionResponse actual = controller.importCas(pdf);
+        CasExtractionResponse actual = controller.importCas(pdf, "ABCDE1234F");
 
         assertThat(actual).isSameAs(expected);
-        verify(casImport).extract(pdf);
+        verify(casImport).extract(pdf, "ABCDE1234F");
     }
 }

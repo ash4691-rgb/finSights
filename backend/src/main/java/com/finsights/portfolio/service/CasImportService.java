@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.finsights.portfolio.dto.CasExtractionResponse;
 import com.finsights.portfolio.dto.ExtractedHolding;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -15,6 +17,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,7 +31,10 @@ import org.springframework.web.server.ResponseStatusException;
  * Turns an uploaded CDSL/NSDL Consolidated Account Statement (CAS) PDF into a list of candidate
  * equity/ETF holdings, via Claude's native PDF support (no local text-extraction library needed —
  * the file is sent to the Messages API as a document content block, same HTTP-calling style as
- * {@link GokuChatService}).
+ * {@link GokuChatService}). CAS statements are almost always password-protected (typically the
+ * holder's PAN), and Claude's PDF support rejects encrypted documents outright — so the upload is
+ * decrypted locally with PDFBox first (see {@link #decryptIfNeeded}); that's the only thing PDFBox
+ * is used for here, not parsing.
  *
  * <p><b>Nothing here writes to the database.</b> This is deliberate, not a missing feature: the
  * whole point of the product being "manual-first" is that an auto-populated holding is never
@@ -87,7 +95,7 @@ public class CasImportService {
         this.currentUser = currentUser;
     }
 
-    public CasExtractionResponse extract(byte[] pdf) {
+    public CasExtractionResponse extract(byte[] pdf, String password) {
         if (pdf == null || pdf.length == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No file was uploaded");
         }
@@ -95,15 +103,45 @@ public class CasImportService {
             throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
                     "That file is larger than " + (MAX_PDF_BYTES / (1024 * 1024)) + "MB — is it the right statement?");
         }
+        // Decrypt before touching the daily quota — a wrong/missing password costs nothing and
+        // shouldn't burn a user's upload allowance for a request that was never going to reach
+        // the model.
+        byte[] decrypted = decryptIfNeeded(pdf, password);
+
         String userId = currentUser.currentUser().getId();
         if (!rateLimiter.tryConsume(userId)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "You've hit today's statement-upload limit — try again tomorrow.");
         }
 
-        ObjectNode body = buildRequestBody(json, model, Base64.getEncoder().encodeToString(pdf));
+        ObjectNode body = buildRequestBody(json, model, Base64.getEncoder().encodeToString(decrypted));
         JsonNode response = callClaude(body);
         return parseExtraction(json, response);
+    }
+
+    /**
+     * Claude's PDF support rejects any encrypted document outright, and a CDSL/NSDL CAS is
+     * essentially always password-protected (usually the holder's PAN) — so this strips that
+     * protection locally first. A PDF with no password at all passes through unchanged. Package-
+     * private and side-effect-free (beyond reading the input) so it's unit-testable without a
+     * network call.
+     */
+    static byte[] decryptIfNeeded(byte[] pdf, String password) {
+        try (PDDocument document = Loader.loadPDF(pdf, password == null ? "" : password)) {
+            if (!document.isEncrypted()) return pdf;
+            document.setAllSecurityToBeRemoved(true);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            document.save(out);
+            return out.toByteArray();
+        } catch (InvalidPasswordException e) {
+            if (password == null || password.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "This statement is password-protected — enter the password (usually your PAN in capital letters) and try again.");
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "That password didn't work — check it and try again.");
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Couldn't open that file — make sure it's an unmodified PDF and try again.");
+        }
     }
 
     /** Package-private and pure (no network) so it can be unit-tested directly. */
@@ -253,10 +291,12 @@ public class CasImportService {
                     .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                // Deliberately not logging the response body here (unlike GokuChatService) — this
-                // endpoint handles financial statements, and an error payload could echo back
-                // document content we don't want sitting in application logs.
-                log.warn("Anthropic API returned {} for a CAS extraction request", response.statusCode());
+                // Anthropic's error responses are pure request-validation metadata (an
+                // invalid_request_error's type/message describe what was wrong with the request
+                // we sent — model, schema, size/page limits — never an echo of the document's
+                // content), so logging the body here is safe and, unlike a bare status code, is
+                // actually debuggable.
+                log.warn("Anthropic API returned {} for a CAS extraction request: {}", response.statusCode(), response.body());
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Couldn't read that statement right now — try again shortly.");
             }
             return json.readTree(response.body());

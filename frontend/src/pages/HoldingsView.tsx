@@ -471,19 +471,24 @@ export function CasImportModal({ categories, holdings, displayCurrency, onClose,
 }) {
   useEscToClose(onClose)
   const [busy, setBusy] = useState(false)
-  const [fileName, setFileName] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [result, setResult] = useState<CasExtractionResult | null>(null)
   const [reviewed, setReviewed] = useState<Set<number>>(new Set())
   const [reviewingIndex, setReviewingIndex] = useState<number | null>(null)
 
-  const upload = async (file: File) => {
-    setBusy(true); setError(''); setResult(null); setReviewed(new Set()); setFileName(file.name)
+  // Takes the password as an argument rather than closing over state — a "retry with this
+  // password" click needs to send what was *just* typed, before React has necessarily re-rendered
+  // with it, and reusing the already-picked file this way means a wrong password doesn't force
+  // the user back to their file browser to pick the same statement again.
+  const upload = async (pickedFile: File, pdfPassword: string) => {
+    setBusy(true); setError(''); setResult(null); setReviewed(new Set()); setFile(pickedFile)
     try {
-      const body = await file.arrayBuffer()
+      const body = await pickedFile.arrayBuffer()
       const response = await fetch(`${API_URL}/api/holdings/import/cas`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/pdf', 'X-Demo-User': 'demo@finsights.local' }, body,
+        headers: { 'Content-Type': 'application/pdf', 'X-Demo-User': 'demo@finsights.local', ...(pdfPassword.trim() ? { 'X-Document-Password': pdfPassword.trim() } : {}) }, body,
       })
       const parsed = await response.json()
       if (!response.ok) throw new Error(parsed.message ?? 'Could not read that statement')
@@ -498,15 +503,19 @@ export function CasImportModal({ categories, holdings, displayCurrency, onClose,
     <div className="modal-header"><div><p className="eyebrow">BULK IMPORT</p><h2>Import from a CAS statement</h2></div><button className="close" onClick={onClose}>×</button></div>
     <p className="hint">Upload your CDSL or NSDL Consolidated Account Statement (PDF). Nothing is saved automatically — you'll review and confirm each holding found, the same as adding one by hand.</p>
 
+    <Field label="Statement password"><input type="password" autoComplete="off" value={password} disabled={busy} onChange={e => setPassword(e.target.value)} placeholder="Usually your PAN, e.g. ABCDE1234F — leave blank if it isn't locked" /></Field>
+
     <div className="import-upload">
-      <label className="outline file-label">{busy ? 'Reading…' : fileName ? 'Choose a different file' : '↑ Choose a CAS PDF'}
+      <label className="outline file-label">{busy ? 'Reading…' : file ? 'Choose a different file' : '↑ Choose a CAS PDF'}
         <input type="file" accept=".pdf,application/pdf" hidden disabled={busy}
-          onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = '' }} />
+          onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f, password); e.target.value = '' }} />
       </label>
-      {fileName && <span className="hint">{fileName}</span>}
+      {file && <span className="hint">{file.name}</span>}
     </div>
 
-    {error && <p className="form-error">{error}</p>}
+    {error && <p className="form-error">{error}
+      {file && /password/i.test(error) && <> — update it above, then <button type="button" className="text-link" disabled={busy} onClick={() => void upload(file, password)}>try this file again</button>.</>}
+    </p>}
 
     {result && <>
       {result.statementDate && <p className="hint">Statement as of {result.statementDate}.</p>}
