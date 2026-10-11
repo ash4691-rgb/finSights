@@ -20,7 +20,7 @@ class CasImportControllerTest {
     @Test
     void delegatesTheUploadedPdfAndPasswordToTheServiceAndReturnsItsResponse() {
         byte[] pdf = { 1, 2, 3 };
-        CasExtractionResponse expected = new CasExtractionResponse(List.of(), "2026-09-30", List.of());
+        CasExtractionResponse expected = new CasExtractionResponse(List.of(), List.of(), "2026-09-30", List.of());
         when(casImport.extract(pdf, "ABCDE1234F")).thenReturn(expected);
 
         CasImportController controller = new CasImportController(casImport);

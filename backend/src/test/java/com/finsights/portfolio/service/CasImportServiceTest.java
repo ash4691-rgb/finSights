@@ -8,8 +8,11 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.CasExtractionResponse;
+import com.finsights.portfolio.dto.ExtractedHolding;
+import com.finsights.portfolio.dto.SymbolSuggestion;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -36,12 +40,14 @@ class CasImportServiceTest {
 
     @Mock CasImportRateLimiter rateLimiter;
     @Mock CurrentUserService currentUser;
+    @Mock MarketDataService marketData;
+    @Mock com.finsights.portfolio.repository.HoldingRepository holdings;
     private final ObjectMapper json = new ObjectMapper();
     private CasImportService service;
 
     @BeforeEach
     void setUp() {
-        service = new CasImportService(rateLimiter, currentUser);
+        service = new CasImportService(rateLimiter, currentUser, marketData, holdings);
     }
 
     @Test
@@ -133,6 +139,114 @@ class CasImportServiceTest {
             doc.save(out);
             return out.toByteArray();
         }
+    }
+
+    @Test
+    void namesLikelyMatchToleratesSuffixAndOrderingDifferences() {
+        assertThat(CasImportService.namesLikelyMatch("Reliance Industries Limited", "Reliance Industries Ltd")).isTrue();
+        assertThat(CasImportService.namesLikelyMatch("TATA CONSULTANCY SERVICES LTD", "Tata Consultancy Services Limited")).isTrue();
+        assertThat(CasImportService.namesLikelyMatch("HDFC Bank Limited", "HDFC Bank Ltd.")).isTrue();
+    }
+
+    @Test
+    void namesLikelyMatchRejectsUnrelatedOrBarelyOverlappingNames() {
+        assertThat(CasImportService.namesLikelyMatch("Reliance Industries Limited", "Reliance Power Limited")).isFalse();
+        assertThat(CasImportService.namesLikelyMatch("Infosys Limited", "Wipro Limited")).isFalse();
+        assertThat(CasImportService.namesLikelyMatch("", "Reliance Industries")).isFalse();
+        assertThat(CasImportService.namesLikelyMatch(null, "Reliance Industries")).isFalse();
+    }
+
+    @Test
+    void resolveTickerPicksTheFirstIndianExchangeHitWithAMatchingName() {
+        when(marketData.search("Reliance Industries")).thenReturn(List.of(
+                new SymbolSuggestion("RELI.L", "Reliance Industries Limited", "LSE", "Equity"),
+                new SymbolSuggestion("RELIANCE.NS", "Reliance Industries Limited", "NSE", "Equity"),
+                new SymbolSuggestion("RELIANCE.BO", "Reliance Industries Limited", "BSE", "Equity")));
+
+        assertThat(service.resolveTicker("Reliance Industries")).isEqualTo("RELIANCE.NS");
+    }
+
+    @Test
+    void resolveTickerSkipsAnIndianHitWhoseNameDoesNotActuallyMatch() {
+        when(marketData.search("Totally Different Co")).thenReturn(List.of(
+                new SymbolSuggestion("RELIANCE.NS", "Reliance Industries Limited", "NSE", "Equity")));
+
+        assertThat(service.resolveTicker("Totally Different Co")).isNull();
+    }
+
+    @Test
+    void resolveTickerReturnsNullWhenSearchFailsOrFindsNothingIndian() {
+        when(marketData.search("Foreign Only Co")).thenReturn(List.of(
+                new SymbolSuggestion("FOCO", "Foreign Only Co", "NASDAQ", "Equity")));
+        assertThat(service.resolveTicker("Foreign Only Co")).isNull();
+
+        when(marketData.search("Boom")).thenThrow(new RuntimeException("feed unavailable"));
+        assertThat(service.resolveTicker("Boom")).isNull();
+    }
+
+    @Test
+    void matchAgainstExistingTagsARowWhoseIsinIsAlreadyInAPreviousCasImport() {
+        Holding existing = new Holding();
+        existing.setName("Reliance Industries");
+        existing.setBroker("Zerodha");
+        existing.setDescription("ISIN INE002A01018");
+        org.springframework.test.util.ReflectionTestUtils.setField(existing, "id", "h-existing-1");
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(existing));
+
+        ExtractedHolding row = new ExtractedHolding("Reliance Industries", "INE002A01018",
+                new BigDecimal("10"), new BigDecimal("2450.50"), "NSDL", "RELIANCE.NS", null);
+        CasExtractionResponse result = service.matchAgainstExisting(
+                new CasExtractionResponse(List.of(row), List.of(), null, List.of()), "u1");
+
+        assertThat(result.holdings()).hasSize(1);
+        assertThat(result.holdings().get(0).matchedHoldingId()).isEqualTo("h-existing-1");
+        assertThat(result.toRemove()).isEmpty();
+    }
+
+    @Test
+    void matchAgainstExistingLeavesANewIsinUnmatched() {
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of());
+
+        ExtractedHolding row = new ExtractedHolding("Infosys", "INE009A01021",
+                BigDecimal.TEN, null, "NSDL", "INFY.NS", null);
+        CasExtractionResponse result = service.matchAgainstExisting(
+                new CasExtractionResponse(List.of(row), List.of(), null, List.of()), "u1");
+
+        assertThat(result.holdings()).hasSize(1);
+        assertThat(result.holdings().get(0).matchedHoldingId()).isNull();
+        assertThat(result.toRemove()).isEmpty();
+    }
+
+    @Test
+    void matchAgainstExistingFlagsATaggedHoldingNotSeenInThisStatementForRemoval() {
+        Holding stale = new Holding();
+        stale.setName("Old Fund House Units");
+        stale.setBroker("Groww");
+        stale.setDescription("ISIN INE999Z99999");
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(stale));
+
+        CasExtractionResponse result = service.matchAgainstExisting(
+                new CasExtractionResponse(List.of(), List.of(), null, List.of()), "u1");
+
+        assertThat(result.toRemove()).hasSize(1);
+        assertThat(result.toRemove().get(0).name()).isEqualTo("Old Fund House Units");
+        assertThat(result.toRemove().get(0).broker()).isEqualTo("Groww");
+    }
+
+    @Test
+    void matchAgainstExistingIgnoresHoldingsWithNoIsinTagAtAll() {
+        Holding manual = new Holding();
+        manual.setName("Manually added FD");
+        manual.setBroker("HDFC Bank");
+        manual.setDescription("Matures next year");
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(manual));
+
+        CasExtractionResponse result = service.matchAgainstExisting(
+                new CasExtractionResponse(List.of(), List.of(), null, List.of()), "u1");
+
+        // Never tagged as a CAS import, so it's never a removal candidate just for being absent
+        // from this statement — only holdings this feature itself created are eligible for that.
+        assertThat(result.toRemove()).isEmpty();
     }
 
     @Test

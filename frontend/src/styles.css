@@ -529,6 +529,12 @@ th.sortable:hover{color:var(--text)}
 .mapped-holding-value{text-align:right}
 .mapped-holding-value span{display:block;font-weight:700;font-size:13px}
 .mapped-holding-value small{margin-top:2px}
+/* CAS import's three review buckets — same left-accent-border language as .form-callout. */
+.mapped-holding.status-new{border-left:3px solid var(--accent)}
+.mapped-holding.status-remove{border-left:3px solid var(--negative)}
+.mapped-holding.status-matched{border-left:3px solid var(--positive)}
+button.mapped-holding-name{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+button.mapped-holding-name:hover strong{color:var(--accent)}
 .badge.txn-split,.badge.txn-adjustment{background:var(--planned-bg);border-color:var(--planned-bg);color:var(--planned-text)}
 .source-list{display:grid;gap:10px}
 .source{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:13px}

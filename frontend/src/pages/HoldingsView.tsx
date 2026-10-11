@@ -454,7 +454,9 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
 // A pre-filled holding is seeded at its own average cost (quantity × avg cost per unit), same
 // reasoning as a fresh MARKET_PRICE holding: a sane non-zero starting value beats leaving current
 // value at 0 until the user has a reason to change it. Left blank when the statement didn't state
-// an average cost — better an empty field the user must fill than a silently wrong one.
+// an average cost — better an empty field the user must fill than a silently wrong one. A resolved
+// ticker (best-effort, see CasImportService.resolveTicker) pre-selects MARKET_PRICE with it; no
+// match leaves the usual MANUAL default — either way the user can still change both in the form.
 const draftFromExtractedHolding = (row: ExtractedHolding): Partial<ReturnType<typeof blankHoldingForm>> => {
   const seedValue = row.averageCostPerUnit != null ? String(Math.round(row.quantity * row.averageCostPerUnit * 100) / 100) : ''
   return {
@@ -463,11 +465,16 @@ const draftFromExtractedHolding = (row: ExtractedHolding): Partial<ReturnType<ty
     investedValue: seedValue,
     currentValue: seedValue,
     description: row.isin ? `ISIN ${row.isin}` : '',
+    ...(row.tickerSymbol ? { valuationMethod: 'MARKET_PRICE' as const, tickerSymbol: row.tickerSymbol } : {}),
   }
 }
 
-export function CasImportModal({ categories, holdings, displayCurrency, onClose, onSaved }: {
-  categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void; onSaved: (saved: Holding) => void
+export function CasImportModal({ categories, holdings, displayCurrency, onClose, onSaved, onRemoved }: {
+  categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
+  onSaved: (saved: Holding) => void
+  // Called once, with every holding id actually deleted, right before the modal closes itself —
+  // the caller reconciles its own holdings list; this modal doesn't own that state.
+  onRemoved: (holdingIds: string[]) => void
 }) {
   useEscToClose(onClose)
   const [busy, setBusy] = useState(false)
@@ -475,15 +482,22 @@ export function CasImportModal({ categories, holdings, displayCurrency, onClose,
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [result, setResult] = useState<CasExtractionResult | null>(null)
-  const [reviewed, setReviewed] = useState<Set<number>>(new Set())
+  // Indexes into result.holdings that are brand-new (no matchedHoldingId) and have been either
+  // saved or explicitly skipped — once every new row is in here, Done unlocks. A matched row
+  // needs no review (it's already in the portfolio) so it's never in this set at all.
+  const [resolvedNew, setResolvedNew] = useState<Set<number>>(new Set())
   const [reviewingIndex, setReviewingIndex] = useState<number | null>(null)
+  // holdingIds the user explicitly chose to keep despite not appearing in this statement — removed
+  // from the to-delete list, and never deleted on Done, however many times the file is re-read.
+  const [keptIds, setKeptIds] = useState<Set<string>>(new Set())
+  const [finishing, setFinishing] = useState(false)
 
   // Takes the password as an argument rather than closing over state — a "retry with this
   // password" click needs to send what was *just* typed, before React has necessarily re-rendered
   // with it, and reusing the already-picked file this way means a wrong password doesn't force
   // the user back to their file browser to pick the same statement again.
   const upload = async (pickedFile: File, pdfPassword: string) => {
-    setBusy(true); setError(''); setResult(null); setReviewed(new Set()); setFile(pickedFile)
+    setBusy(true); setError(''); setResult(null); setResolvedNew(new Set()); setKeptIds(new Set()); setFile(pickedFile)
     try {
       const body = await pickedFile.arrayBuffer()
       const response = await fetch(`${API_URL}/api/holdings/import/cas`, {
@@ -497,11 +511,26 @@ export function CasImportModal({ categories, holdings, displayCurrency, onClose,
     finally { setBusy(false) }
   }
 
-  const markReviewed = (index: number) => setReviewed(current => new Set(current).add(index))
+  const newRows = result ? result.holdings.map((row, index) => ({ row, index })).filter(({ row }) => !row.matchedHoldingId) : []
+  const matchedRows = result ? result.holdings.filter(row => row.matchedHoldingId) : []
+  const pendingNewRows = newRows.filter(({ index }) => !resolvedNew.has(index))
+  const toRemove = result ? result.toRemove.filter(r => !keptIds.has(r.holdingId)) : []
+  const canFinish = pendingNewRows.length === 0 && !finishing
+
+  const finish = async () => {
+    if (!canFinish) return
+    setFinishing(true); setError('')
+    try {
+      for (const r of toRemove) await api(`/api/holdings/${r.holdingId}`, { method: 'DELETE' })
+      onRemoved(toRemove.map(r => r.holdingId))
+      onClose()
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not finish removing the holdings flagged above') }
+    finally { setFinishing(false) }
+  }
 
   return <div className="modal-backdrop"><section className="modal" onClick={e => e.stopPropagation()}>
     <div className="modal-header"><div><p className="eyebrow">BULK IMPORT</p><h2>Import from a CAS statement</h2></div><button className="close" onClick={onClose}>×</button></div>
-    <p className="hint">Upload your CDSL or NSDL Consolidated Account Statement (PDF). Nothing is saved automatically — you'll review and confirm each holding found, the same as adding one by hand.</p>
+    <p className="hint">Upload your CDSL or NSDL Consolidated Account Statement (PDF). Nothing is saved or deleted automatically — review what's below, then click Done to apply it.</p>
 
     <Field label="Statement password"><input type="password" autoComplete="off" value={password} disabled={busy} onChange={e => setPassword(e.target.value)} placeholder="Usually your PAN, e.g. ABCDE1234F — leave blank if it isn't locked" /></Field>
 
@@ -519,24 +548,52 @@ export function CasImportModal({ categories, holdings, displayCurrency, onClose,
 
     {result && <>
       {result.statementDate && <p className="hint">Statement as of {result.statementDate}.</p>}
-      {result.holdings.length === 0
-        ? <p className="hint">No equity holdings found in this statement.</p>
-        : <div className="mapped-holdings">{result.holdings.map((row, index) => <button key={`${row.isin}:${row.depository ?? ''}`} className="mapped-holding" onClick={() => setReviewingIndex(index)}>
-            <div className="mapped-holding-name"><strong title={row.instrumentName}>{row.instrumentName}</strong><small>{row.isin}{row.depository && row.depository !== 'UNKNOWN' ? ` · ${row.depository}` : ''}</small></div>
-            <div className="mapped-holding-value"><span>Qty {row.quantity}</span><small>{reviewed.has(index) ? 'Reviewed ✓' : 'Needs review'}</small></div>
-          </button>)}</div>}
+      {result.holdings.length === 0 && result.toRemove.length === 0 && <p className="hint">No equity holdings found in this statement.</p>}
+
+      {pendingNewRows.length > 0 && <>
+        <div className="panel-heading"><h3>Pending review</h3><span>{pendingNewRows.length}</span></div>
+        <div className="mapped-holdings">{pendingNewRows.map(({ row, index }) => <div key={`${row.isin}:${row.depository ?? ''}`} className="mapped-holding status-new">
+            <button type="button" className="mapped-holding-name" onClick={() => setReviewingIndex(index)}>
+              <strong title={row.instrumentName}>{row.instrumentName}</strong>
+              <small>{row.isin}{row.tickerSymbol ? ` · ${row.tickerSymbol}` : ''}{row.depository && row.depository !== 'UNKNOWN' ? ` · ${row.depository}` : ''}</small>
+            </button>
+            <div className="mapped-holding-value"><span>Qty {row.quantity}</span>
+              <small><button type="button" className="text-link" onClick={() => setResolvedNew(current => new Set(current).add(index))}>Skip</button></small>
+            </div>
+          </div>)}</div>
+      </>}
+
+      {toRemove.length > 0 && <>
+        <div className="panel-heading"><h3>To be deleted</h3><span>{toRemove.length}</span></div>
+        <p className="hint">Tagged from an earlier CAS import, but not found in this statement.</p>
+        <div className="mapped-holdings">{toRemove.map(r => <div key={r.holdingId} className="mapped-holding status-remove">
+            <div className="mapped-holding-name"><strong title={r.name}>{r.name}</strong><small>{r.broker || 'Unassigned broker'}</small></div>
+            <div className="mapped-holding-value"><small><button type="button" className="text-link" onClick={() => setKeptIds(current => new Set(current).add(r.holdingId))}>Keep — don't delete</button></small></div>
+          </div>)}</div>
+      </>}
+
+      {matchedRows.length > 0 && <>
+        <div className="panel-heading"><h3>Successfully parsed and mapped</h3><span>{matchedRows.length}</span></div>
+        <div className="mapped-holdings">{matchedRows.map(row => <div key={`${row.isin}:${row.depository ?? ''}`} className="mapped-holding status-matched">
+            <div className="mapped-holding-name"><strong title={row.instrumentName}>{row.instrumentName}</strong><small>{row.isin} · already in your portfolio</small></div>
+            <div className="mapped-holding-value"><span>Qty {row.quantity}</span></div>
+          </div>)}</div>
+      </>}
+
       {result.warnings.length > 0 && <section className="import-summary">
         <strong>{result.warnings.length} note{result.warnings.length === 1 ? '' : 's'} from the extraction</strong>
         {result.warnings.map(w => <span key={w}>{w}</span>)}
       </section>}
-      {result.holdings.length > 0 && <p className="hint">{reviewed.size} of {result.holdings.length} reviewed.</p>}
     </>}
 
-    <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Done</button></div>
+    <div className="modal-actions">
+      {pendingNewRows.length > 0 && <p className="hint push-start">{pendingNewRows.length} holding{pendingNewRows.length === 1 ? '' : 's'} still need{pendingNewRows.length === 1 ? 's' : ''} review before you can finish.</p>}
+      <button type="button" className="outline" disabled={!canFinish} title={canFinish ? '' : 'Review or skip every pending holding first'} onClick={() => void finish()}>{finishing ? 'Finishing…' : 'Done'}</button>
+    </div>
 
     {reviewingIndex != null && result && <HoldingModal holding={null} category={null} categories={categories} holdings={holdings}
       displayCurrency={displayCurrency} draft={draftFromExtractedHolding(result.holdings[reviewingIndex])}
       onClose={() => setReviewingIndex(null)}
-      onSaved={saved => { onSaved(saved); markReviewed(reviewingIndex); setReviewingIndex(null) }} />}
+      onSaved={saved => { onSaved(saved); setResolvedNew(current => new Set(current).add(reviewingIndex)); setReviewingIndex(null) }} />}
   </section></div>
 }
