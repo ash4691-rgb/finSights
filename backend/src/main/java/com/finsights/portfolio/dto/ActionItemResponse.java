@@ -10,7 +10,7 @@ import java.time.LocalDate;
  * is a stable identifier the client echoes back to mark the row done / deferred / deleted.
  */
 public record ActionItemResponse(
-        String kind,          // EMI_DUE, EMI_OVERDUE, INTEREST_DUE, FIXED_RATE_MATURED, PRICE_UNAVAILABLE, DQ_*
+        String kind,          // EMI_DUE, EMI_OVERDUE, INTEREST_DUE, FIXED_RATE_MATURED, PRICE_UNAVAILABLE, DQ_*, BROKER_SYNC_*
         String severity,      // WARN | INFO
         String title,
         String detail,
@@ -19,7 +19,10 @@ public record ActionItemResponse(
         LocalDate dueDate,
         BigDecimal amount,
         String period,        // the due date for EMI / interest items, so the client can post "mark paid"
-        String key            // "<kind>|<holdingId>|<period>" — stable across requests
+        // PendingBrokerHolding id for BROKER_SYNC_NEW/BROKER_SYNC_CONFLICT rows — null for every
+        // other kind. Separate from holdingId since a BROKER_SYNC_NEW row has no real Holding yet.
+        String pendingId,
+        String key            // "<kind>|<holdingId or pendingId>|<period>" — stable across requests
 ) {
     /** Build the stable dismissal key for an action row. */
     public static String keyOf(String kind, String holdingId, String period) {

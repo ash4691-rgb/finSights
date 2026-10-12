@@ -55,7 +55,7 @@ public class CoinSwitchClient implements BrokerDataClient {
             // currentValue is left null here — CoinSwitch's portfolio response (per the reference
             // client this was built against) exposes main_balance/blocked_balance_order but no
             // confirmed INR-value field; fill this in once a live response confirms the field name.
-            return holdings.stream().map(h -> new BrokerSnapshot("coinswitch:" + h.currency(), h.quantity(), null, now)).toList();
+            return holdings.stream().map(h -> new BrokerSnapshot("coinswitch:" + h.currency(), h.currency(), h.quantity(), null, now)).toList();
         });
     }
 

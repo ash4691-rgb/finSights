@@ -368,6 +368,11 @@ th.sortable:hover{color:var(--text)}
 .warning-action{flex-shrink:0;align-self:center;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-soft-text);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer}
 .warning-action:hover{background:var(--accent);color:#fff}
 /* per-card done / snooze / dismiss */
+.broker-sync-new-action{flex-shrink:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.broker-sync-new-action select{border:1px solid var(--border-strong);background:var(--surface-input);color:var(--text);border-radius:7px;padding:5px 8px;font-size:11px;max-width:140px}
+.broker-sync-new-action button{flex-shrink:0;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-soft-text);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer}
+.broker-sync-new-action button:hover{background:var(--accent);color:#fff}
+.broker-sync-new-action small.form-error{flex-basis:100%;margin:0}
 .warning-tools{display:flex;gap:4px;flex-shrink:0;align-self:center;margin-left:auto}
 .warning-tool{width:24px;height:24px;display:grid;place-items:center;border:1px solid var(--border-soft);background:var(--surface);color:var(--text-3);border-radius:6px;font-size:12px;line-height:1;cursor:pointer}
 .warning-tool:hover{border-color:var(--border-strong);color:var(--text)}
@@ -545,6 +550,7 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .broker-tile.needs-reauth{border-color:var(--warn-text)}
 .broker-tile strong{font-size:12px;color:var(--text)}
 .broker-tile-icon{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+.broker-tile-logo{object-fit:contain;padding:8px;background:var(--surface-input)}
 .broker-detail{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:left}
 .broker-detail.connected{border-color:var(--success-text)}
 .broker-detail.needs-reauth{border-color:var(--warn-text)}

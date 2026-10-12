@@ -13,6 +13,7 @@ public interface HoldingRepository extends JpaRepository<Holding, String> {
     List<Holding> findByCategory_Id(String categoryId);
     Optional<Holding> findByIdAndUser_Id(String id, String userId);
     Optional<Holding> findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(String userId, String name, String broker);
+    Optional<Holding> findByUser_IdAndBrokerSyncRef(String userId, String brokerSyncRef);
     long countByUser_Id(String userId);
 
     /** Every distinct ticker/scheme symbol across every user's MARKET_PRICE holdings — what

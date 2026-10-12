@@ -9,15 +9,34 @@ export type BrokerNotice = { broker: string; status: 'connected' | 'failed' }
 type SyncNowResult = { synced: boolean; lastSyncedAt?: string; lastSyncError?: string }
 
 // First letter of each of the first two words, or the first two letters of a one-word name —
-// just enough to tell tiles apart at a glance without needing a real icon asset per broker.
+// the fallback for a broker logo that fails to load (or one not in BROKER_DOMAINS at all).
 const initials = (name: string) => {
   const words = name.trim().split(/\s+/)
   return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase()
 }
 
+// Each broker's own domain, used only to fetch its favicon — no logo assets to source/bundle/
+// keep in sync ourselves. Google's favicon service degrades predictably (a generic globe icon)
+// rather than erroring outright, but BrokerIcon still falls back to initials on any load failure.
+const BROKER_DOMAINS: Record<string, string> = {
+  kite: 'zerodha.com', coinswitch: 'coinswitch.co', indmoney: 'indmoney.com', groww: 'groww.in', epfo: 'epfindia.gov.in',
+}
+
+function BrokerIcon({ source }: { source: Source }) {
+  const [failed, setFailed] = useState(false)
+  const domain = BROKER_DOMAINS[source.key]
+  if (!domain || failed) return <span className="broker-tile-icon">{initials(source.name)}</span>
+  return <img className="broker-tile-icon broker-tile-logo" alt=""
+    src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`} onError={() => setFailed(true)} />
+}
+
 const connectSteps = (s: Source): string[] => {
   if (s.connectFlow === 'REDIRECT') {
     return [`Click Connect below.`, `Log in to your ${s.name} account when redirected.`, `You'll land back here once it's linked.`]
+  }
+  if (s.connectFlow === 'UAN_PASSWORD') {
+    return [`Click Connect below and enter your UAN and your EPFO member-portal password — the same ones you'd use to log in yourself.`,
+      `FinSights attempts to verify it works before saving it. EPFO has no public API, and its login page may require solving a CAPTCHA this can't do — if verification fails, that's the most likely reason, not necessarily wrong credentials.`]
   }
   const credential = s.connectFlow === 'API_KEY_SECRET' ? 'an API key and secret' : 'an API token'
   return [`Open ${s.name}'s API page (link below) and generate ${credential} from your own account — no developer account needed.`,
@@ -149,7 +168,7 @@ export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNot
 
 function SourceTile({ source: s, onClick }: { source: Source; onClick: () => void }) {
   return <button className={`broker-tile ${s.needsReauth ? 'needs-reauth' : s.connected ? 'connected' : ''}`} onClick={onClick}>
-    <span className="broker-tile-icon">{initials(s.name)}</span>
+    <BrokerIcon source={s} />
     <strong>{s.name}</strong>
     <span className={`status ${s.status.toLowerCase()}`}>{label(s.status)}</span>
   </button>
@@ -164,11 +183,14 @@ function SourceDetail({ source: s, onCollapse, connecting, onConnect, onDisconne
   apiKeyInput: string; setApiKeyInput: (v: string) => void; apiSecretInput: string; setApiSecretInput: (v: string) => void
   keyFormError: string; onSubmitKeyForm: (needsSecret: boolean) => void
 }) {
-  const needsSecret = s.connectFlow === 'API_KEY_SECRET'
-  const usesKeyForm = s.connectFlow === 'API_KEY_SECRET' || s.connectFlow === 'API_KEY_ONLY'
+  const isUanPassword = s.connectFlow === 'UAN_PASSWORD'
+  const needsSecret = s.connectFlow === 'API_KEY_SECRET' || isUanPassword
+  const usesKeyForm = needsSecret || s.connectFlow === 'API_KEY_ONLY'
+  const firstFieldLabel = isUanPassword ? 'UAN' : needsSecret ? 'API key' : 'API token'
+  const secondFieldLabel = isUanPassword ? 'Password' : 'API secret'
   return <div className={`broker-detail ${s.needsReauth ? 'needs-reauth' : s.connected ? 'connected' : ''}`}>
     <div className="broker-detail-heading">
-      <span className="broker-tile-icon">{initials(s.name)}</span>
+      <BrokerIcon source={s} />
       <div><strong>{s.name}</strong><span className={`status ${s.status.toLowerCase()}`}>{label(s.status)}</span></div>
       <button className="link-button" onClick={onCollapse}>Collapse ▴</button>
     </div>
@@ -184,13 +206,13 @@ function SourceDetail({ source: s, onCollapse, connecting, onConnect, onDisconne
           <button className="outline" disabled={connecting} onClick={onConnect}>{connecting ? 'Connecting…' : 'Connect'}</button>}
         {usesKeyForm && !keyFormOpen &&
           <button className="outline" onClick={onOpenKeyForm}>Connect</button>}
-        {s.docsUrl && <a href={s.docsUrl} target="_blank" rel="noreferrer">Open {s.name}'s API page ↗</a>}
+        {s.docsUrl && <a href={s.docsUrl} target="_blank" rel="noreferrer">{isUanPassword ? `Open ${s.name}'s member portal` : `Open ${s.name}'s API page`} ↗</a>}
       </div>
       {usesKeyForm && keyFormOpen && <form className="broker-key-form" onSubmit={e => { e.preventDefault(); onSubmitKeyForm(needsSecret) }}>
-        <Field label={needsSecret ? 'API key' : 'API token'}>
+        <Field label={firstFieldLabel}>
           <input type="text" autoFocus value={apiKeyInput} onChange={e => setApiKeyInput(e.target.value)} />
         </Field>
-        {needsSecret && <Field label="API secret">
+        {needsSecret && <Field label={secondFieldLabel}>
           <input type="password" value={apiSecretInput} onChange={e => setApiSecretInput(e.target.value)} />
         </Field>}
         {keyFormError && <p className="form-error">{keyFormError}</p>}
@@ -209,7 +231,7 @@ function SourceDetail({ source: s, onCollapse, connecting, onConnect, onDisconne
           <button className="outline" disabled={connecting} onClick={onConnect}>{connecting ? 'Connecting…' : 'Reconnect'}</button>}
         <button className="outline" disabled={connecting} onClick={onSyncNow}>{connecting ? 'Syncing…' : 'Sync now'}</button>
         <button className="outline" disabled={connecting} onClick={onDisconnect}>{connecting ? 'Disconnecting…' : 'Disconnect'}</button>
-        {s.docsUrl && <a href={s.docsUrl} target="_blank" rel="noreferrer">API docs ↗</a>}
+        {s.docsUrl && <a href={s.docsUrl} target="_blank" rel="noreferrer">{isUanPassword ? 'Member portal' : 'API docs'} ↗</a>}
       </div>
     </div>}
   </div>

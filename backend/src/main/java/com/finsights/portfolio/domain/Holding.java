@@ -87,6 +87,11 @@ public class Holding {
     private Instant updatedAt = Instant.now();
     /** When the MARKET_PRICE current value was last refreshed from the live feed; null until first fetch. */
     private Instant priceUpdatedAt;
+    /** Set only for {@code ValuationMethod.BROKER_SYNC} holdings — the broker-scoped instrument
+     *  identifier (e.g. {@code "kite:738561"}) {@code BrokerHoldingSyncConsumer} matches against
+     *  each day's synced snapshot to find this holding again. Never user-editable. */
+    @Column(name = "broker_sync_ref", length = 160)
+    private String brokerSyncRef;
     @Version private long version;
 
     public Holding() { }
@@ -155,4 +160,6 @@ public class Holding {
     public Instant getUpdatedAt() { return updatedAt; }
     public Instant getPriceUpdatedAt() { return priceUpdatedAt; }
     public void setPriceUpdatedAt(Instant priceUpdatedAt) { this.priceUpdatedAt = priceUpdatedAt; }
+    public String getBrokerSyncRef() { return brokerSyncRef; }
+    public void setBrokerSyncRef(String brokerSyncRef) { this.brokerSyncRef = brokerSyncRef; }
 }

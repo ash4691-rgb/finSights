@@ -22,13 +22,16 @@ public class ActionCentreService {
 
     private final EmiService emis;
     private final InterestPayoutService interestPayouts;
+    private final PendingBrokerHoldingService pendingBrokerHoldings;
     private final ActionDismissalService dismissals;
     private final CurrentUserService currentUser;
 
     public ActionCentreService(EmiService emis, InterestPayoutService interestPayouts,
+                               PendingBrokerHoldingService pendingBrokerHoldings,
                                ActionDismissalService dismissals, CurrentUserService currentUser) {
         this.emis = emis;
         this.interestPayouts = interestPayouts;
+        this.pendingBrokerHoldings = pendingBrokerHoldings;
         this.dismissals = dismissals;
         this.currentUser = currentUser;
     }
@@ -38,6 +41,7 @@ public class ActionCentreService {
         LocalDate today = LocalDate.now();
         List<ActionItemResponse> items = new ArrayList<>(emis.dueItems());
         items.addAll(interestPayouts.dueItems());
+        items.addAll(pendingBrokerHoldings.actionItems());
 
         for (HoldingResponse h : holdings) {
             if (h.valuationMethod() == ValuationMethod.FIXED_RATE && h.fixedRateEndDate() != null
@@ -86,7 +90,7 @@ public class ActionCentreService {
     }
 
     private static ActionItemResponse item(String kind, String severity, String title, String detail, HoldingResponse h) {
-        return new ActionItemResponse(kind, severity, title, detail, h.id(), h.name(), null, null, null,
+        return new ActionItemResponse(kind, severity, title, detail, h.id(), h.name(), null, null, null, null,
                 ActionItemResponse.keyOf(kind, h.id(), null));
     }
 }

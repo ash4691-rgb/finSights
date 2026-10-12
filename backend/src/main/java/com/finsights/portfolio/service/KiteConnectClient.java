@@ -72,7 +72,7 @@ public class KiteConnectClient implements BrokerDataClient {
         return fetchHoldings(connection.getAccessToken()).map(holdings -> {
             Instant now = Instant.now();
             return holdings.stream()
-                    .map(h -> new BrokerSnapshot("kite:" + h.instrumentToken(), h.quantity(),
+                    .map(h -> new BrokerSnapshot("kite:" + h.instrumentToken(), h.tradingSymbol(), h.quantity(),
                             h.lastPrice() != null ? h.lastPrice().multiply(h.quantity()) : null, now))
                     .toList();
         });

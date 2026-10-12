@@ -74,7 +74,7 @@ export type Transaction = {
   currency: string; type: TransactionType; date: string; amount: number; quantity?: number; principalPortion?: number; interestPaid?: boolean; notes?: string; createdAt?: string
 }
 export type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
-export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string; key: string }
+export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string; pendingId?: string; key: string }
 export type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[] }
 export type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
 export type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
@@ -93,7 +93,7 @@ export type TimelineCategoryPoint = { categoryId: string; categoryName: string; 
 export type TimelineWeek = { weekOf: string; invested: number; current: number; liabilities: number; netWorth: number; categories: TimelineCategoryPoint[] }
 export type PortfolioTimeline = { weeks: TimelineWeek[]; lastCapturedAt?: string; capturedToday: boolean }
 export type BrokerGroup = { name: string; holdingCount: number; currentValue: number; investedValue: number; profitLoss: number; lastUpdated?: string; categories: string[]; currencies: string[] }
-export type Source = { key: string; name: string; status: string; description: string; capabilities: string[]; docsUrl?: string; connectable: boolean; connected: boolean; lastSyncedAt?: string; needsReauth: boolean; connectFlow?: 'REDIRECT' | 'API_KEY_SECRET' | 'API_KEY_ONLY' | null }
+export type Source = { key: string; name: string; status: string; description: string; capabilities: string[]; docsUrl?: string; connectable: boolean; connected: boolean; lastSyncedAt?: string; needsReauth: boolean; connectFlow?: 'REDIRECT' | 'API_KEY_SECRET' | 'API_KEY_ONLY' | 'UAN_PASSWORD' | null }
 export type Brokers = { brokers: BrokerGroup[]; sources: Source[] }
 export type ValuationDetail = { method: ValuationMethod; investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; steps: string[]; projectedMaturityDate?: string; projectedMaturityValue?: number }
 export type ImportResult = { created: number; updated: number; skipped: number; errors: { row: number; message: string }[] }
