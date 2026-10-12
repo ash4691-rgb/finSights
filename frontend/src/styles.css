@@ -71,6 +71,10 @@ button:disabled{opacity:.65;cursor:not-allowed}
 .sidebar nav button span{font-size:17px;margin-right:11px}
 .sidebar nav button.active,.sidebar nav button:hover{background:var(--accent-soft);color:var(--text)}
 .sidebar nav button.active{box-shadow:inset 3px 0 0 var(--accent)}
+.nav-group button{width:100%}
+.nav-subgroup{display:grid;gap:2px;margin:2px 0 0 14px}
+.nav-subgroup button{font-size:13px;padding:8px 12px}
+.nav-subgroup button span{font-size:15px}
 .sidebar-bottom{margin-top:auto}
 .sync-note{font-size:12px;line-height:1.7;border:1px solid var(--border-soft);border-radius:10px;background:var(--surface-2);padding:12px;color:var(--text-2)}
 .sync-note small{color:var(--text-3)}
@@ -759,6 +763,7 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
   .sidebar{width:76px;padding:20px 10px}
   .brand span,.sidebar nav button{font-size:0}
   .sidebar nav button span{font-size:20px;margin:0}
+  .nav-subgroup{margin-left:0}
   .sync-note,.user>div:last-child,.sign-out-link{display:none}
   .user{justify-content:center;padding:16px 0}
   .metric-grid,.broker-grid,.instrument-grid{grid-template-columns:repeat(2,1fr)}

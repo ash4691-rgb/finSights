@@ -51,9 +51,23 @@ export const transactionTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INT
 export const assetTxnTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INTEREST', 'ADJUSTMENT']
 export const liabilityTxnTypes: TransactionType[] = ['REPAY', 'ADJUSTMENT', 'BUY']
 export const currencies = ['INR', 'USD', 'EUR', 'GBP', 'SGD', 'AED']
-export const nav: [Page, string, string][] = [
-  ['dashboard', '◫', 'Overview'], ['insights', '◔', 'Actions'], ['categories', '◈', 'Categories'],
-  ['holdings', '▤', 'Holdings'], ['transactions', '⇅', 'Transactions'], ['brokers', '⇄', 'External sources'], ['settings', '⚙', 'Settings'],
+// A flat entry is a single sidebar tile; a group renders as one parent tile (clicking it opens
+// its first page) with its own pages always shown nested beneath it, never collapsed — Categories/
+// Holdings/Transactions are one workflow (file data under a category, record a position, log what
+// happened to it) and read better as a "Data" tile with sub-tiles than as three separate top-level
+// items competing with Overview/Actions for attention.
+export type NavTile = { page: Page; icon: string; label: string }
+export type NavGroup = { label: string; icon: string; pages: NavTile[] }
+export const nav: (NavTile | NavGroup)[] = [
+  { page: 'dashboard', icon: '◫', label: 'Overview' },
+  { page: 'insights', icon: '◔', label: 'Actions' },
+  { label: 'Data', icon: '▤', pages: [
+      { page: 'categories', icon: '◈', label: 'Categories' },
+      { page: 'holdings', icon: '▤', label: 'Holdings' },
+      { page: 'transactions', icon: '⇅', label: 'Transactions' },
+    ] },
+  { page: 'brokers', icon: '⇄', label: 'External sources' },
+  { page: 'settings', icon: '⚙', label: 'Settings' },
 ]
 // The methods a holding form actually offers — BROKER_SYNC isn't selectable yet.
 export const selectableValuationMethods: ValuationMethod[] = ['MANUAL', 'MARKET_PRICE', 'FIXED_RATE']
