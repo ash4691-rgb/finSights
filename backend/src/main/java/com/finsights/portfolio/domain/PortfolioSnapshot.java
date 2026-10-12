@@ -7,7 +7,7 @@ import java.time.LocalDate;
 
 /**
  * One category's invested and current value, captured once a week (keyed on the Monday
- * of the ISO week). Powers the portfolio timeline on the Insights page. Category name and
+ * of the ISO week). Powers the portfolio timeline on the Overview page. Category name and
  * kind are denormalised so the trail survives a category being renamed or removed.
  */
 @Entity

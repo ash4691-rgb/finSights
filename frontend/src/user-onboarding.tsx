@@ -9,7 +9,7 @@ import { dismissUserOnboarding } from './layout-api'
 const STEPS: { title: string; body: string }[] = [
   {
     title: 'Welcome to FinSights',
-    body: 'A quick tour of the five ideas the whole app is built on — Overview, Holdings, Transactions, Categories and Insights. Skip anytime; you can always find your way around as you go.',
+    body: 'A quick tour of the five ideas the whole app is built on — Overview, Holdings, Transactions, Categories and Actions. Skip anytime; you can always find your way around as you go.',
   },
   {
     title: 'Overview',
@@ -28,8 +28,8 @@ const STEPS: { title: string; body: string }[] = [
     body: 'Group your holdings however makes sense to you — by asset class, goal, or account — to see allocation, liquidity and performance rolled up at that level.',
   },
   {
-    title: 'Insights',
-    body: 'Trends, notable movers and an action centre for things worth a decision (a maturing fixed deposit, an EMI due soon) — the page for "what should I look at today?"',
+    title: 'Actions',
+    body: 'Notable movers and an action centre for things worth a decision (a maturing fixed deposit, an EMI due soon) — the page for "what should I look at today?"',
   },
 ]
 

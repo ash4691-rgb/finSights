@@ -52,7 +52,7 @@ export const assetTxnTypes: TransactionType[] = ['BUY', 'SELL', 'SPLIT', 'INTERE
 export const liabilityTxnTypes: TransactionType[] = ['REPAY', 'ADJUSTMENT', 'BUY']
 export const currencies = ['INR', 'USD', 'EUR', 'GBP', 'SGD', 'AED']
 export const nav: [Page, string, string][] = [
-  ['dashboard', '◫', 'Overview'], ['insights', '◔', 'Insights'], ['categories', '◈', 'Categories'],
+  ['dashboard', '◫', 'Overview'], ['insights', '◔', 'Actions'], ['categories', '◈', 'Categories'],
   ['holdings', '▤', 'Holdings'], ['transactions', '⇅', 'Transactions'], ['brokers', '⇄', 'External sources'], ['settings', '⚙', 'Settings'],
 ]
 // The methods a holding form actually offers — BROKER_SYNC isn't selectable yet.
