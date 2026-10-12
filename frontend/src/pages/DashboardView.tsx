@@ -1,11 +1,28 @@
+import { useEffect, useState } from 'react'
+import { api } from '../api'
 import { LayoutZone } from '../layout'
-import { money, percent, label } from '../util'
+import { NetWorthChart, TimelineTable } from '../charts'
+import { money, percent, label, ago } from '../util'
+import { InfoTip } from '../ui'
+import { seriesKeysOf } from '../widgets'
 import type { PageDataSource } from '../widgets'
-import type { Dashboard, Holding, Breakdown } from '../types'
+import type { Dashboard, Holding, Breakdown, PortfolioTimeline, TimelineWeek } from '../types'
 
-export function DashboardView({ dashboard, holdings, onManage, layoutEditing, layoutNonce }: {
-  dashboard: Dashboard; holdings: Holding[]; onManage: () => void; layoutEditing: boolean; layoutNonce: number
+export function DashboardView({ dashboard, holdings, onManage, displayCurrency, dataVersion, layoutEditing, layoutNonce }: {
+  dashboard: Dashboard; holdings: Holding[]; onManage: () => void; displayCurrency: string; dataVersion: number
+  layoutEditing: boolean; layoutNonce: number
 }) {
+  const [timeline, setTimeline] = useState<PortfolioTimeline | null>(null)
+  const [capturing, setCapturing] = useState(false)
+  const [timelineError, setTimelineError] = useState('')
+  const loadTimeline = () => api<PortfolioTimeline>(`/api/insights/timeline?currency=${displayCurrency}`).then(setTimeline).catch(() => setTimeline({ weeks: [], capturedToday: false }))
+  useEffect(() => { void loadTimeline() }, [displayCurrency, dataVersion])
+  const captureNow = async () => {
+    setCapturing(true)
+    try { setTimeline(await api<PortfolioTimeline>(`/api/insights/timeline/capture?currency=${displayCurrency}`, { method: 'POST' })) }
+    catch (e) { setTimelineError(e instanceof Error ? e.message : 'Could not capture a snapshot') }
+    finally { setCapturing(false) }
+  }
   const kpi = (key: string, title: string, value: number, note: string) => [key, <article className="metric-card" key={key}>
     <p>{title}</p><strong className={key === 'pl' && value < 0 ? 'negative' : ''}>{money(value)}</strong><small>{note}</small>
   </article>] as const
@@ -28,15 +45,29 @@ export function DashboardView({ dashboard, holdings, onManage, layoutEditing, la
       { key: 'totalAssets', label: 'Total assets', kind: 'measure' },
       { key: 'totalLiabilities', label: 'Total liabilities', kind: 'measure' },
       { key: 'totalProfitLoss', label: 'Portfolio P/L', kind: 'measure' },
+      { key: 'netWorth', label: 'Net worth', kind: 'series' },
+      { key: 'invested', label: 'Invested', kind: 'series' },
+      { key: 'current', label: 'Current value', kind: 'series' },
+      { key: 'liabilities', label: 'Liabilities', kind: 'series' },
     ],
     resolve(w) {
-      if (w.subType === '2d-graph') return { kind: 'series', series: [] }
       if (w.subType === 'counter') {
         const totals: Record<string, number> = {
           netWorth: dashboard.netWorth, totalAssets: dashboard.totalAssets,
           totalLiabilities: dashboard.totalLiabilities, totalProfitLoss: dashboard.portfolioProfitLoss,
         }
         return { kind: 'scalar', value: totals[w.query.measure ?? 'netWorth'] ?? dashboard.netWorth }
+      }
+      if (w.subType === '2d-graph') {
+        const weeks = timeline?.weeks ?? []
+        const fieldFor: Record<string, (week: TimelineWeek) => number> = {
+          netWorth: week => week.netWorth, invested: week => week.invested, current: week => week.current, liabilities: week => week.liabilities,
+        }
+        const labelFor: Record<string, string> = { netWorth: 'Net worth', invested: 'Invested', current: 'Current value', liabilities: 'Liabilities' }
+        return { kind: 'series', series: seriesKeysOf(w.query).map(key => ({
+          label: labelFor[key] ?? key,
+          points: weeks.map(week => ({ t: week.weekOf, v: (fieldFor[key] ?? fieldFor.netWorth)(week) })),
+        })) }
       }
       const byDimension: Record<string, Breakdown[]> = { category: dashboard.byCategory, broker: dashboard.byBroker, tag: dashboard.byTag }
       const rows = byDimension[w.query.dimension ?? 'category'] ?? dashboard.byCategory
@@ -47,7 +78,7 @@ export function DashboardView({ dashboard, holdings, onManage, layoutEditing, la
   }
 
   const zone = { editing: layoutEditing, nonce: layoutNonce }
-  return <LayoutZone zoneKey="dashboard/page" {...zone} defaults={[{ key: 'hero', span: 12 }, { key: 'widgets', span: 12 }, { key: 'kpis', span: 12 }, { key: 'breakdowns', span: 12 }]} render={{
+  return <LayoutZone zoneKey="dashboard/page" {...zone} defaults={[{ key: 'hero', span: 12 }, { key: 'widgets', span: 12 }, { key: 'kpis', span: 12 }, { key: 'breakdowns', span: 12 }, { key: 'timeline', span: 12 }]} render={{
     hero: <section className="hero"><div><p>Current portfolio value</p><h2>{money(dashboard.netWorth)}</h2><span className={dashboard.portfolioProfitLoss >= 0 ? 'positive' : 'negative'}>{dashboard.portfolioProfitLoss >= 0 ? '↑' : '↓'} {money(Math.abs(dashboard.portfolioProfitLoss))} total gain/loss</span></div><button className="outline" onClick={onManage}>Manage categories →</button></section>,
     widgets: <LayoutZone zoneKey="dashboard/widgets" {...zone} dataSource={dashboardDataSource} />,
     kpis: <LayoutZone zoneKey="dashboard/kpis" {...zone}
@@ -59,6 +90,36 @@ export function DashboardView({ dashboard, holdings, onManage, layoutEditing, la
         pulse: <article className="panel recent"><div className="panel-heading"><h3>Portfolio pulse</h3><span>Live calculation</span></div><div className="pulse-row"><span>Liquid within 7 days</span><strong>{money(holdings.filter(h => h.liquidWithinSevenDays).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Blocked / NPA</span><strong>{money(holdings.filter(h => h.blocked).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Fixed-rate instruments</span><strong>{holdings.filter(h => h.valuationMethod === 'FIXED_RATE').length}</strong></div><p className="hint">Daily portfolio snapshots and broker reconciliation are the next integration layer.</p></article>,
         byTag: <BreakdownCard title="Value by tag" items={dashboard.byTag} total={dashboard.totalAssets} />,
       }} />,
+    timeline: <section className="panel">
+      <div className="panel-heading">
+        <h3>Portfolio timeline <InfoTip text="Net worth and per-category invested/current value, captured every Monday, so you can see how the portfolio actually moved week over week." /></h3>
+        <button className="outline compact" onClick={() => void captureNow()}
+          disabled={capturing || (timeline?.capturedToday ?? false)}
+          title={timeline?.capturedToday ? 'Already captured today' : 'Record this week’s values now'}>
+          {capturing ? 'Capturing…' : timeline?.capturedToday ? 'Captured today' : 'Capture snapshot now'}
+        </button>
+      </div>
+      <p className="hint">Net worth week by week — each category's invested and current value is snapshotted every Monday.
+        {timeline?.lastCapturedAt && ` Last snapshot ${ago(timeline.lastCapturedAt)}.`}</p>
+      {timelineError && <p className="form-error">{timelineError}</p>}
+      <LayoutZone zoneKey="dashboard/timeline" {...zone} defaults={[{ key: 'networth', span: 12 }, { key: 'history', span: 12 }]} render={{
+        networth: <div className="action-col">
+          <div className="action-col-head"><span className="action-col-icon">📈</span><h4>Net worth</h4></div>
+          {!timeline ? <p className="hint">Loading timeline…</p>
+            : timeline.weeks.length < 2
+              ? <p className="hint">Not enough history yet — check back after a couple of weekly snapshots.</p>
+              : <NetWorthChart weeks={timeline.weeks} />}
+        </div>,
+
+        history: <div className="action-col">
+          <div className="action-col-head"><span className="action-col-icon">📋</span><h4>Weekly history</h4><span className="action-col-count">{timeline?.weeks.length ?? 0}</span></div>
+          {!timeline ? <p className="hint">Loading timeline…</p>
+            : timeline.weeks.length === 0
+              ? <p className="hint">No snapshots yet — this week's is being recorded now. Come back next week to see how things moved.</p>
+              : <div className="timeline-panel"><TimelineTable weeks={timeline.weeks} /></div>}
+        </div>,
+      }} />
+    </section>,
   }} />
 }
 

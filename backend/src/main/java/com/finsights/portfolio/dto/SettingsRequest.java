@@ -8,7 +8,7 @@ import java.math.BigDecimal;
  * {@code country} (ISO-3166 alpha-2, e.g. "IN") drives the account's base currency — see CountryCurrencyService.
  * Every field but {@code country} is "only change it if present" — EXCEPT the five Hot-picks
  * threshold fields, which are always set from this request (null included), so clearing one back
- * to "off" from the Insights page works. {@code @DecimalMin} still allows null (= off) through;
+ * to "off" from the Actions page works. {@code @DecimalMin} still allows null (= off) through;
  * it only rejects a negative percentage.
  */
 public record SettingsRequest(
