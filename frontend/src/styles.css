@@ -536,12 +536,24 @@ th.sortable:hover{color:var(--text)}
 button.mapped-holding-name{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
 button.mapped-holding-name:hover strong{color:var(--accent)}
 .badge.txn-split,.badge.txn-adjustment{background:var(--planned-bg);border-color:var(--planned-bg);color:var(--planned-text)}
-.source-list{display:grid;gap:10px}
-.source{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;padding:13px}
-.source strong{font-size:13px;color:var(--text)}
-.source small{display:block;color:var(--text-3);font-size:11px;margin:4px 0 6px;line-height:1.5;max-width:60ch}
-.source-action{text-align:right;white-space:nowrap;display:grid;gap:6px;justify-items:end}
-.source-action a{color:var(--accent-soft-text);font-size:11px;text-decoration:none}
+.broker-search{width:100%;max-width:320px;margin-bottom:14px;padding:9px 12px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface-input);color:var(--text);font-size:13px;outline:none}
+.broker-search:focus{border-color:var(--accent)}
+.broker-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.broker-tile{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:center}
+.broker-tile:hover{border-color:var(--border-strong)}
+.broker-tile.connected{border-color:var(--success-text)}
+.broker-tile.needs-reauth{border-color:var(--warn-text)}
+.broker-tile strong{font-size:12px;color:var(--text)}
+.broker-tile-icon{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+.broker-detail{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:left}
+.broker-detail.connected{border-color:var(--success-text)}
+.broker-detail.needs-reauth{border-color:var(--warn-text)}
+.broker-detail-heading{display:flex;align-items:center;gap:12px}
+.broker-detail-heading div{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+.broker-detail-heading strong{font-size:14px;color:var(--text)}
+.broker-steps{margin:0;padding-left:18px;font-size:12px;color:var(--text-2);line-height:1.7}
+.broker-detail-actions{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.button-row{display:flex;gap:8px;flex-wrap:wrap}
 .status{font-size:9px;font-weight:800;letter-spacing:.5px;padding:3px 6px;border-radius:5px;background:var(--chip-bg);color:var(--chip-text)}
 .status.coming_soon{background:var(--purple-bg);color:var(--purple-text)}
 .status.planned{background:var(--planned-bg);color:var(--planned-text)}
@@ -550,9 +562,9 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .broker-notice{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;font-size:13px;margin-bottom:21px}
 .broker-notice.connected{background:var(--success-bg);color:var(--success-text)}
 .broker-notice.failed{background:var(--error-bg);color:var(--error-text)}
-.broker-key-form{display:grid;gap:8px;width:200px;text-align:left;white-space:normal;margin-top:4px}
+.broker-key-form{display:grid;gap:8px;max-width:280px;margin-top:4px}
 .broker-key-form .field{gap:4px}
-.broker-key-form-actions{display:flex;gap:8px;justify-content:flex-end}
+.broker-key-form-actions{display:flex;gap:8px}
 .broker-key-form-actions button{padding:6px 12px;font-size:12px}
 .link-button{background:none;border:none;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer}
 .settings-list{display:flex;flex-direction:column;gap:14px;max-width:820px}
