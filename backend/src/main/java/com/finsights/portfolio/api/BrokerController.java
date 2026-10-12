@@ -1,6 +1,8 @@
 package com.finsights.portfolio.api;
 
+import com.finsights.portfolio.domain.BrokerConnection;
 import com.finsights.portfolio.dto.BrokersResponse;
+import com.finsights.portfolio.dto.SyncNowResponse;
 import com.finsights.portfolio.service.BrokerConnectionService;
 import com.finsights.portfolio.service.BrokerService;
 import java.net.URI;
@@ -65,6 +67,16 @@ public class BrokerController {
     @DeleteMapping("/{key}/connect")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void disconnect(@PathVariable String key) { connections.disconnect(key); }
+
+    /** "Sync now" — pulls this connection's holdings right away instead of waiting for the daily
+     *  scheduled job. A fetch failure (broker unreachable this round) is a routine outcome, not
+     *  an error response: it comes back as {@code synced: false} with {@code lastSyncError} set,
+     *  same information the Brokers page already shows for the scheduled job's own failures. */
+    @PostMapping("/{key}/sync-now")
+    SyncNowResponse syncNow(@PathVariable String key) {
+        BrokerConnection connection = connections.syncNow(key);
+        return new SyncNowResponse(connection.getLastSyncError() == null, connection.getLastSyncedAt(), connection.getLastSyncError());
+    }
 
     public record ConnectWithKeyRequest(String apiKey, String apiSecret) { }
 }

@@ -31,12 +31,13 @@ class BrokerConnectionServiceTest {
     @Mock KiteConnectClient kite;
     @Mock CoinSwitchClient coinSwitch;
     @Mock IndmoneyClient indmoney;
+    @Mock BrokerSyncService syncService;
     private BrokerConnectionService service;
     private UserAccount user;
 
     @BeforeEach
     void setUp() {
-        service = new BrokerConnectionService(connections, currentUser, kite, coinSwitch, indmoney);
+        service = new BrokerConnectionService(connections, currentUser, kite, coinSwitch, indmoney, syncService);
         user = new UserAccount("demo@finsights.local", "Demo");
     }
 
@@ -311,6 +312,36 @@ class BrokerConnectionServiceTest {
         service.disconnect("kite");
 
         verify(connections, never()).delete(any(BrokerConnection.class));
+    }
+
+    @Test
+    void syncNowRejectsAnUnsupportedBroker() {
+        assertThatThrownBy(() -> service.syncNow("groww"))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(syncService, never()).syncOne(any());
+    }
+
+    @Test
+    void syncNowFailsClearlyWhenNothingIsConnectedYet() {
+        when(currentUser.currentUser()).thenReturn(user);
+        when(connections.findByUser_IdAndBrokerKey(user.getId(), "indmoney")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.syncNow("indmoney"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Not connected");
+        verify(syncService, never()).syncOne(any());
+    }
+
+    @Test
+    void syncNowDelegatesToBrokerSyncServiceForTheCurrentUsersConnection() {
+        when(currentUser.currentUser()).thenReturn(user);
+        BrokerConnection connection = new BrokerConnection();
+        when(connections.findByUser_IdAndBrokerKey(user.getId(), "indmoney")).thenReturn(Optional.of(connection));
+
+        BrokerConnection result = service.syncNow("indmoney");
+
+        assertThat(result).isSameAs(connection);
+        verify(syncService).syncOne(connection);
     }
 
     @Test

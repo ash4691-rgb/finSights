@@ -15,9 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The connect/callback/disconnect side of broker linking (issue #90) — one-time, user-reviewed
- * actions, same shape as approving a CAS-extracted row (#89). The daily, unattended side (actually
- * pulling and applying a snapshot) is {@link BrokerSyncScheduler}, not this class.
+ * The connect/callback/disconnect/sync-now side of broker linking (issue #90) — user-initiated
+ * actions, same shape as approving a CAS-extracted row (#89). The unattended daily side (looping
+ * over every connection) is {@link BrokerSyncScheduler}; the actual per-connection fetch-and-apply
+ * logic both that and {@link #syncNow} delegate to is {@link BrokerSyncService}.
  *
  * <p>Two different connect flows live here, because brokers authenticate third-party apps two
  * different ways: Kite Connect needs a central developer app (one registered with Zerodha, shared
@@ -40,14 +41,16 @@ public class BrokerConnectionService {
     private final KiteConnectClient kite;
     private final CoinSwitchClient coinSwitch;
     private final IndmoneyClient indmoney;
+    private final BrokerSyncService syncService;
 
     public BrokerConnectionService(BrokerConnectionRepository connections, CurrentUserService currentUser,
-            KiteConnectClient kite, CoinSwitchClient coinSwitch, IndmoneyClient indmoney) {
+            KiteConnectClient kite, CoinSwitchClient coinSwitch, IndmoneyClient indmoney, BrokerSyncService syncService) {
         this.connections = connections;
         this.currentUser = currentUser;
         this.kite = kite;
         this.coinSwitch = coinSwitch;
         this.indmoney = indmoney;
+        this.syncService = syncService;
     }
 
     public boolean isConnectable(String brokerKey) {
@@ -146,6 +149,22 @@ public class BrokerConnectionService {
         requireConnectable(brokerKey);
         connections.findByUser_IdAndBrokerKey(currentUser.currentUser().getId(), brokerKey)
                 .ifPresent(connections::delete);
+    }
+
+    /** The "Sync now" button — fetches and applies this user's connection right now instead of
+     *  waiting for the daily scheduled job. Delegates the actual fetch to {@link
+     *  BrokerSyncService#syncOne}, which is also what the scheduler itself calls, so both paths
+     *  share the exact same "a failed fetch is never zero holdings" safety behavior. Returns the
+     *  updated connection (never throws for a fetch failure itself — that's recorded onto the
+     *  connection's own lastSyncError, same as the scheduled job, and the controller reads it
+     *  back off the return value rather than an exception). */
+    @Transactional
+    public BrokerConnection syncNow(String brokerKey) {
+        requireConnectable(brokerKey);
+        BrokerConnection connection = connections.findByUser_IdAndBrokerKey(currentUser.currentUser().getId(), brokerKey)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not connected to " + brokerKey + " yet"));
+        syncService.syncOne(connection);
+        return connection;
     }
 
     public Optional<ConnectionStatus> statusFor(String userId, String brokerKey) {
