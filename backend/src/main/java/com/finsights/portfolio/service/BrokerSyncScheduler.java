@@ -13,74 +13,74 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Pulls every linked Kite account's current holdings once a day and hands the result to every
- * registered {@link BrokerSyncConsumer} — mirrors {@link LivePriceRefreshScheduler}'s existing
- * pattern (that one refreshes market prices every 15 minutes; this one runs roughly daily, per
- * broker connection, against Kite's holdings endpoint), per issue #90.
+ * Pulls every linked broker connection's current holdings once a day and hands the result to
+ * every registered {@link BrokerSyncConsumer} — mirrors {@link LivePriceRefreshScheduler}'s
+ * existing pattern (that one refreshes market prices every 15 minutes; this one runs roughly
+ * daily, per broker connection), per issue #90. Dispatches across every registered {@link
+ * BrokerDataClient} (Kite, CoinSwitch, INDstocks, …) rather than knowing about any one broker
+ * itself — adding a new broker never requires touching this class, only registering a new
+ * BrokerDataClient bean.
  *
- * <p>Runs at 18:00 IST — after market close, so {@code last_price}/holdings are settled for the
- * day, and well before Kite's own ~6am session reset the next morning.
+ * <p>Runs at 18:00 IST — after market close, so holdings are settled for the day, and well before
+ * Kite's own ~6am session reset the next morning. CoinSwitch/INDstocks have no equivalent daily
+ * reset, but running them on the same cadence keeps this one scheduler simple.
  *
  * <p><b>Safety rule this exists to enforce:</b> a connection whose fetch fails this round is left
- * completely untouched (not even an empty snapshot is sent to consumers) — {@link
- * KiteConnectClient#fetchHoldings} returning {@code Optional.empty()} means "couldn't reach Kite,"
- * never "zero holdings." Conflating the two would let one transient Kite outage silently zero out
- * every BROKER_SYNC holding's value for every user — exactly the kind of "trust new data blindly"
- * failure issue #90's own "a snapshot always wins" rule doesn't intend to cover.
+ * completely untouched (not even an empty snapshot is sent to consumers) — a {@link
+ * BrokerDataClient#fetchSnapshots} returning {@code Optional.empty()} means "couldn't reach the
+ * broker," never "zero holdings." Conflating the two would let one transient outage silently zero
+ * out every BROKER_SYNC holding's value for every user.
  */
 @Component
 public class BrokerSyncScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(BrokerSyncScheduler.class);
-    private static final String KITE = "kite";
 
     private final BrokerConnectionRepository connections;
-    private final KiteConnectClient kite;
+    private final List<BrokerDataClient> dataClients;
     private final List<BrokerSyncConsumer> consumers;
 
-    public BrokerSyncScheduler(BrokerConnectionRepository connections, KiteConnectClient kite, List<BrokerSyncConsumer> consumers) {
+    public BrokerSyncScheduler(BrokerConnectionRepository connections, List<BrokerDataClient> dataClients, List<BrokerSyncConsumer> consumers) {
         this.connections = connections;
-        this.kite = kite;
+        this.dataClients = dataClients;
         this.consumers = consumers;
     }
 
     @Scheduled(cron = "0 0 18 * * *", zone = "Asia/Kolkata")
     public void syncAll() {
-        if (!kite.isConfigured() || !BrokerTokenEncryption.isConfigured()) return;
-        List<BrokerConnection> active = connections.findAllByBrokerKey(KITE);
-        if (active.isEmpty()) return;
+        if (!BrokerTokenEncryption.isConfigured()) return;
         int ok = 0;
         int failed = 0;
-        for (BrokerConnection connection : active) {
-            try {
-                if (syncOne(connection)) ok++; else failed++;
-            } catch (RuntimeException e) {
-                failed++;
-                log.warn("Broker sync threw for connection {}", connection.getId(), e);
-                connection.setLastSyncError(e.getMessage());
-                connections.save(connection);
+        int total = 0;
+        for (BrokerDataClient client : dataClients) {
+            List<BrokerConnection> active = connections.findAllByBrokerKey(client.brokerKey());
+            total += active.size();
+            for (BrokerConnection connection : active) {
+                try {
+                    if (syncOne(client, connection)) ok++; else failed++;
+                } catch (RuntimeException e) {
+                    failed++;
+                    log.warn("Broker sync threw for connection {}", connection.getId(), e);
+                    connection.setLastSyncError(e.getMessage());
+                    connections.save(connection);
+                }
             }
         }
-        log.info("Broker sync: {} of {} connection(s) synced, {} failed", ok, active.size(), failed);
+        if (total > 0) log.info("Broker sync: {} of {} connection(s) synced, {} failed", ok, total, failed);
     }
 
     /** @return true if this connection's holdings were fetched and handed off this round. */
-    private boolean syncOne(BrokerConnection connection) {
-        Optional<List<KiteConnectClient.KiteHolding>> holdings = kite.fetchHoldings(connection.getAccessToken());
-        if (holdings.isEmpty()) {
-            connection.setLastSyncError("Could not fetch holdings from Kite this round");
+    private boolean syncOne(BrokerDataClient client, BrokerConnection connection) {
+        Optional<List<BrokerSnapshot>> snapshots = client.fetchSnapshots(connection);
+        if (snapshots.isEmpty()) {
+            connection.setLastSyncError("Could not fetch holdings from " + client.brokerKey() + " this round");
             connections.save(connection);
             return false;
         }
-        Instant now = Instant.now();
-        List<BrokerSnapshot> snapshots = holdings.get().stream()
-                .map(h -> new BrokerSnapshot("kite:" + h.instrumentToken(), h.quantity(),
-                        h.lastPrice() != null ? h.lastPrice().multiply(h.quantity()) : null, now))
-                .toList();
         for (BrokerSyncConsumer consumer : consumers) {
-            consumer.applySnapshots(KITE, snapshots);
+            consumer.applySnapshots(client.brokerKey(), snapshots.get());
         }
-        connection.setLastSyncedAt(now);
+        connection.setLastSyncedAt(Instant.now());
         connection.setLastSyncError(null);
         connections.save(connection);
         return true;

@@ -13,12 +13,12 @@ import com.finsights.portfolio.dto.BrokerSnapshot;
 import com.finsights.portfolio.repository.BrokerConnectionRepository;
 import com.finsights.portfolio.security.BrokerTokenEncryption;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -27,7 +27,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class BrokerSyncSchedulerTest {
 
     @Mock BrokerConnectionRepository connections;
-    @Mock KiteConnectClient kite;
+    @Mock BrokerDataClient kiteClient;
+    @Mock BrokerDataClient coinSwitchClient;
     @Mock BrokerSyncConsumer consumerOne;
     @Mock BrokerSyncConsumer consumerTwo;
 
@@ -35,7 +36,7 @@ class BrokerSyncSchedulerTest {
 
     @BeforeEach
     void setUp() {
-        scheduler = new BrokerSyncScheduler(connections, kite, List.of(consumerOne, consumerTwo));
+        scheduler = new BrokerSyncScheduler(connections, List.of(kiteClient, coinSwitchClient), List.of(consumerOne, consumerTwo));
     }
 
     private MockedStatic<BrokerTokenEncryption> encryptionConfigured() {
@@ -45,60 +46,48 @@ class BrokerSyncSchedulerTest {
     }
 
     @Test
-    void syncAllIsANoOpWhenKiteIsntConfigured() {
-        when(kite.isConfigured()).thenReturn(false);
-
-        scheduler.syncAll();
-
-        verify(connections, never()).findAllByBrokerKey(any());
-    }
-
-    @Test
     void syncAllIsANoOpWhenTheEncryptionKeyIsntConfigured() {
-        when(kite.isConfigured()).thenReturn(true);
         // Real (unmocked) BrokerTokenEncryption.isConfigured() — false in this test JVM.
-
         scheduler.syncAll();
 
         verify(connections, never()).findAllByBrokerKey(any());
     }
 
     @Test
-    void syncAllHandsFetchedSnapshotsToEveryRegisteredConsumer() {
-        when(kite.isConfigured()).thenReturn(true);
-        BrokerConnection connection = new BrokerConnection();
-        connection.setAccessToken("token-1");
-        when(connections.findAllByBrokerKey("kite")).thenReturn(List.of(connection));
-        when(kite.fetchHoldings("token-1")).thenReturn(Optional.of(List.of(
-                new KiteConnectClient.KiteHolding(408065, "INFY", new BigDecimal("10"), new BigDecimal("1500.00")))));
+    void syncAllDispatchesToEveryRegisteredBrokerDataClient() {
+        when(kiteClient.brokerKey()).thenReturn("kite");
+        when(coinSwitchClient.brokerKey()).thenReturn("coinswitch");
+        BrokerConnection kiteConnection = new BrokerConnection();
+        BrokerConnection coinConnection = new BrokerConnection();
+        when(connections.findAllByBrokerKey("kite")).thenReturn(List.of(kiteConnection));
+        when(connections.findAllByBrokerKey("coinswitch")).thenReturn(List.of(coinConnection));
+        BrokerSnapshot kiteSnapshot = new BrokerSnapshot("kite:1", BigDecimal.TEN, null, Instant.now());
+        BrokerSnapshot coinSnapshot = new BrokerSnapshot("coinswitch:BTC", BigDecimal.ONE, null, Instant.now());
+        when(kiteClient.fetchSnapshots(kiteConnection)).thenReturn(Optional.of(List.of(kiteSnapshot)));
+        when(coinSwitchClient.fetchSnapshots(coinConnection)).thenReturn(Optional.of(List.of(coinSnapshot)));
 
         try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
             scheduler.syncAll();
         }
 
-        ArgumentCaptor<List<BrokerSnapshot>> captor = ArgumentCaptor.forClass(List.class);
-        verify(consumerOne).applySnapshots(org.mockito.ArgumentMatchers.eq("kite"), captor.capture());
-        verify(consumerTwo).applySnapshots(org.mockito.ArgumentMatchers.eq("kite"), any());
-        assertThat(captor.getValue()).hasSize(1);
-        BrokerSnapshot snapshot = captor.getValue().get(0);
-        assertThat(snapshot.brokerSyncRef()).isEqualTo("kite:408065");
-        assertThat(snapshot.quantity()).isEqualByComparingTo("10");
-        assertThat(snapshot.currentValue()).isEqualByComparingTo("15000.00"); // 10 * 1500.00
-        assertThat(connection.getLastSyncedAt()).isNotNull();
-        assertThat(connection.getLastSyncError()).isNull();
+        verify(consumerOne).applySnapshots("kite", List.of(kiteSnapshot));
+        verify(consumerOne).applySnapshots("coinswitch", List.of(coinSnapshot));
+        verify(consumerTwo).applySnapshots("kite", List.of(kiteSnapshot));
+        verify(consumerTwo).applySnapshots("coinswitch", List.of(coinSnapshot));
+        assertThat(kiteConnection.getLastSyncedAt()).isNotNull();
+        assertThat(coinConnection.getLastSyncedAt()).isNotNull();
     }
 
     // The one rule this scheduler exists to enforce: a connection whose fetch fails this round
     // is left completely alone — not even an empty snapshot list reaches a consumer — so one
-    // transient Kite outage can never look like "every holding was sold" to whatever eventually
+    // transient broker outage can never look like "every holding was sold" to whatever eventually
     // applies these snapshots onto Holding rows.
     @Test
     void aFailedFetchNeverReachesConsumersAndLeavesLastSyncedAtUntouched() {
-        when(kite.isConfigured()).thenReturn(true);
+        when(kiteClient.brokerKey()).thenReturn("kite");
         BrokerConnection connection = new BrokerConnection();
-        connection.setAccessToken("token-1");
         when(connections.findAllByBrokerKey("kite")).thenReturn(List.of(connection));
-        when(kite.fetchHoldings("token-1")).thenReturn(Optional.empty());
+        when(kiteClient.fetchSnapshots(connection)).thenReturn(Optional.empty());
 
         try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
             scheduler.syncAll();
@@ -112,13 +101,12 @@ class BrokerSyncSchedulerTest {
 
     @Test
     void aGenuinelyEmptyHoldingsResponseStillCountsAsASuccessfulSync() {
-        // Optional.of(List.of()) — Kite reached, it just genuinely reports zero holdings right
-        // now — distinct from Optional.empty() (couldn't reach Kite at all), see the test above.
-        when(kite.isConfigured()).thenReturn(true);
+        // Optional.of(List.of()) — the broker was reached, it just genuinely reports zero holdings
+        // right now — distinct from Optional.empty() (couldn't reach it at all), see the test above.
+        when(kiteClient.brokerKey()).thenReturn("kite");
         BrokerConnection connection = new BrokerConnection();
-        connection.setAccessToken("token-1");
         when(connections.findAllByBrokerKey("kite")).thenReturn(List.of(connection));
-        when(kite.fetchHoldings("token-1")).thenReturn(Optional.of(List.of()));
+        when(kiteClient.fetchSnapshots(connection)).thenReturn(Optional.of(List.of()));
 
         try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
             scheduler.syncAll();
@@ -131,14 +119,12 @@ class BrokerSyncSchedulerTest {
 
     @Test
     void oneConnectionThrowingNeverStopsTheOthersFromSyncing() {
-        when(kite.isConfigured()).thenReturn(true);
+        when(kiteClient.brokerKey()).thenReturn("kite");
         BrokerConnection broken = new BrokerConnection();
-        broken.setAccessToken("token-broken");
         BrokerConnection healthy = new BrokerConnection();
-        healthy.setAccessToken("token-healthy");
         when(connections.findAllByBrokerKey("kite")).thenReturn(List.of(broken, healthy));
-        when(kite.fetchHoldings("token-broken")).thenThrow(new RuntimeException("boom"));
-        when(kite.fetchHoldings("token-healthy")).thenReturn(Optional.of(List.of()));
+        when(kiteClient.fetchSnapshots(broken)).thenThrow(new RuntimeException("boom"));
+        when(kiteClient.fetchSnapshots(healthy)).thenReturn(Optional.of(List.of()));
 
         try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
             scheduler.syncAll();
@@ -150,14 +136,16 @@ class BrokerSyncSchedulerTest {
     }
 
     @Test
-    void syncAllSkipsEntirelyWhenThereAreNoActiveConnections() {
-        when(kite.isConfigured()).thenReturn(true);
-        when(connections.findAllByBrokerKey("kite")).thenReturn(List.of());
+    void syncAllSkipsClientsWithNoActiveConnections() {
+        when(kiteClient.brokerKey()).thenReturn("kite");
+        when(coinSwitchClient.brokerKey()).thenReturn("coinswitch");
+        when(connections.findAllByBrokerKey(any())).thenReturn(List.of());
 
         try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
             scheduler.syncAll();
         }
 
-        verify(kite, never()).fetchHoldings(any());
+        verify(kiteClient, never()).fetchSnapshots(any());
+        verify(coinSwitchClient, never()).fetchSnapshots(any());
     }
 }

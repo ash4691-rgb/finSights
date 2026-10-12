@@ -84,6 +84,33 @@ class BrokerServiceTest {
         assertThat(groww.status()).isEqualTo("PLANNED");
         assertThat(groww.connectable()).isFalse();
         assertThat(groww.connected()).isFalse();
+        assertThat(groww.connectFlow()).isNull();
         org.mockito.Mockito.verify(connections, org.mockito.Mockito.never()).statusFor(user.getId(), "groww");
+    }
+
+    @Test
+    void kiteUsesTheRedirectConnectFlow() {
+        when(connections.statusFor(user.getId(), "kite")).thenReturn(Optional.empty());
+
+        BrokersResponse response = service.overview(null);
+
+        assertThat(kiteSource(response).connectFlow()).isEqualTo("REDIRECT");
+    }
+
+    @Test
+    void coinswitchAndIndmoneyAreConnectableViaThePasteKeyFlow() {
+        when(connections.statusFor(user.getId(), "kite")).thenReturn(Optional.empty());
+        when(connections.statusFor(user.getId(), "coinswitch"))
+                .thenReturn(Optional.of(new BrokerConnectionService.ConnectionStatus(Instant.now(), false, null)));
+        when(connections.statusFor(user.getId(), "indmoney")).thenReturn(Optional.empty());
+
+        BrokersResponse response = service.overview(null);
+
+        BrokersResponse.Source coinswitch = response.sources().stream().filter(s -> s.key().equals("coinswitch")).findFirst().orElseThrow();
+        BrokersResponse.Source indmoney = response.sources().stream().filter(s -> s.key().equals("indmoney")).findFirst().orElseThrow();
+        assertThat(coinswitch.connectFlow()).isEqualTo("API_KEY_SECRET");
+        assertThat(coinswitch.status()).isEqualTo("CONNECTED");
+        assertThat(indmoney.connectFlow()).isEqualTo("API_KEY_ONLY");
+        assertThat(indmoney.status()).isEqualTo("COMING_SOON");
     }
 }
