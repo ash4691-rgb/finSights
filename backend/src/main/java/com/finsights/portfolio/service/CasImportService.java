@@ -5,7 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.finsights.portfolio.dto.CasExtractionResponse;
+import com.finsights.portfolio.dto.CasHoldingToRemove;
 import com.finsights.portfolio.dto.ExtractedHolding;
+import com.finsights.portfolio.dto.SymbolSuggestion;
+import com.finsights.portfolio.domain.Holding;
+import com.finsights.portfolio.repository.HoldingRepository;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -16,7 +20,13 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
@@ -48,6 +58,13 @@ import org.springframework.web.server.ResponseStatusException;
  * schema itself has no field for PAN, account/folio/demat numbers, address, or any other personal
  * detail, and the system prompt tells the model explicitly never to return one even if it's
  * visible in the document — the model can only hand back what the schema has room for.
+ *
+ * <p>There's no real ISIN-to-ticker mapping yet (tracked as deferred work on #89), so each row
+ * also gets a best-effort NSE/BSE ticker guess from its instrument name via {@link
+ * #resolveTicker} — the same live-price search the manual Add Holding form's ticker field already
+ * uses. A match pre-fills the review form as {@code MARKET_PRICE} with that ticker; no match falls
+ * back to {@code MANUAL}, same as before. Either way it's still a suggestion the user reviews, not
+ * an applied fact.
  */
 @Service
 public class CasImportService {
@@ -87,12 +104,17 @@ public class CasImportService {
 
     private final CasImportRateLimiter rateLimiter;
     private final CurrentUserService currentUser;
+    private final MarketDataService marketData;
+    private final HoldingRepository holdings;
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
-    public CasImportService(CasImportRateLimiter rateLimiter, CurrentUserService currentUser) {
+    public CasImportService(CasImportRateLimiter rateLimiter, CurrentUserService currentUser,
+                             MarketDataService marketData, HoldingRepository holdings) {
         this.rateLimiter = rateLimiter;
         this.currentUser = currentUser;
+        this.marketData = marketData;
+        this.holdings = holdings;
     }
 
     public CasExtractionResponse extract(byte[] pdf, String password) {
@@ -116,7 +138,116 @@ public class CasImportService {
 
         ObjectNode body = buildRequestBody(json, model, Base64.getEncoder().encodeToString(decrypted));
         JsonNode response = callClaude(body);
-        return parseExtraction(json, response);
+        return matchAgainstExisting(enrichWithTickers(parseExtraction(json, response)), userId);
+    }
+
+    /** Tags each row with (12-char) ISINs, same shape {@code ExtractedHolding.isin()} is already
+     *  normalized to. */
+    private static final Pattern ISIN_TAG = Pattern.compile("ISIN ([A-Z0-9]{12})");
+
+    /**
+     * There's no {@code isin} column on {@code Holding} yet (see issue #89's deferred list), so
+     * this reuses the one place an ISIN is already on record: the "ISIN &lt;isin&gt;" note the
+     * Holdings page writes into a CAS-imported holding's description (see {@code
+     * draftFromExtractedHolding} on the frontend). A row whose ISIN matches one of those tagged
+     * holdings needs no review — it's already in the portfolio — so it's reported as matched
+     * rather than asked for again; a tagged holding whose ISIN doesn't turn up anywhere in this
+     * statement is reported as a candidate to remove. Nothing is written here — same "extraction
+     * only" rule as the rest of this class; the Holdings page still asks the user before every
+     * delete, same as it does for a holding deleted by hand.
+     *
+     * <p>The obvious limitation: if a user edits that description's free-text Notes field after
+     * import, the tag is gone and this holding can no longer be matched or offered for cleanup —
+     * an acceptable trade for not adding a schema column for a pilot feature.
+     */
+    /** Package-private (not private) purely so it can be unit-tested directly against a mocked
+     *  {@link HoldingRepository}. */
+    CasExtractionResponse matchAgainstExisting(CasExtractionResponse extracted, String userId) {
+        Map<String, Holding> byIsin = new LinkedHashMap<>();
+        for (Holding h : holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId)) {
+            Matcher m = ISIN_TAG.matcher(h.getDescription() == null ? "" : h.getDescription());
+            if (m.find()) byIsin.put(m.group(1), h);
+        }
+
+        List<ExtractedHolding> matched = new ArrayList<>();
+        for (ExtractedHolding row : extracted.holdings()) {
+            Holding existing = byIsin.remove(row.isin());
+            matched.add(existing == null ? row
+                    : new ExtractedHolding(row.instrumentName(), row.isin(), row.quantity(), row.averageCostPerUnit(),
+                            row.depository(), row.tickerSymbol(), existing.getId()));
+        }
+        // Whatever's left in byIsin was tagged from a past import but never matched above — not
+        // seen in this statement.
+        List<CasHoldingToRemove> toRemove = byIsin.values().stream()
+                .map(h -> new CasHoldingToRemove(h.getId(), h.getName(), h.getBroker()))
+                .toList();
+        return new CasExtractionResponse(matched, toRemove, extracted.statementDate(), extracted.warnings());
+    }
+
+    /**
+     * Best-effort ISIN-to-ticker stand-in: there's no real mapping yet (see issue #89's deferred
+     * list), so this guesses an NSE/BSE ticker from each row's instrument name via the same
+     * live-price search {@code SymbolSearchInput} already uses on the Add Holding form — the one
+     * search that's already tuned to rank Indian listings first. A row's own extraction never
+     * fails because of this: {@link #resolveTicker} swallows every failure and simply leaves
+     * {@code tickerSymbol} null, same as if nothing had been attempted.
+     */
+    private CasExtractionResponse enrichWithTickers(CasExtractionResponse extracted) {
+        List<ExtractedHolding> enriched = extracted.holdings().stream()
+                .map(h -> new ExtractedHolding(h.instrumentName(), h.isin(), h.quantity(), h.averageCostPerUnit(),
+                        h.depository(), resolveTicker(h.instrumentName()), h.matchedHoldingId()))
+                .toList();
+        return new CasExtractionResponse(enriched, extracted.toRemove(), extracted.statementDate(), extracted.warnings());
+    }
+
+    /** Package-private (not private) purely so it can be unit-tested directly against a mocked
+     *  {@link MarketDataService} without going through the full, network-calling {@link #extract}. */
+    String resolveTicker(String instrumentName) {
+        try {
+            for (SymbolSuggestion suggestion : marketData.search(instrumentName)) {
+                String symbol = suggestion.symbol();
+                if (symbol == null) continue;
+                String upper = symbol.toUpperCase();
+                // CAS holdings are Indian equities/ETFs — a Yahoo hit on a foreign exchange is
+                // never the right instrument here, whatever its name similarity score.
+                if (!upper.endsWith(".NS") && !upper.endsWith(".BO")) continue;
+                if (namesLikelyMatch(instrumentName, suggestion.name())) return symbol;
+            }
+        } catch (RuntimeException e) {
+            log.debug("Ticker guess failed for '{}': {}", instrumentName, e.toString());
+        }
+        return null;
+    }
+
+    // Deliberately excludes words like "INDUSTRIES" or "POWER" that happen to follow a company
+    // name — those are load-bearing for telling apart names that share a group prefix (Reliance
+    // Industries vs. Reliance Power vs. Reliance Capital), not generic legal-entity boilerplate.
+    private static final Set<String> CORPORATE_SUFFIXES = Set.of(
+            "LIMITED", "LTD", "PVT", "PRIVATE", "CO", "INC", "PLC");
+
+    /** True when two company names share enough significant words to be the same instrument —
+     *  conservative enough to skip a coincidental one-word overlap, lenient enough to absorb word
+     *  order, punctuation, and "Limited" vs "Ltd" differences between a CAS statement and Yahoo's
+     *  own naming. Package-private and pure so it's unit-testable without a search call. */
+    static boolean namesLikelyMatch(String a, String b) {
+        Set<String> wordsA = significantWords(a);
+        Set<String> wordsB = significantWords(b);
+        if (wordsA.isEmpty() || wordsB.isEmpty()) return false;
+        // Full containment of the shorter name's words, not just a majority overlap — conglomerate
+        // families (Reliance Industries vs. Reliance Power, Tata Motors vs. Tata Steel) share their
+        // first word constantly, so "most words overlap" is not a safe bar on its own.
+        Set<String> smaller = wordsA.size() <= wordsB.size() ? wordsA : wordsB;
+        Set<String> larger = smaller == wordsA ? wordsB : wordsA;
+        return larger.containsAll(smaller);
+    }
+
+    private static Set<String> significantWords(String name) {
+        if (name == null || name.isBlank()) return Set.of();
+        Set<String> words = new LinkedHashSet<>();
+        for (String word : name.toUpperCase().replaceAll("[^A-Z0-9 ]", " ").split("\\s+")) {
+            if (!word.isBlank() && !CORPORATE_SUFFIXES.contains(word)) words.add(word);
+        }
+        return words;
     }
 
     /**
@@ -245,11 +376,11 @@ public class CasImportService {
             }
         }
         if (toolInput == null || toolInput.isMissingNode()) {
-            return new CasExtractionResponse(List.of(), null,
+            return new CasExtractionResponse(List.of(), List.of(), null,
                     List.of("Couldn't read any holdings from this statement — try a different file."));
         }
 
-        List<ExtractedHolding> holdings = new ArrayList<>();
+        List<ExtractedHolding> rows = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         for (JsonNode node : toolInput.path("warnings")) warnings.add(node.asText());
 
@@ -264,11 +395,11 @@ public class CasImportService {
             JsonNode avgCostNode = row.path("averageCostPerUnit");
             BigDecimal avgCost = avgCostNode.isNumber() ? avgCostNode.decimalValue() : null;
             String depository = blankToNull(row.path("depository").asText(null));
-            holdings.add(new ExtractedHolding(name, isin.trim().toUpperCase(), quantityNode.decimalValue(), avgCost, depository));
+            rows.add(new ExtractedHolding(name, isin.trim().toUpperCase(), quantityNode.decimalValue(), avgCost, depository, null, null));
         }
 
         String statementDate = blankToNull(toolInput.path("statementDate").asText(null));
-        return new CasExtractionResponse(holdings, statementDate, warnings);
+        return new CasExtractionResponse(rows, List.of(), statementDate, warnings);
     }
 
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }

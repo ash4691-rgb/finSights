@@ -8,4 +8,6 @@ import java.util.List;
  * pilot (mutual funds, bonds), a page it couldn't read — so a short statement isn't silently
  * under-reported with no explanation.
  */
-public record CasExtractionResponse(List<ExtractedHolding> holdings, String statementDate, List<String> warnings) { }
+public record CasExtractionResponse(
+        List<ExtractedHolding> holdings, List<CasHoldingToRemove> toRemove, String statementDate, List<String> warnings
+) { }

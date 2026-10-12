@@ -240,6 +240,17 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     setHoldingDetail(current => current && current.id === saved.id ? saved : current)
   }
 
+  // CasImportModal's "Done" deletes every holding it flagged as not seen in the latest statement,
+  // then reports the ids here — same instant-splice reasoning as applyHoldingUpdate, just removing
+  // instead of upserting, plus closing categoryDetail's drawer if it was on a holding that's gone.
+  const removeHoldingsFromState = (ids: string[]) => {
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    setHoldings(current => current.filter(h => !idSet.has(h.id)))
+    setHoldingDetail(current => current && idSet.has(current.id) ? null : current)
+    void load()
+  }
+
   // Same instant-splice trick as applyHoldingUpdate above — a just-created category's own figures
   // (0 invested, 0 holdings, 0 weightage) are already final the moment the server echoes it back,
   // so there's nothing to wait on load() for here; this is what used to make a new category sit
@@ -396,7 +407,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={mergeSavedHolding} onGoToTransactions={() => setPage('transactions')} />}
     {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} onHoldingUpdated={applyHoldingUpdate} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
-    {showCasImport && <CasImportModal categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => setShowCasImport(false)} onSaved={mergeSavedHolding} />}
+    {showCasImport && <CasImportModal categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => setShowCasImport(false)} onSaved={mergeSavedHolding} onRemoved={removeHoldingsFromState} />}
     {showLayoutOnboarding && <CustomLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}
