@@ -1,18 +1,20 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import type { FormEvent, MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import { api } from '../api'
 import { LayoutZone } from '../layout'
-import { money, percent, label, since, ago, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
+import { money, percent, label, since, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput, InfoTip, useEscToClose } from '../ui'
-import { seriesKeysOf } from '../widgets'
+import { useChartHover } from '../charts'
 import type { PageDataSource } from '../widgets'
-import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PortfolioTimeline, TimelineWeek, PeriodKey, MarketQuote, ChartRange, MarketHistory } from '../types'
+import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory } from '../types'
 
 // ---------------------------------------------------------------------------
 
-// Insights is deliberately not a second Overview — that breakdown/KPI content lives on the
-// Dashboard. This page's own job is Hot Picks (market-linked holdings + watchlist symbols moving
-// beyond a configured threshold) and data-quality checks.
+// Shown to users as "Actions" — the page for "what should I look at today?". Deliberately not a
+// second Overview (that breakdown/KPI content, and the portfolio timeline, live on the Dashboard);
+// this page's own job is the Action centre (pending decisions + lower-urgency flags), Hot Picks
+// (market-linked holdings + watchlist symbols moving beyond a configured threshold), and the
+// watchlist itself.
 export function InsightsView({ displayCurrency, dataVersion, settings, dashboard, reload, onOpen, layoutEditing, layoutNonce }: {
   displayCurrency: string; dataVersion: number; settings: Settings; dashboard: Dashboard; reload: () => Promise<void>; onOpen: (id: string) => void
   layoutEditing: boolean; layoutNonce: number
@@ -27,18 +29,8 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   const [editingWatch, setEditingWatch] = useState<WatchlistEntry | null>(null)
   const [viewingChart, setViewingChart] = useState<{ symbol: string; name: string; currency?: string; triggered?: TopMover['triggered'] } | null>(null)
   const [watchlistOpen, setWatchlistOpen] = useState(false)
-  const [timeline, setTimeline] = useState<PortfolioTimeline | null>(null)
-  const [capturing, setCapturing] = useState(false)
 
   useEffect(() => { api<Insights>(`/api/insights?currency=${displayCurrency}`).then(setData).catch(e => setError(e.message)) }, [displayCurrency, dataVersion])
-  const loadTimeline = () => api<PortfolioTimeline>(`/api/insights/timeline?currency=${displayCurrency}`).then(setTimeline).catch(() => setTimeline({ weeks: [], capturedToday: false }))
-  useEffect(() => { void loadTimeline() }, [displayCurrency, dataVersion])
-  const captureNow = async () => {
-    setCapturing(true)
-    try { setTimeline(await api<PortfolioTimeline>(`/api/insights/timeline/capture?currency=${displayCurrency}`, { method: 'POST' })) }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not capture a snapshot') }
-    finally { setCapturing(false) }
-  }
   const loadTopMovers = () => api<TopMover[]>(`/api/insights/top-movers?currency=${displayCurrency}`).then(setTopMovers).catch(() => setTopMovers([]))
   const loadWatchlist = () => api<WatchlistEntry[]>(`/api/watchlist?currency=${displayCurrency}`).then(setWatchlist).catch(() => setWatchlist([]))
   const loadThresholds = () => api<MovementThresholds>('/api/insights/thresholds').then(t => setThresholds(thresholdForm(t))).catch(() => { /* leave defaults */ })
@@ -115,10 +107,6 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
       { key: 'totalAssets', label: 'Total assets', kind: 'measure' },
       { key: 'totalLiabilities', label: 'Total liabilities', kind: 'measure' },
       { key: 'totalProfitLoss', label: 'Portfolio P/L', kind: 'measure' },
-      { key: 'netWorth', label: 'Net worth', kind: 'series' },
-      { key: 'invested', label: 'Invested', kind: 'series' },
-      { key: 'current', label: 'Current value', kind: 'series' },
-      { key: 'liabilities', label: 'Liabilities', kind: 'series' },
     ],
     resolve(w) {
       if (w.subType === 'counter') {
@@ -128,17 +116,8 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
         }
         return { kind: 'scalar', value: totals[w.query.measure ?? 'netWorth'] ?? dashboard.netWorth }
       }
-      if (w.subType === '2d-graph') {
-        const weeks = timeline?.weeks ?? []
-        const fieldFor: Record<string, (week: TimelineWeek) => number> = {
-          netWorth: week => week.netWorth, invested: week => week.invested, current: week => week.current, liabilities: week => week.liabilities,
-        }
-        const labelFor: Record<string, string> = { netWorth: 'Net worth', invested: 'Invested', current: 'Current value', liabilities: 'Liabilities' }
-        return { kind: 'series', series: seriesKeysOf(w.query).map(key => ({
-          label: labelFor[key] ?? key,
-          points: weeks.map(week => ({ t: week.weekOf, v: (fieldFor[key] ?? fieldFor.netWorth)(week) })),
-        })) }
-      }
+      // No time-series on this page — the portfolio timeline (and its series data) lives on the Dashboard now.
+      if (w.subType === '2d-graph') return { kind: 'series', series: [] }
       const byDimension: Record<string, Breakdown[]> = { category: data.byCategory, broker: data.byBroker, tag: data.byTag, currency: data.byCurrency, liquidity: data.byLiquidity }
       const rows = byDimension[w.query.dimension ?? 'category'] ?? data.byCategory
       const m = w.query.measure ?? 'value'
@@ -149,7 +128,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
   const zone = { editing: layoutEditing, nonce: layoutNonce }
   return <>
-    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'widgets', span: 12 }, { key: 'actions', span: 12 }, { key: 'topMovers', span: 12 }, { key: 'timeline', span: 12 }]} render={{
+    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'widgets', span: 12 }, { key: 'actions', span: 12 }, { key: 'topMovers', span: 12 }]} render={{
     widgets: <LayoutZone zoneKey="insights/widgets" {...zone} dataSource={insightsDataSource} />,
     actions: <section className="panel data-quality">
       <div className="panel-heading"><h3>Action centre <InfoTip text="Things that need a decision from you — EMIs and interest due, matured deposits, missing values — split into what's due now and what's worth a second look." /></h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
@@ -225,36 +204,6 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
         </div>,
       }} />
     </section>,
-
-    timeline: <section className="panel">
-      <div className="panel-heading">
-        <h3>Portfolio timeline <InfoTip text="Net worth and per-category invested/current value, captured every Monday, so you can see how the portfolio actually moved week over week." /></h3>
-        <button className="outline compact" onClick={() => void captureNow()}
-          disabled={capturing || (timeline?.capturedToday ?? false)}
-          title={timeline?.capturedToday ? 'Already captured today' : 'Record this week’s values now'}>
-          {capturing ? 'Capturing…' : timeline?.capturedToday ? 'Captured today' : 'Capture snapshot now'}
-        </button>
-      </div>
-      <p className="hint">Net worth week by week — each category's invested and current value is snapshotted every Monday.
-        {timeline?.lastCapturedAt && ` Last snapshot ${ago(timeline.lastCapturedAt)}.`}</p>
-      <LayoutZone zoneKey="insights/timeline" {...zone} defaults={[{ key: 'networth', span: 12 }, { key: 'history', span: 12 }]} render={{
-        networth: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">📈</span><h4>Net worth</h4></div>
-          {!timeline ? <p className="hint">Loading timeline…</p>
-            : timeline.weeks.length < 2
-              ? <p className="hint">Not enough history yet — check back after a couple of weekly snapshots.</p>
-              : <NetWorthChart weeks={timeline.weeks} />}
-        </div>,
-
-        history: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">📋</span><h4>Weekly history</h4><span className="action-col-count">{timeline?.weeks.length ?? 0}</span></div>
-          {!timeline ? <p className="hint">Loading timeline…</p>
-            : timeline.weeks.length === 0
-              ? <p className="hint">No snapshots yet — this week's is being recorded now. Come back next week to see how things moved.</p>
-              : <div className="timeline-panel"><TimelineTable weeks={timeline.weeks} /></div>}
-        </div>,
-      }} />
-    </section>,
     }} />
     {(addingWatch || editingWatch) && <WatchlistModal item={editingWatch}
       onClose={() => { setAddingWatch(false); setEditingWatch(null) }}
@@ -262,112 +211,6 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     {viewingChart && <ViewMoverItemModal symbol={viewingChart.symbol} name={viewingChart.name} currency={viewingChart.currency} triggered={viewingChart.triggered}
       onClose={() => setViewingChart(null)} />}
   </>
-}
-
-// Shared by every hand-rolled inline-SVG line chart (NetWorthChart, PriceHistoryChart): tracks
-// the pointer over the plot, snaps to the nearest data point by x, and returns enough to render
-// a guide line + dot in the SVG and a fixed-positioned tooltip outside it (so it's never clipped
-// by a scrolling ancestor — same technique as InfoTip). `points` must already be projected into
-// the chart's own SVG viewBox coordinates.
-function useChartHover(points: { x: number; y: number }[], W: number) {
-  const svgRef = useRef<SVGSVGElement>(null)
-  const [index, setIndex] = useState<number | null>(null)
-  const [tip, setTip] = useState<{ left: number; top: number } | null>(null)
-
-  useEffect(() => { setIndex(null); setTip(null) }, [points.length])
-
-  const onMove = (e: ReactMouseEvent<SVGSVGElement>) => {
-    const rect = svgRef.current?.getBoundingClientRect()
-    if (!rect || !points.length) return
-    const svgX = (e.clientX - rect.left) / rect.width * W
-    let nearest = 0, nearestDist = Infinity
-    points.forEach((p, i) => { const d = Math.abs(p.x - svgX); if (d < nearestDist) { nearestDist = d; nearest = i } })
-    const vw = window.innerWidth || document.documentElement.clientWidth || 1024
-    const screenX = rect.left + (points[nearest].x / W) * rect.width
-    setIndex(nearest)
-    setTip({ left: Math.min(Math.max(screenX, 90), Math.max(vw - 90, 90)), top: rect.top - 10 })
-  }
-  const onLeave = () => { setIndex(null); setTip(null) }
-  return { svgRef, onMove, onLeave, index, tip }
-}
-
-// A lightweight inline-SVG line chart of net worth across the snapshot weeks (oldest → newest).
-export function NetWorthChart({ weeks }: { weeks: TimelineWeek[] }) {
-  const W = 680, H = 150, padX = 10, padTop = 12, padBot = 16
-  const values = weeks.map(w => w.netWorth)
-  const min = Math.min(...values), max = Math.max(...values)
-  const span = max - min || Math.abs(max) || 1
-  const x = (i: number) => padX + (i / (weeks.length - 1)) * (W - padX * 2)
-  const y = (v: number) => padTop + (1 - (v - min) / span) * (H - padTop - padBot)
-  const points = weeks.map((w, i) => ({ x: x(i), y: y(w.netWorth) }))
-  const { svgRef, onMove, onLeave, index, tip } = useChartHover(points, W)
-  if (weeks.length < 2) return null
-  const line = weeks.map((w, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(w.netWorth).toFixed(1)}`).join(' ')
-  const area = `${line} L ${x(weeks.length - 1).toFixed(1)} ${(H - padBot).toFixed(1)} L ${x(0).toFixed(1)} ${(H - padBot).toFixed(1)} Z`
-  const growth = weeks[weeks.length - 1].netWorth - weeks[0].netWorth
-  const zeroY = min < 0 && max > 0 ? y(0) : null
-  const hovered = index != null ? weeks[index] : null
-  return <div className="networth-chart">
-    <div className="networth-caption">
-      <span>Net worth</span>
-      <strong className={growth >= 0 ? 'positive' : 'negative'}>{growth >= 0 ? '▲' : '▼'} {money(Math.abs(growth))} over {weeks.length} weeks</strong>
-    </div>
-    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="networth-svg" role="img" aria-label="Net worth over time"
-        onMouseMove={onMove} onMouseLeave={onLeave}>
-      {zeroY != null && <line x1={padX} x2={W - padX} y1={zeroY} y2={zeroY} className="networth-zero" vectorEffect="non-scaling-stroke" />}
-      <path d={area} className="networth-area" />
-      <path d={line} className="networth-line" vectorEffect="non-scaling-stroke" />
-      {hovered && <g>
-        <line x1={points[index!].x} x2={points[index!].x} y1={padTop} y2={H - padBot} className="chart-hover-line" vectorEffect="non-scaling-stroke" />
-        <circle cx={points[index!].x} cy={points[index!].y} r="4" className="chart-hover-dot" />
-      </g>}
-    </svg>
-    <div className="networth-axis"><span>{since(weeks[0].weekOf)}</span><span>{since(weeks[weeks.length - 1].weekOf)}</span></div>
-    {hovered && tip && <div className="chart-tooltip" style={{ left: tip.left, top: tip.top }}>
-      <strong>{money(hovered.netWorth)}</strong><span>{since(hovered.weekOf)}</span>
-    </div>}
-  </div>
-}
-
-// Weekly portfolio history. Newest week first; each row expands to the per-category split.
-export function TimelineTable({ weeks }: { weeks: TimelineWeek[] }) {
-  const [openWeek, setOpenWeek] = useState<string | null>(null)
-  const ordered = [...weeks].reverse()
-  const delta = (a: number, b?: number) => (b == null ? null : a - b)
-  return <div className="table-panel"><table className="timeline-table">
-    <thead><tr><th>Week of</th><th>Invested</th><th>Current</th><th>Unrealised P/L</th><th>Net worth</th></tr></thead>
-    <tbody>{ordered.map((w, i) => {
-      const prev = ordered[i + 1]
-      const pl = w.current - w.invested
-      const nwMove = delta(w.netWorth, prev?.netWorth)
-      const isOpen = openWeek === w.weekOf
-      return <Fragment key={w.weekOf}>
-        <tr className="clickable-row" onClick={() => setOpenWeek(isOpen ? null : w.weekOf)}>
-          <td><strong>{since(w.weekOf)}</strong> <span className="row-caret">{isOpen ? '▴' : '▾'}</span></td>
-          <td>{money(w.invested)}</td>
-          <td>{money(w.current)}</td>
-          <td className={pl >= 0 ? 'positive' : 'negative'}>{pl >= 0 ? '+' : ''}{money(pl)}</td>
-          <td>{money(w.netWorth)}{nwMove != null && nwMove !== 0 &&
-            <small className={nwMove > 0 ? 'positive' : 'negative'}> {nwMove > 0 ? '▲' : '▼'} {money(Math.abs(nwMove))}</small>}</td>
-        </tr>
-        {isOpen && <tr className="timeline-detail-row"><td colSpan={5}>
-          <table className="timeline-detail"><tbody>
-            {w.categories.map(c => {
-              const cpl = c.current - c.invested
-              const liability = c.kind === 'LIABILITY'
-              return <tr key={c.categoryId}>
-                <td>{c.categoryName}{liability && <em className="pill-liability">liability</em>}</td>
-                <td>{liability ? '—' : money(c.invested)}</td>
-                <td>{money(c.current)}</td>
-                <td className={liability ? '' : cpl >= 0 ? 'positive' : 'negative'}>
-                  {liability ? '' : `${cpl >= 0 ? '+' : ''}${money(cpl)}`}</td>
-              </tr>
-            })}
-          </tbody></table>
-        </td></tr>}
-      </Fragment>
-    })}</tbody>
-  </table></div>
 }
 
 export function thresholdForm(thresholds: MovementThresholds | null): Record<PeriodKey, string> {
