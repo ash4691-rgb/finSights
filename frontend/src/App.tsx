@@ -316,7 +316,20 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     <aside className="sidebar">
       <div className="brand"><div className="mark">F</div><span>FinSights</span></div>
       <nav>
-        {nav.map(([key, icon, text]) => <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}><span>{icon}</span> {text}</button>)}
+        {nav.map(entry => 'pages' in entry
+          ? <div key={entry.label} className="nav-group">
+              <button className={entry.pages.some(p => p.page === page) ? 'active' : ''} onClick={() => setPage(entry.pages[0].page)}>
+                <span>{entry.icon}</span> {entry.label}
+              </button>
+              <div className="nav-subgroup">
+                {entry.pages.map(p => <button key={p.page} className={page === p.page ? 'active' : ''} onClick={() => setPage(p.page)}>
+                  <span>{p.icon}</span> {p.label}
+                </button>)}
+              </div>
+            </div>
+          : <button key={entry.page} className={page === entry.page ? 'active' : ''} onClick={() => setPage(entry.page)}>
+              <span>{entry.icon}</span> {entry.label}
+            </button>)}
         {goku.admin && <GokuAdminButton goku={goku} />}
       </nav>
       <div className="sidebar-bottom">
