@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../api'
-import { money, since, ago, label } from '../util'
+import { money, percent, since, ago, label } from '../util'
 import { Field } from '../ui'
-import type { Brokers, Source } from '../types'
+import type { Brokers, BrokerGroup, Source } from '../types'
 
 export type BrokerNotice = { broker: string; status: 'connected' | 'failed' }
 
@@ -36,6 +36,10 @@ export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNot
   const [search, setSearch] = useState('')
   // Which source's tile is currently expanded into its full detail panel — at most one at a time.
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  // Which broker record (in the Overview list below) has its extra detail — holding count,
+  // categories, last sync, currencies — expanded. Collapsed by default so the list reads as a
+  // compact at-a-glance summary; at most one open at a time, same as the source tiles above.
+  const [expandedBroker, setExpandedBroker] = useState<string | null>(null)
   const [connecting, setConnecting] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
   const [reloadNonce, setReloadNonce] = useState(0)
@@ -115,18 +119,13 @@ export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNot
     <section className="panel">
       <div className="panel-heading"><h3>Overview</h3></div>
       <div className="broker-meta"><span>Total portfolio value</span><strong>{money(totalValue)}</strong></div>
+      {data.brokers.length
+        ? <div className="broker-record-list">
+            {data.brokers.map(b => <BrokerRecord key={b.name} broker={b}
+              expanded={expandedBroker === b.name} onToggle={() => setExpandedBroker(k => k === b.name ? null : b.name)} />)}
+          </div>
+        : <p className="hint">Assign holdings to a broker to see them grouped here.</p>}
     </section>
-    {data.brokers.length
-      ? <div className="broker-grid">
-          {data.brokers.map(b => <article className="panel broker-card" key={b.name}>
-            <div className="panel-heading"><h3>{b.name}</h3><span>{b.holdingCount} holding{b.holdingCount === 1 ? '' : 's'}</span></div>
-            <strong className="broker-value">{money(b.currentValue)}</strong>
-            <div className="broker-meta"><span>Invested {money(b.investedValue)}</span><span className={b.profitLoss >= 0 ? 'positive' : 'negative'}>{b.profitLoss >= 0 ? '+' : ''}{money(b.profitLoss)}</span></div>
-            <div className="tag-row">{b.categories.map(c => <em key={c}>{c}</em>)}</div>
-            <p className="hint">Last change {since(b.lastUpdated)}{b.currencies.length > 1 ? ` · ${b.currencies.join(', ')}` : ''}</p>
-          </article>)}
-        </div>
-      : <p className="hint">Assign holdings to a broker to see them grouped here.</p>}
     <section className="panel">
       <div className="panel-heading"><h3>Connect a source</h3><span>Automated sync</span></div>
       <p className="hint">Connect Zerodha Kite, CoinSwitch, or INDmoney for automated daily holdings sync, or bulk-load transactions from a broker's CSV/XML statement on the Transactions page for everything else.</p>
@@ -145,6 +144,28 @@ export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNot
       </div>
     </section>
   </>
+}
+
+// One compact row per broker — name, current value, invested value, and P/L (amount & percent)
+// are always visible; holding count, categories, last-sync time, and currencies used are a
+// "sub-title" of secondary detail that only needs to earn its space when the user asks for it, so
+// it stays collapsed behind a click rather than padding out every row all the time.
+function BrokerRecord({ broker: b, expanded, onToggle }: { broker: BrokerGroup; expanded: boolean; onToggle: () => void }) {
+  return <div className={`broker-record${expanded ? ' expanded' : ''}`}>
+    <button className="broker-record-header" onClick={onToggle}>
+      <span className="broker-record-name"><strong title={b.name}>{b.name}</strong></span>
+      <span className="broker-record-figures">
+        <strong>{money(b.currentValue)}</strong>
+        <span className="owner">Invested {money(b.investedValue)}</span>
+        <span className={b.profitLoss >= 0 ? 'positive' : 'negative'}>{b.profitLoss >= 0 ? '+' : ''}{money(b.profitLoss)} · {percent(b.profitLossPercentage)}</span>
+      </span>
+      <span className="broker-record-chevron">{expanded ? '▴' : '▾'}</span>
+    </button>
+    {expanded && <div className="broker-record-detail">
+      <span className="hint">{b.holdingCount} holding{b.holdingCount === 1 ? '' : 's'} · Last change {since(b.lastUpdated)}{b.currencies.length > 1 ? ` · ${b.currencies.join(', ')}` : ''}</span>
+      <div className="tag-row">{b.categories.map(c => <em key={c}>{c}</em>)}</div>
+    </div>}
+  </div>
 }
 
 function SourceTile({ source: s, onClick }: { source: Source; onClick: () => void }) {

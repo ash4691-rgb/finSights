@@ -549,6 +549,16 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .broker-tile.needs-reauth{border-color:var(--warn-text)}
 .broker-tile strong{font-size:12px;color:var(--text)}
 .broker-tile-icon{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+.broker-record-list{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.broker-record{border:1px solid var(--border-soft);border-radius:10px;background:var(--surface-2);overflow:hidden}
+.broker-record.expanded,.broker-record:hover{border-color:var(--border-strong)}
+.broker-record-header{display:flex;align-items:center;gap:16px;width:100%;padding:12px 14px;background:none;border:0;color:inherit;text-align:left;cursor:pointer;font:inherit}
+.broker-record-name{flex:1;min-width:0}
+.broker-record-name strong{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.broker-record-figures{display:flex;align-items:baseline;gap:10px;flex-shrink:0;font-size:12px;color:var(--text-3)}
+.broker-record-figures strong{font-size:15px;letter-spacing:-.3px;color:var(--text)}
+.broker-record-chevron{flex-shrink:0;color:var(--text-3);font-size:11px}
+.broker-record-detail{display:flex;flex-direction:column;gap:6px;padding:0 14px 12px;border-top:1px solid var(--border-soft);margin-top:-1px;padding-top:10px}
 .broker-detail{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:left}
 .broker-detail.connected{border-color:var(--success-text)}
 .broker-detail.needs-reauth{border-color:var(--warn-text)}
@@ -777,6 +787,8 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
   .hero{padding:22px;align-items:flex-start;gap:20px;flex-direction:column}
   .hero h2{font-size:32px}
   .metric-grid,.insight-grid,.form-grid,.broker-grid,.instrument-grid,.drawer-metrics,.drawer-facts,.field-pair,.action-split,.widget-type-grid{grid-template-columns:1fr}
+  .broker-record-header{flex-wrap:wrap}
+  .broker-record-figures{flex-basis:100%;justify-content:space-between}
   .layout-zone{grid-template-columns:1fr}
   .layout-item{grid-column:1/-1}
   .layout-item-content{height:auto!important;overflow:visible!important}

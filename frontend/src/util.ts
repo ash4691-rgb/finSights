@@ -66,7 +66,7 @@ export const nav: (NavTile | NavGroup)[] = [
       { page: 'holdings', icon: '▤', label: 'Holdings' },
       { page: 'transactions', icon: '⇅', label: 'Transactions' },
     ] },
-  { page: 'brokers', icon: '⇄', label: 'External sources' },
+  { page: 'brokers', icon: '⇄', label: 'Sources' },
   { page: 'settings', icon: '⚙', label: 'Settings' },
 ]
 // The methods a holding form actually offers — BROKER_SYNC isn't selectable yet.

@@ -4,8 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import com.finsights.portfolio.domain.HoldingKind;
 import com.finsights.portfolio.domain.UserAccount;
+import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.BrokersResponse;
+import com.finsights.portfolio.dto.HoldingResponse;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +38,41 @@ class BrokerServiceTest {
 
     private BrokersResponse.Source kiteSource(BrokersResponse response) {
         return response.sources().stream().filter(s -> s.key().equals("kite")).findFirst().orElseThrow();
+    }
+
+    private HoldingResponse holdingOf(String id, String broker, String invested, String current) {
+        return new HoldingResponse(id, "ref-" + id, "c-1", "Category", "Holding " + id, HoldingKind.ASSET, ValuationMethod.MANUAL,
+                null, broker, "INR", "INR", new BigDecimal(invested), new BigDecimal(current),
+                new BigDecimal(current).subtract(new BigDecimal(invested)), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, null, null, null, null, null, null, null,
+                false, false, null, null, java.util.Set.of(), null, null, null, false, null);
+    }
+
+    @Test
+    void computesProfitLossPercentageFromInvestedAndCurrentValue() {
+        when(holdings.list((String) null)).thenReturn(List.of(
+                holdingOf("h-1", "Zerodha", "100000", "135000"),
+                holdingOf("h-2", "Zerodha", "80000", "100000")));
+        when(connections.statusFor(user.getId(), "kite")).thenReturn(Optional.empty());
+
+        BrokersResponse response = service.overview(null);
+
+        BrokersResponse.BrokerGroup zerodha = response.brokers().stream().filter(b -> b.name().equals("Zerodha")).findFirst().orElseThrow();
+        // invested 180000, current 235000, profitLoss 55000 -> 55000/180000 rounds to 0.3056 at
+        // scale 4 before the *100, giving 30.5600 (not the unrounded 30.5555...).
+        assertThat(zerodha.profitLoss()).isEqualByComparingTo("55000");
+        assertThat(zerodha.profitLossPercentage()).isEqualByComparingTo(new BigDecimal("30.5600"));
+    }
+
+    @Test
+    void profitLossPercentageIsZeroWhenNothingIsInvested() {
+        when(holdings.list((String) null)).thenReturn(List.of(holdingOf("h-1", "Zerodha", "0", "0")));
+        when(connections.statusFor(user.getId(), "kite")).thenReturn(Optional.empty());
+
+        BrokersResponse response = service.overview(null);
+
+        BrokersResponse.BrokerGroup zerodha = response.brokers().stream().filter(b -> b.name().equals("Zerodha")).findFirst().orElseThrow();
+        assertThat(zerodha.profitLossPercentage()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test

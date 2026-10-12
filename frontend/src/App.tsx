@@ -310,7 +310,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   if (loading) return <div className="loading-screen"><div className="mark">F</div><p>Loading your portfolio</p></div>
   if (error) return <div className="loading-screen"><div className="mark">!</div><h2>FinSights could not connect</h2><p>{error}</p><button onClick={() => void load()}>Try again</button></div>
 
-  const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Actions', brokers: 'External sources', settings: 'Settings' }
+  const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Actions', brokers: 'Sources', settings: 'Settings' }
 
   return <div className="app-shell">
     <aside className="sidebar">

@@ -8,7 +8,7 @@ public record BrokersResponse(List<BrokerGroup> brokers, List<Source> sources) {
 
     public record BrokerGroup(
             String name, int holdingCount, BigDecimal currentValue, BigDecimal investedValue,
-            BigDecimal profitLoss, Instant lastUpdated, List<String> categories, List<String> currencies
+            BigDecimal profitLoss, BigDecimal profitLossPercentage, Instant lastUpdated, List<String> categories, List<String> currencies
     ) { }
 
     public record Source(
