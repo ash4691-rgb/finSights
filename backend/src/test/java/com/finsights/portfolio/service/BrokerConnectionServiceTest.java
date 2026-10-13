@@ -31,13 +31,14 @@ class BrokerConnectionServiceTest {
     @Mock KiteConnectClient kite;
     @Mock CoinSwitchClient coinSwitch;
     @Mock IndmoneyClient indmoney;
+    @Mock EpfoClient epfo;
     @Mock BrokerSyncService syncService;
     private BrokerConnectionService service;
     private UserAccount user;
 
     @BeforeEach
     void setUp() {
-        service = new BrokerConnectionService(connections, currentUser, kite, coinSwitch, indmoney, syncService);
+        service = new BrokerConnectionService(connections, currentUser, kite, coinSwitch, indmoney, epfo, syncService);
         user = new UserAccount("demo@finsights.local", "Demo");
     }
 
@@ -51,12 +52,12 @@ class BrokerConnectionServiceTest {
     }
 
     @Test
-    void kiteCoinswitchAndIndmoneyAreConnectableGrowwAndEpfoAreNot() {
+    void kiteCoinswitchIndmoneyAndEpfoAreConnectableGrowwIsNot() {
         assertThat(service.isConnectable("kite")).isTrue();
         assertThat(service.isConnectable("coinswitch")).isTrue();
         assertThat(service.isConnectable("indmoney")).isTrue();
+        assertThat(service.isConnectable("epfo")).isTrue();
         assertThat(service.isConnectable("groww")).isFalse();
-        assertThat(service.isConnectable("epfo")).isFalse();
     }
 
     @Test
@@ -245,6 +246,44 @@ class BrokerConnectionServiceTest {
         assertThat(captor.getValue().getRefreshToken()).isEqualTo("secret");
         assertThat(captor.getValue().getBrokerKey()).isEqualTo("coinswitch");
         assertThat(captor.getValue().getUser()).isEqualTo(user);
+    }
+
+    @Test
+    void connectWithCredentialsRejectsEpfoWithoutAPassword() {
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            assertThatThrownBy(() -> service.connectWithCredentials("epfo", "123456789012", null))
+                    .isInstanceOf(ResponseStatusException.class);
+        }
+        verify(epfo, never()).fetchBalance(any(), any());
+    }
+
+    @Test
+    void connectWithCredentialsRejectsEpfoCredentialsThatFailLiveValidationWithACaptchaHint() {
+        when(epfo.fetchBalance("123456789012", "secret")).thenReturn(Optional.empty());
+
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            assertThatThrownBy(() -> service.connectWithCredentials("epfo", "123456789012", "secret"))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .hasMessageContaining("CAPTCHA");
+        }
+        verify(connections, never()).save(any());
+    }
+
+    @Test
+    void connectWithCredentialsStoresAValidatedEpfoConnectionWithTheUanAndPassword() {
+        when(epfo.fetchBalance("123456789012", "secret")).thenReturn(Optional.of(java.math.BigDecimal.TEN));
+        when(currentUser.currentUser()).thenReturn(user);
+        when(connections.findByUser_IdAndBrokerKey(user.getId(), "epfo")).thenReturn(Optional.empty());
+
+        try (MockedStatic<BrokerTokenEncryption> ignored = encryptionConfigured()) {
+            service.connectWithCredentials("epfo", "123456789012", "secret");
+        }
+
+        var captor = org.mockito.ArgumentCaptor.forClass(BrokerConnection.class);
+        verify(connections).save(captor.capture());
+        assertThat(captor.getValue().getAccessToken()).isEqualTo("123456789012");
+        assertThat(captor.getValue().getRefreshToken()).isEqualTo("secret");
+        assertThat(captor.getValue().getBrokerKey()).isEqualTo("epfo");
     }
 
     @Test

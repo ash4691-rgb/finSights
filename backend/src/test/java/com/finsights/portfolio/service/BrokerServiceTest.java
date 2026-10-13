@@ -130,10 +130,27 @@ class BrokerServiceTest {
     @Test
     void kiteUsesTheRedirectConnectFlow() {
         when(connections.statusFor(user.getId(), "kite")).thenReturn(Optional.empty());
+        when(connections.statusFor(user.getId(), "coinswitch")).thenReturn(Optional.empty());
+        when(connections.statusFor(user.getId(), "indmoney")).thenReturn(Optional.empty());
+        when(connections.statusFor(user.getId(), "epfo")).thenReturn(Optional.empty());
 
         BrokersResponse response = service.overview(null);
 
         assertThat(kiteSource(response).connectFlow()).isEqualTo("REDIRECT");
+    }
+
+    @Test
+    void epfoIsConnectableViaTheUanPasswordFlow() {
+        when(connections.statusFor(user.getId(), "kite")).thenReturn(Optional.empty());
+        when(connections.statusFor(user.getId(), "coinswitch")).thenReturn(Optional.empty());
+        when(connections.statusFor(user.getId(), "indmoney")).thenReturn(Optional.empty());
+        when(connections.statusFor(user.getId(), "epfo")).thenReturn(Optional.empty());
+
+        BrokersResponse response = service.overview(null);
+
+        BrokersResponse.Source epfo = response.sources().stream().filter(s -> s.key().equals("epfo")).findFirst().orElseThrow();
+        assertThat(epfo.connectFlow()).isEqualTo("UAN_PASSWORD");
+        assertThat(epfo.connectable()).isTrue();
     }
 
     @Test
@@ -142,6 +159,7 @@ class BrokerServiceTest {
         when(connections.statusFor(user.getId(), "coinswitch"))
                 .thenReturn(Optional.of(new BrokerConnectionService.ConnectionStatus(Instant.now(), false, null)));
         when(connections.statusFor(user.getId(), "indmoney")).thenReturn(Optional.empty());
+        when(connections.statusFor(user.getId(), "epfo")).thenReturn(Optional.empty());
 
         BrokersResponse response = service.overview(null);
 

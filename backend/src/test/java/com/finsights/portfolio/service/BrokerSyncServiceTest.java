@@ -3,6 +3,7 @@ package com.finsights.portfolio.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.domain.BrokerConnection;
+import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.BrokerSnapshot;
 import com.finsights.portfolio.repository.BrokerConnectionRepository;
 import com.finsights.portfolio.security.BrokerTokenEncryption;
@@ -58,14 +60,18 @@ class BrokerSyncServiceTest {
     void syncAllDispatchesToEveryRegisteredBrokerDataClient() {
         when(kiteClient.brokerKey()).thenReturn("kite");
         when(coinSwitchClient.brokerKey()).thenReturn("coinswitch");
+        UserAccount kiteUser = new UserAccount("kite-user@finsights.local", "Kite User");
+        UserAccount coinUser = new UserAccount("coin-user@finsights.local", "Coin User");
         BrokerConnection kiteConnection = new BrokerConnection();
         kiteConnection.setBrokerKey("kite");
+        kiteConnection.setUser(kiteUser);
         BrokerConnection coinConnection = new BrokerConnection();
         coinConnection.setBrokerKey("coinswitch");
+        coinConnection.setUser(coinUser);
         when(connections.findAllByBrokerKey("kite")).thenReturn(List.of(kiteConnection));
         when(connections.findAllByBrokerKey("coinswitch")).thenReturn(List.of(coinConnection));
-        BrokerSnapshot kiteSnapshot = new BrokerSnapshot("kite:1", BigDecimal.TEN, null, Instant.now());
-        BrokerSnapshot coinSnapshot = new BrokerSnapshot("coinswitch:BTC", BigDecimal.ONE, null, Instant.now());
+        BrokerSnapshot kiteSnapshot = new BrokerSnapshot("kite:1", "INFY", BigDecimal.TEN, null, Instant.now());
+        BrokerSnapshot coinSnapshot = new BrokerSnapshot("coinswitch:BTC", "BTC", BigDecimal.ONE, null, Instant.now());
         when(kiteClient.fetchSnapshots(kiteConnection)).thenReturn(Optional.of(List.of(kiteSnapshot)));
         when(coinSwitchClient.fetchSnapshots(coinConnection)).thenReturn(Optional.of(List.of(coinSnapshot)));
 
@@ -73,10 +79,10 @@ class BrokerSyncServiceTest {
             service.syncAll();
         }
 
-        verify(consumerOne).applySnapshots("kite", List.of(kiteSnapshot));
-        verify(consumerOne).applySnapshots("coinswitch", List.of(coinSnapshot));
-        verify(consumerTwo).applySnapshots("kite", List.of(kiteSnapshot));
-        verify(consumerTwo).applySnapshots("coinswitch", List.of(coinSnapshot));
+        verify(consumerOne).applySnapshots(kiteUser, "kite", List.of(kiteSnapshot));
+        verify(consumerOne).applySnapshots(coinUser, "coinswitch", List.of(coinSnapshot));
+        verify(consumerTwo).applySnapshots(kiteUser, "kite", List.of(kiteSnapshot));
+        verify(consumerTwo).applySnapshots(coinUser, "coinswitch", List.of(coinSnapshot));
         assertThat(kiteConnection.getLastSyncedAt()).isNotNull();
         assertThat(coinConnection.getLastSyncedAt()).isNotNull();
     }
@@ -97,8 +103,8 @@ class BrokerSyncServiceTest {
             service.syncAll();
         }
 
-        verify(consumerOne, never()).applySnapshots(any(), any());
-        verify(consumerTwo, never()).applySnapshots(any(), any());
+        verify(consumerOne, never()).applySnapshots(any(), any(), any());
+        verify(consumerTwo, never()).applySnapshots(any(), any(), any());
         assertThat(connection.getLastSyncedAt()).isNull();
         assertThat(connection.getLastSyncError()).isNotNull();
     }
@@ -117,7 +123,7 @@ class BrokerSyncServiceTest {
             service.syncAll();
         }
 
-        verify(consumerOne).applySnapshots("kite", List.of());
+        verify(consumerOne).applySnapshots(any(), eq("kite"), eq(List.of()));
         assertThat(connection.getLastSyncedAt()).isNotNull();
         assertThat(connection.getLastSyncError()).isNull();
     }
@@ -139,7 +145,7 @@ class BrokerSyncServiceTest {
 
         assertThat(healthy.getLastSyncedAt()).isNotNull();
         assertThat(broken.getLastSyncError()).isNotNull();
-        verify(consumerOne, times(1)).applySnapshots(any(), any()); // only for the healthy connection
+        verify(consumerOne, times(1)).applySnapshots(any(), any(), any()); // only for the healthy connection
     }
 
     @Test
@@ -167,7 +173,7 @@ class BrokerSyncServiceTest {
 
         assertThat(result).isTrue();
         assertThat(connection.getLastSyncedAt()).isNotNull();
-        verify(consumerOne).applySnapshots("kite", List.of());
+        verify(consumerOne).applySnapshots(any(), eq("kite"), eq(List.of()));
     }
 
     @Test

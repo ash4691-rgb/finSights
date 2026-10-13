@@ -376,6 +376,11 @@ th.sortable:hover{color:var(--text)}
 .warning-action{flex-shrink:0;align-self:center;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-soft-text);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer}
 .warning-action:hover{background:var(--accent);color:#fff}
 /* per-card done / snooze / dismiss */
+.broker-sync-new-action{flex-shrink:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.broker-sync-new-action select{border:1px solid var(--border-strong);background:var(--surface-input);color:var(--text);border-radius:7px;padding:5px 8px;font-size:11px;max-width:140px}
+.broker-sync-new-action button{flex-shrink:0;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-soft-text);border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer}
+.broker-sync-new-action button:hover{background:var(--accent);color:#fff}
+.broker-sync-new-action small.form-error{flex-basis:100%;margin:0}
 .warning-tools{display:flex;gap:4px;flex-shrink:0;align-self:center;margin-left:auto}
 .warning-tool{width:24px;height:24px;display:grid;place-items:center;border:1px solid var(--border-soft);background:var(--surface);color:var(--text-3);border-radius:6px;font-size:12px;line-height:1;cursor:pointer}
 .warning-tool:hover{border-color:var(--border-strong);color:var(--text)}
@@ -583,13 +588,16 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .badge.txn-split,.badge.txn-adjustment{background:var(--planned-bg);border-color:var(--planned-bg);color:var(--planned-text)}
 .broker-search{width:100%;max-width:320px;margin-bottom:14px;padding:9px 12px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface-input);color:var(--text);font-size:13px;outline:none}
 .broker-search:focus{border-color:var(--accent)}
-.broker-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
-.broker-tile{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:center}
+/* minmax's floor is never smaller than (100% - 5 gaps) / 6, so at most 6 tiles ever fit per row
+   no matter how wide the panel gets — it only drops below 6 (growing each tile) on a narrower one. */
+.broker-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(max(165px,calc((100% - 50px) / 6)),1fr));gap:10px}
+.broker-tile{display:flex;flex-direction:column;align-items:center;gap:10px;padding:22px 14px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:center}
 .broker-tile:hover{border-color:var(--border-strong)}
 .broker-tile.connected{border-color:var(--success-text)}
 .broker-tile.needs-reauth{border-color:var(--warn-text)}
-.broker-tile strong{font-size:12px;color:var(--text)}
-.broker-tile-icon{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+.broker-tile strong{font-size:13px;color:var(--text)}
+.broker-tile-icon{width:48px;height:48px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;flex-shrink:0}
+.broker-tile-logo{object-fit:contain;padding:10px;background:var(--surface-input)}
 .broker-record-list{display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .broker-record{border:1px solid var(--border-soft);border-radius:10px;background:var(--surface-2);overflow:hidden}
 .broker-record.expanded,.broker-record:hover{border-color:var(--border-strong)}

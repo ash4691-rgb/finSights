@@ -76,7 +76,7 @@ public class InterestPayoutService {
                         (overdue ? "Interest payout overdue — " : "Interest payout due — ") + h.getName(),
                         money(payout, h) + (overdue ? ", was due " + due : ", due " + due)
                                 + ". Confirm to book it as realised income.",
-                        h.getId(), h.getName(), h.getBroker(), due, payout, due.toString(),
+                        h.getId(), h.getName(), h.getBroker(), due, payout, due.toString(), null,
                         ActionItemResponse.keyOf("INTEREST", h.getId(), due.toString())));
             }
         }
@@ -104,7 +104,7 @@ public class InterestPayoutService {
                         "INTEREST_DUE", "INFO",
                         "Interest payout upcoming — " + h.getName(),
                         money(payout, h) + ", due " + due,
-                        h.getId(), h.getName(), h.getBroker(), due, payout, due.toString(),
+                        h.getId(), h.getName(), h.getBroker(), due, payout, due.toString(), null,
                         ActionItemResponse.keyOf("INTEREST", h.getId(), due.toString())));
             }
         }

@@ -78,7 +78,7 @@ public class EmiService {
                         overdue ? "WARN" : "INFO",
                         (overdue ? noun + " overdue — " : noun + " due — ") + h.getName(),
                         money(amount, h) + (overdue ? ", was due " + due : ", due " + due),
-                        h.getId(), h.getName(), h.getBroker(), due, amount, due.toString(),
+                        h.getId(), h.getName(), h.getBroker(), due, amount, due.toString(), null,
                         ActionItemResponse.keyOf("EMI", h.getId(), due.toString())));
             }
         }
@@ -110,7 +110,7 @@ public class EmiService {
                         "EMI_DUE", "INFO",
                         noun + " upcoming — " + h.getName(),
                         money(amount, h) + ", due " + due,
-                        h.getId(), h.getName(), h.getBroker(), due, amount, due.toString(),
+                        h.getId(), h.getName(), h.getBroker(), due, amount, due.toString(), null,
                         ActionItemResponse.keyOf("EMI", h.getId(), due.toString())));
             }
         }

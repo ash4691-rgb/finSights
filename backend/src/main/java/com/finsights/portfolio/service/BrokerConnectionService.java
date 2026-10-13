@@ -20,13 +20,16 @@ import org.springframework.web.server.ResponseStatusException;
  * over every connection) is {@link BrokerSyncScheduler}; the actual per-connection fetch-and-apply
  * logic both that and {@link #syncNow} delegate to is {@link BrokerSyncService}.
  *
- * <p>Two different connect flows live here, because brokers authenticate third-party apps two
+ * <p>Two different connect flows live here, because brokers authenticate third-party apps
  * different ways: Kite Connect needs a central developer app (one registered with Zerodha, shared
  * across every FinSights user) and an OAuth-style login redirect — see {@link #beginConnect}/
- * {@link #completeConnect}. CoinSwitch and INDstocks have no such central app at all: each user
- * generates their own API key/secret (or bearer token) directly from their own broker account and
- * pastes it into FinSights — see {@link #connectWithCredentials}. Groww/EPFO stay PLANNED/manual
- * until each has a confirmed supported API.
+ * {@link #completeConnect}. CoinSwitch, INDstocks, and EPFO have no such central app at all: each
+ * user hands FinSights a credential tied to their own account directly — an API key/secret, a
+ * bearer token, or (EPFO) their own portal UAN/password — and pastes it in; see {@link
+ * #connectWithCredentials}. EPFO's credential is categorically riskier than the others (a
+ * government-portal password, not a revocable scoped API key) and has no real API behind it at
+ * all — see {@link EpfoClient}'s class doc for why its live validation is expected to fail far
+ * more often than the other three. Groww stays PLANNED until it has a confirmed supported API.
  */
 @Service
 public class BrokerConnectionService {
@@ -34,22 +37,26 @@ public class BrokerConnectionService {
     static final String KITE = "kite";
     static final String COINSWITCH = "coinswitch";
     static final String INDMONEY = "indmoney";
-    private static final Set<String> CONNECTABLE = Set.of(KITE, COINSWITCH, INDMONEY);
+    static final String EPFO = "epfo";
+    private static final Set<String> CONNECTABLE = Set.of(KITE, COINSWITCH, INDMONEY, EPFO);
 
     private final BrokerConnectionRepository connections;
     private final CurrentUserService currentUser;
     private final KiteConnectClient kite;
     private final CoinSwitchClient coinSwitch;
     private final IndmoneyClient indmoney;
+    private final EpfoClient epfo;
     private final BrokerSyncService syncService;
 
     public BrokerConnectionService(BrokerConnectionRepository connections, CurrentUserService currentUser,
-            KiteConnectClient kite, CoinSwitchClient coinSwitch, IndmoneyClient indmoney, BrokerSyncService syncService) {
+            KiteConnectClient kite, CoinSwitchClient coinSwitch, IndmoneyClient indmoney, EpfoClient epfo,
+            BrokerSyncService syncService) {
         this.connections = connections;
         this.currentUser = currentUser;
         this.kite = kite;
         this.coinSwitch = coinSwitch;
         this.indmoney = indmoney;
+        this.epfo = epfo;
         this.syncService = syncService;
     }
 
@@ -94,15 +101,19 @@ public class BrokerConnectionService {
         }).orElse(false);
     }
 
+    /** Brokers whose first pasted field is a second, non-null secret stored in {@code
+     *  refreshToken} rather than left null — CoinSwitch's API secret, EPFO's portal password. */
+    private static final Set<String> USES_SECOND_FIELD = Set.of(COINSWITCH, EPFO);
+
     /**
      * The paste-your-own-credentials connect flow for brokers with no central developer app
-     * (CoinSwitch, INDstocks) — unlike {@link #beginConnect}'s OAuth redirect, there's nothing to
-     * register with the broker ahead of time; each user hands us a credential they generated
-     * themselves. Validates by making one live call before storing anything — never store a
-     * credential we haven't confirmed actually works, same principle as {@link #completeConnect}'s
-     * live token exchange. Throws (never silently fails) since this is a synchronous form
-     * submission, not a browser redirect — the controller lets the exception surface as the
-     * form's error message.
+     * (CoinSwitch, INDstocks, EPFO) — unlike {@link #beginConnect}'s OAuth redirect, there's
+     * nothing to register with the broker ahead of time; each user hands us a credential tied to
+     * their own account directly. Validates by making one live call before storing anything —
+     * never store a credential we haven't confirmed actually works, same principle as {@link
+     * #completeConnect}'s live token exchange. Throws (never silently fails) since this is a
+     * synchronous form submission, not a browser redirect — the controller lets the exception
+     * surface as the form's error message.
      */
     @Transactional
     public void connectWithCredentials(String brokerKey, String apiKey, String apiSecret) {
@@ -116,23 +127,27 @@ public class BrokerConnectionService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Broker credential storage isn't configured on this deployment yet");
         }
         if (blank(apiKey)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "An API key is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, EPFO.equals(brokerKey) ? "A UAN is required" : "An API key is required");
         }
         boolean valid = switch (brokerKey) {
             case COINSWITCH -> !blank(apiSecret) && coinSwitch.fetchPortfolio(apiKey, apiSecret).isPresent();
             case INDMONEY -> indmoney.fetchHoldings(apiKey).isPresent();
+            case EPFO -> !blank(apiSecret) && epfo.fetchBalance(apiKey, apiSecret).isPresent();
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported broker for API-key connect: " + brokerKey);
         };
         if (!valid) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Couldn't verify these credentials with " + brokerKey + " — double check them and try again.");
+            String hint = EPFO.equals(brokerKey)
+                    ? " — this is very likely EPFO's login CAPTCHA, which this integration can't solve yet, rather than a wrong UAN/password."
+                    : " — double check them and try again.";
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Couldn't verify these credentials with " + brokerKey + hint);
         }
         UserAccount user = currentUser.currentUser();
         BrokerConnection connection = connections.findByUser_IdAndBrokerKey(user.getId(), brokerKey).orElseGet(BrokerConnection::new);
         connection.setUser(user);
         connection.setBrokerKey(brokerKey);
         connection.setAccessToken(apiKey);
-        connection.setRefreshToken(COINSWITCH.equals(brokerKey) ? apiSecret : null);
-        // Neither broker publishes a predictable expiry the way Kite's daily session reset does —
+        connection.setRefreshToken(USES_SECOND_FIELD.contains(brokerKey) ? apiSecret : null);
+        // None of these publish a predictable expiry the way Kite's daily session reset does —
         // statusFor()'s needsReauth stays false here until a real sync failure says otherwise.
         connection.setExpiresAt(null);
         connection.setConnectedAt(Instant.now());

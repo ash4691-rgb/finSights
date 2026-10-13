@@ -45,7 +45,7 @@ public class IndmoneyClient implements BrokerDataClient {
         return fetchHoldings(connection.getAccessToken()).map(holdings -> {
             Instant now = Instant.now();
             return holdings.stream()
-                    .map(h -> new BrokerSnapshot("indmoney:" + h.securityId(), h.quantity(), h.marketValue(), now))
+                    .map(h -> new BrokerSnapshot("indmoney:" + h.securityId(), h.tradingSymbol(), h.quantity(), h.marketValue(), now))
                     .toList();
         });
     }

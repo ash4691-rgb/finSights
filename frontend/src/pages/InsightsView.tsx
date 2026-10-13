@@ -4,7 +4,7 @@ import { api } from '../api'
 import { money, since, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput, InfoTip, useEscToClose } from '../ui'
 import { useChartHover } from '../charts'
-import type { Insights, Settings, Dashboard, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory } from '../types'
+import type { Insights, Settings, Dashboard, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory, Category } from '../types'
 
 // ---------------------------------------------------------------------------
 
@@ -25,6 +25,12 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   const [editingWatch, setEditingWatch] = useState<WatchlistEntry | null>(null)
   const [viewingChart, setViewingChart] = useState<{ symbol: string; name: string; currency?: string; triggered?: TopMover['triggered'] } | null>(null)
   const [watchlistOpen, setWatchlistOpen] = useState(false)
+  // Only needed for the BROKER_SYNC_NEW action card's category picker — fetched lazily (once)
+  // rather than threaded down as a prop, since most visits to this page never need it.
+  const [categories, setCategories] = useState<Category[] | null>(null)
+  const [pickedCategory, setPickedCategory] = useState<Record<string, string>>({})
+  const [resolvingPending, setResolvingPending] = useState<string | null>(null)
+  const [pendingError, setPendingError] = useState<Record<string, string>>({})
 
   useEffect(() => { api<Insights>(`/api/insights?currency=${displayCurrency}`).then(setData).catch(e => setError(e.message)) }, [displayCurrency, dataVersion])
   const loadTopMovers = () => api<TopMover[]>(`/api/insights/top-movers?currency=${displayCurrency}`).then(setTopMovers).catch(() => setTopMovers([]))
@@ -56,11 +62,35 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
   const isPendingAction = (kind: string) =>
     kind === 'EMI_DUE' || kind === 'EMI_OVERDUE' || kind === 'INTEREST_DUE' || kind === 'INTEREST_OVERDUE'
+    || kind === 'BROKER_SYNC_NEW' || kind === 'BROKER_SYNC_CONFLICT'
   const pendingActions = data.actions.filter(a => isPendingAction(a.kind))
   const radarItems = data.actions.filter(a => !isPendingAction(a.kind))
   const dismissAction = async (key: string, status: 'DONE' | 'DEFERRED' | 'DELETED') => {
     try { await api('/api/insights/actions', { method: 'POST', body: JSON.stringify({ key, status }) }); await reload() }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not update that item') }
+  }
+  const ensureCategoriesLoaded = () => {
+    if (categories === null) api<Category[]>('/api/categories').then(setCategories).catch(() => setCategories([]))
+  }
+  const createFromPending = async (pendingId: string) => {
+    const categoryId = pickedCategory[pendingId]
+    if (!categoryId) { setPendingError(prev => ({ ...prev, [pendingId]: 'Pick a category first' })); return }
+    setPendingError(prev => ({ ...prev, [pendingId]: '' })); setResolvingPending(pendingId)
+    try {
+      await api(`/api/pending-broker-holdings/${pendingId}/create`, { method: 'POST', body: JSON.stringify({ categoryId }) })
+      await reload()
+    } catch (err) {
+      setPendingError(prev => ({ ...prev, [pendingId]: err instanceof Error ? err.message : 'Could not create this holding' }))
+    } finally { setResolvingPending(null) }
+  }
+  const linkPending = async (pendingId: string) => {
+    setPendingError(prev => ({ ...prev, [pendingId]: '' })); setResolvingPending(pendingId)
+    try {
+      await api(`/api/pending-broker-holdings/${pendingId}/link`, { method: 'POST' })
+      await reload()
+    } catch (err) {
+      setPendingError(prev => ({ ...prev, [pendingId]: err instanceof Error ? err.message : 'Could not link this holding' }))
+    } finally { setResolvingPending(null) }
   }
   const restoreDeferred = async (key: string) => {
     try { await api(`/api/insights/actions?key=${encodeURIComponent(key)}`, { method: 'DELETE' }); await reload() }
@@ -69,14 +99,17 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
   // Shared by Tasks (pendingActions) and Radar's lower-urgency items — same row, same tools
   // (done / snooze / dismiss, plus the inline "Log repayment"/"Log interest" for EMI/interest
-  // kinds), but `neutral` drops the amber severity badge for Radar: colour there is reserved
-  // for nothing at all — Radar is a passive feed to read, not a signal to react to.
+  // kinds, and the broker-sync resolution controls), but `neutral` drops the amber severity badge
+  // for Radar: colour there is reserved for nothing at all — Radar is a passive feed to read, not
+  // a signal to react to.
   const renderActionRow = (a: ActionItem, neutral?: boolean) => {
     const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
     const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
+    const isBrokerSyncNew = a.kind === 'BROKER_SYNC_NEW'
+    const isBrokerSyncConflict = a.kind === 'BROKER_SYNC_CONFLICT'
     return <div key={a.key} className={`dense-row signal-row${neutral ? '' : ` ${a.severity.toLowerCase()}`}`}>
       {a.broker && <span className="source-chip" title={a.broker}>{initials(a.broker)}</span>}
-      <button className="signal-row-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
+      <button className="signal-row-body" onClick={() => { if (a.holdingId) onOpen(a.holdingId); else if (isBrokerSyncNew) ensureCategoriesLoaded() }}>
         <strong>{a.title}</strong><span>{a.detail}</span>
       </button>
       {(isEmi || isInterest) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
@@ -87,6 +120,18 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
         try { await api(url, { method: 'POST' }); await reload() }
         catch (err) { setError(err instanceof Error ? err.message : 'Could not record that') }
       }}>{isEmi ? 'Log repayment' : 'Log interest'}</button>}
+      {isBrokerSyncConflict && a.pendingId && <button className="warning-action" onClick={async e => {
+        e.stopPropagation(); await linkPending(a.pendingId!)
+      }}>{resolvingPending === a.pendingId ? 'Linking…' : 'Link to this holding'}</button>}
+      {isBrokerSyncNew && a.pendingId && <div className="broker-sync-new-action" onClick={e => e.stopPropagation()}>
+        <select value={pickedCategory[a.pendingId] ?? ''} onFocus={ensureCategoriesLoaded}
+          onChange={e => setPickedCategory(prev => ({ ...prev, [a.pendingId!]: e.target.value }))}>
+          <option value="">Pick a category…</option>
+          {(categories ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <button onClick={() => createFromPending(a.pendingId!)}>{resolvingPending === a.pendingId ? 'Creating…' : 'Create holding'}</button>
+        {pendingError[a.pendingId] && <small className="form-error">{pendingError[a.pendingId]}</small>}
+      </div>}
       <div className="warning-tools">
         <button className="warning-tool done" title="Mark done" aria-label="Mark done"
           onClick={e => { e.stopPropagation(); void dismissAction(a.key, 'DONE') }}>✓</button>

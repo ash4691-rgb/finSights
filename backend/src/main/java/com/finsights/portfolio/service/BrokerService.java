@@ -33,8 +33,11 @@ public class BrokerService {
                     true, false, null, false, "API_KEY_ONLY"),
             new Source("groww", "Groww", "PLANNED",
                     "Pending confirmation of a supported read API.", List.of("Stocks", "Mutual funds"), null, false, false, null, false, null),
-            new Source("epfo", "EPFO", "PLANNED",
-                    "Manual passbook entry for now; no public API.", List.of("Provident fund balance"), null, false, false, null, false, null));
+            new Source("epfo", "EPFO", "COMING_SOON",
+                    "Paste your own UAN and EPFO member-portal password — EPFO has no public API, so this logs in as you would "
+                            + "yourself. A login CAPTCHA may currently block this from working; manual passbook entry is the fallback.",
+                    List.of("Provident fund balance"), "https://unifiedportal-mem.epfindia.gov.in/memberinterface/",
+                    true, false, null, false, "UAN_PASSWORD"));
 
     private final HoldingService holdings;
     private final BrokerConnectionService connections;

@@ -74,7 +74,7 @@ public class BrokerSyncService {
             return false;
         }
         for (BrokerSyncConsumer consumer : consumers) {
-            consumer.applySnapshots(client.brokerKey(), snapshots.get());
+            consumer.applySnapshots(connection.getUser(), client.brokerKey(), snapshots.get());
         }
         connection.setLastSyncedAt(Instant.now());
         connection.setLastSyncError(null);

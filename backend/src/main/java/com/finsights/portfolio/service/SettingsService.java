@@ -15,6 +15,8 @@ import com.finsights.portfolio.repository.UserAccountRepository;
 import com.finsights.portfolio.repository.UserPersonaRepository;
 import com.finsights.portfolio.repository.WatchlistRepository;
 import com.finsights.portfolio.repository.DashboardLayoutRepository;
+import com.finsights.portfolio.repository.BrokerConnectionRepository;
+import com.finsights.portfolio.repository.PendingBrokerHoldingRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +42,8 @@ public class SettingsService {
     private final com.finsights.portfolio.repository.EmiPaymentRepository emiPayments;
     private final DashboardLayoutRepository dashboardLayouts;
     private final UserPersonaRepository personas;
+    private final BrokerConnectionRepository brokerConnections;
+    private final PendingBrokerHoldingRepository pendingBrokerHoldings;
 
     public SettingsService(UserAccountRepository users, HoldingRepository holdings, CategoryRepository categories,
                            TransactionRepository transactions, HoldingService holdingService, CurrentUserService currentUser,
@@ -47,7 +51,8 @@ public class SettingsService {
                            PortfolioSnapshotService portfolioSnapshots, ActionDismissalService actionDismissals,
                            TagSuggestionRepository tagSuggestions,
                            com.finsights.portfolio.repository.EmiPaymentRepository emiPayments,
-                           DashboardLayoutRepository dashboardLayouts, UserPersonaRepository personas) {
+                           DashboardLayoutRepository dashboardLayouts, UserPersonaRepository personas,
+                           BrokerConnectionRepository brokerConnections, PendingBrokerHoldingRepository pendingBrokerHoldings) {
         this.users = users;
         this.holdings = holdings;
         this.categories = categories;
@@ -63,6 +68,8 @@ public class SettingsService {
         this.emiPayments = emiPayments;
         this.dashboardLayouts = dashboardLayouts;
         this.personas = personas;
+        this.brokerConnections = brokerConnections;
+        this.pendingBrokerHoldings = pendingBrokerHoldings;
     }
 
     public SettingsResponse current() {
@@ -137,10 +144,13 @@ public class SettingsService {
         portfolioSnapshots.deleteForUser(user.getId());
         actionDismissals.deleteForUser(user.getId());
         tagSuggestions.deleteByUser_Id(user.getId());
-        // Must run before users.delete() — user_personas.user_id is a NOT NULL FK back to users,
-        // so deleting the account first throws a referential-integrity violation for anyone who's
-        // ever submitted or skipped the persona questionnaire.
+        pendingBrokerHoldings.deleteByUser_Id(user.getId());
+        // Must run before users.delete() — user_personas.user_id and broker_connections.user_id
+        // are both NOT NULL FKs back to users, so deleting the account first throws a
+        // referential-integrity violation for anyone who's ever submitted/skipped the persona
+        // questionnaire, or connected a broker.
         personas.deleteByUser_Id(user.getId());
+        brokerConnections.deleteByUser_Id(user.getId());
         users.delete(user);
     }
 

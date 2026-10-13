@@ -11,10 +11,12 @@ import static org.mockito.Mockito.when;
 import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.UserAccount;
+import com.finsights.portfolio.repository.BrokerConnectionRepository;
 import com.finsights.portfolio.repository.CategoryRepository;
 import com.finsights.portfolio.repository.DashboardLayoutRepository;
 import com.finsights.portfolio.repository.EmiPaymentRepository;
 import com.finsights.portfolio.repository.HoldingRepository;
+import com.finsights.portfolio.repository.PendingBrokerHoldingRepository;
 import com.finsights.portfolio.repository.TagSuggestionRepository;
 import com.finsights.portfolio.repository.TransactionRepository;
 import com.finsights.portfolio.repository.UserAccountRepository;
@@ -46,6 +48,8 @@ class SettingsServiceTest {
     @Mock EmiPaymentRepository emiPayments;
     @Mock DashboardLayoutRepository dashboardLayouts;
     @Mock UserPersonaRepository personas;
+    @Mock BrokerConnectionRepository brokerConnections;
+    @Mock PendingBrokerHoldingRepository pendingBrokerHoldings;
 
     private SettingsService service;
     private UserAccount user;
@@ -54,7 +58,7 @@ class SettingsServiceTest {
     void setUp() {
         service = new SettingsService(users, holdings, categories, transactions, holdingService, currentUser,
                 countries, watchlist, snapshots, portfolioSnapshots, actionDismissals, tagSuggestions,
-                emiPayments, dashboardLayouts, personas);
+                emiPayments, dashboardLayouts, personas, brokerConnections, pendingBrokerHoldings);
         user = new UserAccount("demo@finsights.local", "Demo");
         when(currentUser.currentUser()).thenReturn(user);
     }
@@ -70,6 +74,25 @@ class SettingsServiceTest {
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(personas, users);
         order.verify(personas).deleteByUser_Id(any());
         order.verify(users).delete(user);
+    }
+
+    // Same regression as above — broker_connections.user_id is also a NOT NULL FK back to users,
+    // so deleting the account without first clearing any connected broker throws a
+    // referential-integrity violation for anyone who's ever connected one.
+    @Test
+    void deleteAccountRemovesBrokerConnectionsBeforeTheAccountItself() {
+        service.deleteAccount();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(brokerConnections, users);
+        order.verify(brokerConnections).deleteByUser_Id(any());
+        order.verify(users).delete(user);
+    }
+
+    @Test
+    void deleteAccountAlsoClearsPendingBrokerHoldings() {
+        service.deleteAccount();
+
+        verify(pendingBrokerHoldings).deleteByUser_Id(user.getId());
     }
 
     @Test
