@@ -423,11 +423,14 @@ th.sortable:hover{color:var(--text)}
 .view-mover-thresholds .top-mover-badges{justify-content:flex-start}
 .timeline-panel{margin-top:10px}
 
-/* Signals: a wide Main column (Tasks, Movers) + a narrow Side column (Radar). Fixed — this page
-   has no Edit Layout — so it's a plain static grid, not the drag/resizable .layout-zone engine. */
-.signals-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+/* Signals: a Main column (Tasks, Movers) + a Side column (Radar), stretched to equal height so
+   neither column leaves dead space below a shorter panel. Fixed — this page has no Edit Layout —
+   so it's a plain static grid, not the drag/resizable .layout-zone engine. */
+.signals-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:stretch}
 .signals-main{display:flex;flex-direction:column;gap:16px;min-width:0}
-.signals-side{min-width:0}
+.signals-main>.panel{flex:1;display:flex;flex-direction:column}
+.signals-side{min-width:0;display:flex;flex-direction:column}
+.signals-side>.panel{flex:1}
 
 /* "Row compaction over card separation": one shared container border per list, rows separated by
    a thin divider instead of each row getting its own bordered/background card (contrast with the
@@ -436,7 +439,8 @@ th.sortable:hover{color:var(--text)}
 .dense-row{display:flex;gap:10px;width:100%;padding:9px 12px;text-align:left;color:var(--text-2);font-size:12px;background:none;border:0;border-top:1px solid var(--border-soft);border-radius:0}
 .dense-row:first-child{border-top:0}
 button.dense-row{cursor:pointer}
-button.dense-row:hover{background:var(--surface-2)}
+a.dense-row{color:inherit;text-decoration:none}
+button.dense-row:hover,a.dense-row:hover{background:var(--surface-2)}
 
 /* Tasks/Radar's icon + body + tools rows want top alignment (body text can wrap to 2 lines);
    .top-mover rows (also .dense-row, but not .signal-row) keep their own center alignment. */

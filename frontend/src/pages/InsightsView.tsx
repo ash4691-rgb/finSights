@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import { money, since, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
+import { money, since, ago, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput, InfoTip, useEscToClose } from '../ui'
 import { useChartHover } from '../charts'
 import type { Insights, Settings, Dashboard, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory, Category } from '../types'
@@ -207,9 +207,16 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     <aside className="signals-side">
       <section className="panel signals-radar">
         <div className="panel-heading"><h3>👀 Radar <InfoTip text="A passive feed, not an inbox — lower-urgency flags, EMI/interest payouts coming up beyond the immediate window, and anything you've snoozed." /></h3></div>
-        {!radarItems.length && !data.upcoming.length && !data.deferred.length
+        {!data.news.length && !radarItems.length && !data.upcoming.length && !data.deferred.length
           ? <p className="hint">Nothing on your radar right now.</p>
           : <>
+            {data.news.length > 0 && <div className="radar-group">
+              <h5 className="radar-group-label">News</h5>
+              <div className="dense-list">{data.news.map(n => <a key={n.link} className="dense-row signal-row" href={n.link} target="_blank" rel="noopener noreferrer">
+                <span className="source-chip" title={n.name}>{initials(n.name)}</span>
+                <div className="signal-row-body"><strong>{n.title}</strong><span>{n.source} · {ago(n.publishedAt)}</span></div>
+              </a>)}</div>
+            </div>}
             {radarItems.length > 0 && <div className="radar-group">
               <h5 className="radar-group-label">Worth a look</h5>
               <div className="dense-list">{radarItems.map(a => renderActionRow(a, true))}</div>
