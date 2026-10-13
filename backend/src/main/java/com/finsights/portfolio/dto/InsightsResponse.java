@@ -14,7 +14,8 @@ public record InsightsResponse(
         List<Mover> topLosers,
         List<ActionItemResponse> actions,
         List<ActionItemResponse> upcoming,
-        List<DeferredActionResponse> deferred
+        List<DeferredActionResponse> deferred,
+        List<NewsItemResponse> news
 ) {
     public record Mover(String id, String name, BigDecimal profitLoss, BigDecimal profitLossPercentage) { }
 }
