@@ -14,6 +14,7 @@ import com.finsights.portfolio.service.TopMoversService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -74,5 +75,12 @@ public class InsightsController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void dismissAction(@Valid @RequestBody ActionDismissalRequest request) {
         actionDismissals.apply(request.key(), request.status(), request.deferDays());
+    }
+
+    /** Un-snooze a deferred row (Signals' Radar) so it reappears right away. */
+    @DeleteMapping("/actions")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void restoreAction(@RequestParam String key) {
+        actionDismissals.restore(key);
     }
 }

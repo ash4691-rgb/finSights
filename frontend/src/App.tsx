@@ -106,7 +106,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
 
   // Leaving a page always drops out of layout-edit mode.
   useEffect(() => { setLayoutEditing(false) }, [page])
-  const canEditLayout = page === 'dashboard' || page === 'insights'
+  const canEditLayout = page === 'dashboard'
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -310,7 +310,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   if (loading) return <div className="loading-screen"><div className="mark">F</div><p>Loading your portfolio</p></div>
   if (error) return <div className="loading-screen"><div className="mark">!</div><h2>FinSights could not connect</h2><p>{error}</p><button onClick={() => void load()}>Try again</button></div>
 
-  const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Actions', brokers: 'Sources', settings: 'Settings' }
+  const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Signals', brokers: 'Sources', settings: 'Settings' }
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -375,8 +375,9 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
             <button className="tool-action" onClick={() => setLayoutEditing(e => {
               const next = !e
               if (next) {
-                // A page whose widgets zone ships no seed (Actions, since it dropped its own —
-                // see layout-config.ts) gets the tour's own demo section, once ever.
+                // Edit layout is Overview-only now (Signals is a fixed Tasks/Movers/Radar
+                // layout) — a page whose widgets zone ships no seed of its own gets the tour's
+                // own demo section, once ever.
                 const zoneKey = sectionsZoneKeyFor(page)
                 const config = zoneKey ? PAGE_LAYOUT[page as keyof typeof PAGE_LAYOUT]?.[zoneKey] : undefined
                 if (config?.kind === 'sections' && config.seed.length === 0 && hasNoPersistedSections(page)) {
@@ -402,8 +403,8 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         : <HoldingsView holdings={holdings} categories={categories} reload={load} onEdit={setEditingHolding} onAdd={() => setCreatingHolding(true)} onOpen={setHoldingDetail} />)}
       {page === 'transactions' && <TransactionsView holdings={holdings} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} dataVersion={dataVersion} reload={load} />}
       {page === 'insights' && (settings && dashboard
-        ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />
-        : <SectionError what="actions" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
+        ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} />
+        : <SectionError what="signals" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} notice={brokerNotice} onDismissNotice={() => setBrokerNotice(null)} />}
       {page === 'settings' && (settings
         ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme}

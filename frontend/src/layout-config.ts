@@ -11,14 +11,13 @@ export type ZoneConfig =
   | { kind: 'widget'; seed: Omit<Widget, 'id'>[] }
   | { kind: 'sections'; seed: SectionSeed[] }
 
-export const PAGE_LAYOUT: Record<'dashboard' | 'insights', Record<string, ZoneConfig>> = {
-  // No seeded sections on either page — onboarding new users into the widget system with sample
-  // content is Platform's to build, not seed data baked into these pages.
+// Overview is now the only edit-layout-capable page — Signals became a fixed, non-editable
+// layout (Tasks/Movers/Radar) and dropped its custom-widget zone entirely.
+export const PAGE_LAYOUT: Record<'dashboard', Record<string, ZoneConfig>> = {
+  // No seeded sections — onboarding new users into the widget system with sample content is
+  // Platform's to build, not seed data baked into this page.
   dashboard: {
     'dashboard/widgets': { kind: 'sections', seed: [] },
-  },
-  insights: {
-    'insights/widgets': { kind: 'sections', seed: [] },
   },
 }
 
@@ -29,9 +28,8 @@ export function sectionsZoneKeyFor(page: string): string | undefined {
   return zones && Object.entries(zones).find(([, cfg]) => cfg.kind === 'sections')?.[0]
 }
 
-// Content for the Edit Layout onboarding tour's own demo section, used only on a page whose
-// widgets zone ships no seed of its own (today, just Actions — see PAGE_LAYOUT above). The
-// same attribute keys as Actions' old seeded "Demo section", before it moved here.
+// Content for the Edit Layout onboarding tour's own demo section, used on a page whose widgets
+// zone ships no seed of its own (today, just Overview — see PAGE_LAYOUT above).
 export const ONBOARDING_DEMO_WIDGETS: Omit<Widget, 'id'>[] = [
   { subType: 'histogram', title: 'Value by tag', query: { dimension: 'tag', measure: 'value' }, deletable: true },
   { subType: 'counter', title: 'Portfolio P/L', query: { measure: 'totalProfitLoss' }, deletable: true },

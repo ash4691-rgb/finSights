@@ -85,8 +85,21 @@ public class ActionCentreService {
                 .toList();
     }
 
+    /** EMI/interest items further out than {@link EmiService#dueItems()}'s due-soon window —
+     * a passive heads-up for Signals' Radar, not something to act on yet. */
+    public List<ActionItemResponse> upcoming() {
+        List<ActionItemResponse> items = new ArrayList<>(emis.upcomingItems());
+        items.addAll(interestPayouts.upcomingItems());
+
+        Set<String> suppressed = dismissals.suppressedKeys();
+        return items.stream()
+                .filter(a -> !suppressed.contains(a.key()))
+                .sorted(Comparator.comparing(ActionItemResponse::dueDate))
+                .toList();
+    }
+
     private static ActionItemResponse item(String kind, String severity, String title, String detail, HoldingResponse h) {
-        return new ActionItemResponse(kind, severity, title, detail, h.id(), h.name(), null, null, null,
+        return new ActionItemResponse(kind, severity, title, detail, h.id(), h.name(), h.broker(), null, null, null,
                 ActionItemResponse.keyOf(kind, h.id(), null));
     }
 }

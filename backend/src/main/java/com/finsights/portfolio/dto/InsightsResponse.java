@@ -12,7 +12,9 @@ public record InsightsResponse(
         List<Breakdown> byLiquidity,
         List<Mover> topGainers,
         List<Mover> topLosers,
-        List<ActionItemResponse> actions
+        List<ActionItemResponse> actions,
+        List<ActionItemResponse> upcoming,
+        List<DeferredActionResponse> deferred
 ) {
     public record Mover(String id, String name, BigDecimal profitLoss, BigDecimal profitLossPercentage) { }
 }

@@ -74,8 +74,9 @@ export type Transaction = {
   currency: string; type: TransactionType; date: string; amount: number; quantity?: number; principalPortion?: number; interestPaid?: boolean; notes?: string; createdAt?: string
 }
 export type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
-export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; dueDate?: string; amount?: number; period?: string; key: string }
-export type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[] }
+export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; broker?: string; dueDate?: string; amount?: number; period?: string; key: string }
+export type DeferredAction = { key: string; kind: string; label: string; holdingName: string; deferredUntil: string }
+export type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[]; upcoming: ActionItem[]; deferred: DeferredAction[] }
 export type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
 export type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
 export type TopMover = {
