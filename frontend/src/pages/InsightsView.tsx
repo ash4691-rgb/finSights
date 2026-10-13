@@ -10,7 +10,7 @@ import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, Mo
 
 // ---------------------------------------------------------------------------
 
-// Shown to users as "Actions" — the page for "what should I look at today?". Deliberately not a
+// Shown to users as "Signals" — the page for "what should I look at today?". Deliberately not a
 // second Overview (that breakdown/KPI content, and the portfolio timeline, live on the Dashboard);
 // this page's own job is the Action centre (pending decisions + lower-urgency flags), Hot Picks
 // (market-linked holdings + watchlist symbols moving beyond a configured threshold), and the

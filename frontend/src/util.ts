@@ -55,12 +55,12 @@ export const currencies = ['INR', 'USD', 'EUR', 'GBP', 'SGD', 'AED']
 // its first page) with its own pages always shown nested beneath it, never collapsed — Categories/
 // Holdings/Transactions are one workflow (file data under a category, record a position, log what
 // happened to it) and read better as a "Data" tile with sub-tiles than as three separate top-level
-// items competing with Overview/Actions for attention.
+// items competing with Overview/Signals for attention.
 export type NavTile = { page: Page; icon: string; label: string }
 export type NavGroup = { label: string; icon: string; pages: NavTile[] }
 export const nav: (NavTile | NavGroup)[] = [
   { page: 'dashboard', icon: '◫', label: 'Overview' },
-  { page: 'insights', icon: '◔', label: 'Actions' },
+  { page: 'insights', icon: '◔', label: 'Signals' },
   { label: 'Data', icon: '▤', pages: [
       { page: 'categories', icon: '◈', label: 'Categories' },
       { page: 'holdings', icon: '▤', label: 'Holdings' },
