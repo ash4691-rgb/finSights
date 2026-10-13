@@ -1,23 +1,19 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import { LayoutZone } from '../layout'
-import { money, percent, label, since, numeric, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
+import { money, since, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput, InfoTip, useEscToClose } from '../ui'
 import { useChartHover } from '../charts'
-import type { PageDataSource } from '../widgets'
-import type { Insights, Settings, Dashboard, Breakdown, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory } from '../types'
+import type { Insights, Settings, Dashboard, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory } from '../types'
 
 // ---------------------------------------------------------------------------
 
-// Shown to users as "Signals" — the page for "what should I look at today?". Deliberately not a
-// second Overview (that breakdown/KPI content, and the portfolio timeline, live on the Dashboard);
-// this page's own job is the Action centre (pending decisions + lower-urgency flags), Hot Picks
-// (market-linked holdings + watchlist symbols moving beyond a configured threshold), and the
-// watchlist itself.
-export function InsightsView({ displayCurrency, dataVersion, settings, dashboard, reload, onOpen, layoutEditing, layoutNonce }: {
+// Shown to users as "Signals" — a terminal-style split-attention layout: a wide Main column
+// (Tasks needing a decision, then Movers worth a look) and a narrow Side column (Radar — a
+// passive feed: lower-urgency flags, upcoming EMI/interest payouts, and snoozed items). Fixed,
+// not drag/resizable — Edit Layout is Overview-only now; see App.tsx's canEditLayout.
+export function InsightsView({ displayCurrency, dataVersion, settings, dashboard, reload, onOpen }: {
   displayCurrency: string; dataVersion: number; settings: Settings; dashboard: Dashboard; reload: () => Promise<void>; onOpen: (id: string) => void
-  layoutEditing: boolean; layoutNonce: number
 }) {
   const [data, setData] = useState<Insights | null>(null)
   const [error, setError] = useState('')
@@ -55,7 +51,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   }
 
   if (error) return <p className="hint">{error}</p>
-  if (!data) return <p className="hint">Loading insights…</p>
+  if (!data) return <p className="hint">Loading signals…</p>
   const thresholdsSet = Object.values(thresholds).filter(value => value.trim() !== '').length
 
   const isPendingAction = (kind: string) =>
@@ -66,12 +62,21 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     try { await api('/api/insights/actions', { method: 'POST', body: JSON.stringify({ key, status }) }); await reload() }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not update that item') }
   }
-  const renderAction = (a: ActionItem, i: number) => {
+  const restoreDeferred = async (key: string) => {
+    try { await api(`/api/insights/actions?key=${encodeURIComponent(key)}`, { method: 'DELETE' }); await reload() }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not restore that item') }
+  }
+
+  // Shared by Tasks (pendingActions) and Radar's lower-urgency items — same row, same tools
+  // (done / snooze / dismiss, plus the inline "Log repayment"/"Log interest" for EMI/interest
+  // kinds), but `neutral` drops the amber severity badge for Radar: colour there is reserved
+  // for nothing at all — Radar is a passive feed to read, not a signal to react to.
+  const renderActionRow = (a: ActionItem, neutral?: boolean) => {
     const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
     const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
-    return <div key={`${a.key}-${i}`} className={`warning ${a.severity.toLowerCase()}`}>
-      <b>{a.severity}</b>
-      <button className="warning-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
+    return <div key={a.key} className={`dense-row signal-row${neutral ? '' : ` ${a.severity.toLowerCase()}`}`}>
+      {a.broker && <span className="source-chip" title={a.broker}>{initials(a.broker)}</span>}
+      <button className="signal-row-body" onClick={() => a.holdingId && onOpen(a.holdingId)}>
         <strong>{a.title}</strong><span>{a.detail}</span>
       </button>
       {(isEmi || isInterest) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
@@ -93,124 +98,109 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     </div>
   }
 
-  const insightsDataSource: PageDataSource = {
-    attributes: [
-      { key: 'category', label: 'Category', kind: 'dimension' },
-      { key: 'broker', label: 'Broker', kind: 'dimension' },
-      { key: 'tag', label: 'Tag', kind: 'dimension' },
-      { key: 'currency', label: 'Currency', kind: 'dimension' },
-      { key: 'liquidity', label: 'Liquidity', kind: 'dimension' },
-      { key: 'value', label: 'Current value', kind: 'measure' },
-      { key: 'invested', label: 'Invested', kind: 'measure' },
-      { key: 'profitLoss', label: 'P/L', kind: 'measure' },
-      { key: 'netWorth', label: 'Net worth', kind: 'measure' },
-      { key: 'totalAssets', label: 'Total assets', kind: 'measure' },
-      { key: 'totalLiabilities', label: 'Total liabilities', kind: 'measure' },
-      { key: 'totalProfitLoss', label: 'Portfolio P/L', kind: 'measure' },
-    ],
-    resolve(w) {
-      if (w.subType === 'counter') {
-        const totals: Record<string, number> = {
-          netWorth: dashboard.netWorth, totalAssets: dashboard.totalAssets,
-          totalLiabilities: dashboard.totalLiabilities, totalProfitLoss: dashboard.portfolioProfitLoss,
-        }
-        return { kind: 'scalar', value: totals[w.query.measure ?? 'netWorth'] ?? dashboard.netWorth }
-      }
-      // No time-series on this page — the portfolio timeline (and its series data) lives on the Dashboard now.
-      if (w.subType === '2d-graph') return { kind: 'series', series: [] }
-      const byDimension: Record<string, Breakdown[]> = { category: data.byCategory, broker: data.byBroker, tag: data.byTag, currency: data.byCurrency, liquidity: data.byLiquidity }
-      const rows = byDimension[w.query.dimension ?? 'category'] ?? data.byCategory
-      const m = w.query.measure ?? 'value'
-      const val = (b: Breakdown) => m === 'invested' ? b.investedValue : m === 'profitLoss' ? b.profitLoss : b.value
-      return { kind: 'breakdown', rows: rows.map(r => ({ label: label(r.label), value: val(r) })) }
-    },
-  }
+  return <div className="signals-grid">
+    <div className="signals-main">
+      <section className="panel signals-tasks">
+        <div className="panel-heading"><h3>📥 Tasks <InfoTip text="EMIs and interest payouts due or overdue right now — log them here or from the holding itself." /></h3><span>{pendingActions.length} item{pendingActions.length === 1 ? '' : 's'}</span></div>
+        {pendingActions.length
+          ? <div className="dense-list">{pendingActions.map(a => renderActionRow(a))}</div>
+          : <p className="hint">Nothing to log right now — you're caught up.</p>}
+      </section>
 
-  const zone = { editing: layoutEditing, nonce: layoutNonce }
-  return <>
-    <LayoutZone zoneKey="insights/page" {...zone} defaults={[{ key: 'widgets', span: 12 }, { key: 'actions', span: 12 }, { key: 'topMovers', span: 12 }]} render={{
-    widgets: <LayoutZone zoneKey="insights/widgets" {...zone} dataSource={insightsDataSource} />,
-    actions: <section className="panel data-quality">
-      <div className="panel-heading"><h3>Action centre <InfoTip text="Things that need a decision from you — EMIs and interest due, matured deposits, missing values — split into what's due now and what's worth a second look." /></h3><span>{data.actions.length} item{data.actions.length === 1 ? '' : 's'}</span></div>
-      <LayoutZone zoneKey="insights/actions" {...zone} defaults={[{ key: 'pending', span: 6 }, { key: 'radar', span: 6 }]} render={{
-        pending: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">⚡</span><h4>Pending actions <InfoTip text="EMIs and interest payouts due or overdue right now — log them here or from the holding itself." /></h4><span className="action-col-count">{pendingActions.length}</span></div>
-          {pendingActions.length
-            ? <div className="warning-list action-col-list">{pendingActions.map(renderAction)}</div>
-            : <p className="hint">Nothing to log right now — you're caught up.</p>}
-        </div>,
-        radar: <div className="action-col">
-          <div className="action-col-head"><span className="action-col-icon">🔭</span><h4>On your radar <InfoTip text="Lower-urgency flags — matured fixed deposits, holdings missing a current value — worth a look when you get to it." /></h4><span className="action-col-count">{radarItems.length}</span></div>
-          {radarItems.length
-            ? <div className="warning-list action-col-list">{radarItems.map(renderAction)}</div>
-            : <p className="hint">Nothing needs a second look right now.</p>}
-        </div>,
-      }} />
-    </section>,
-
-    topMovers: <section className="panel">
-      <div className="panel-heading hot-picks-heading">
-        <h3>🔥 Hot Picks <InfoTip text="Market-linked holdings and watchlist symbols whose price has moved past the % you set here for that lookback window, checked daily through yearly. Click any entry for its price history and which windows it broke." /></h3>
-        <div className="threshold-inline">
-          <span className="threshold-inline-label">Thresholds<br />(%)</span>
-          {periodFields.map(([key, text]) => <label key={key} className="threshold-inline-field" title={`${text} threshold`}>
-            <span>{text}</span>
-            <input type="number" min="0" step="0.1" placeholder="—" value={thresholds[key]} disabled={savingThresholds}
-              onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))}
-              onBlur={() => void saveThresholds()} />
-          </label>)}
+      <section className="panel signals-movers">
+        <div className="panel-heading hot-picks-heading">
+          <h3>📈 Movers <InfoTip text="Market-linked holdings and watchlist symbols whose price has moved past the % you set here for that lookback window, checked daily through yearly. Click any entry for its price history and which windows it broke." /></h3>
+          <div className="threshold-inline">
+            <span className="threshold-inline-label">Thresholds<br />(%)</span>
+            {periodFields.map(([key, text]) => <label key={key} className="threshold-inline-field" title={`${text} threshold`}>
+              <span>{text}</span>
+              <input type="number" min="0" step="0.1" placeholder="—" value={thresholds[key]} disabled={savingThresholds}
+                onChange={e => setThresholds(current => ({ ...current, [key]: e.target.value }))}
+                onBlur={() => void saveThresholds()} />
+            </label>)}
+          </div>
         </div>
-      </div>
-      <LayoutZone zoneKey="insights/topmovers" {...zone} defaults={[{ key: 'movers', span: 12 }, { key: 'watchlist', span: 12 }]} render={{
-        movers: <div className="action-col">
-          {topMovers === null ? <p className="hint">Loading hot picks…</p> : topMovers.length ? <div className="top-mover-list">
-            {topMovers.map(pick => <button key={`${pick.subjectType}-${pick.id}`} className={`top-mover${pick.tickerSymbol ? '' : ' static'}`}
-                onClick={() => pick.tickerSymbol && setViewingChart({ symbol: pick.tickerSymbol, name: pick.name, currency: pick.currency, triggered: pick.triggered })}>
-              <div className="top-mover-name"><strong>{pick.name}</strong><small>{pick.categoryName || pick.tickerSymbol || 'Watchlist'}</small></div>
-              <div className="top-mover-value">{pick.currency ? money(pick.currentValue ?? 0, pick.currency) : (pick.currentValue ?? 0).toLocaleString(numberLocale)}</div>
-              <div className="top-mover-badges">{pick.triggered.map(t => <span key={t.period} className={`mover-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>{periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}%</span>)}</div>
-            </button>)}
-          </div> : thresholdsSet === 0
-            ? <p className="hint">No thresholds set yet — set one above to choose how far a market-linked holding or watchlist symbol has to move before it lands here.</p>
-            : <p className="hint">Nothing is outside your configured thresholds right now.</p>}
-        </div>,
+        {topMovers === null ? <p className="hint">Loading movers…</p> : topMovers.length ? <div className="dense-list">
+          {topMovers.map(pick => <button key={`${pick.subjectType}-${pick.id}`} className={`dense-row top-mover${pick.tickerSymbol ? '' : ' static'}`}
+              onClick={() => pick.tickerSymbol && setViewingChart({ symbol: pick.tickerSymbol, name: pick.name, currency: pick.currency, triggered: pick.triggered })}>
+            <div className="top-mover-name"><strong>{pick.name}</strong><small>{pick.categoryName || pick.tickerSymbol || 'Watchlist'}</small></div>
+            <div className="top-mover-value">{pick.currency ? money(pick.currentValue ?? 0, pick.currency) : (pick.currentValue ?? 0).toLocaleString(numberLocale)}</div>
+            <div className="top-mover-badges">{pick.triggered.map(t => <span key={t.period} className={`mover-badge ${t.percent >= 0 ? 'positive' : 'negative'}`}>{periodLabels[t.period]} {t.percent >= 0 ? '+' : ''}{t.percent.toFixed(2)}%</span>)}</div>
+          </button>)}
+        </div> : thresholdsSet === 0
+          ? <p className="hint">No thresholds set yet — set one above to choose how far a market-linked holding or watchlist symbol has to move before it lands here.</p>
+          : <p className="hint">Nothing is outside your configured thresholds right now.</p>}
 
-        watchlist: <div className="action-col">
-          <button className="action-col-head action-col-toggle" onClick={() => setWatchlistOpen(open => !open)} aria-expanded={watchlistOpen}>
-            <span className="action-col-icon">👁</span><h4>Watchlist</h4><span className="action-col-count">{watchlist.length}</span>
-            <span className="action-col-caret">{toggleLabel(watchlistOpen)}</span>
-          </button>
-          {watchlistOpen && <>
-            <div className="watchlist-actions">
-              <span className="watchlist-count">{watchlist.length ? `${watchlist.length} symbol${watchlist.length === 1 ? '' : 's'} tracked` : 'No symbols yet'}</span>
-              <button className="outline compact" onClick={() => setAddingWatch(true)}>+ Add to watchlist</button>
-            </div>
-            {watchlist.length ? <div className="table-panel"><table>
-              <thead><tr><th>Name</th><th>Ticker</th><th /></tr></thead>
-              <tbody>{watchlist.map(item => {
-                const moverEntry = topMovers?.find(p => p.subjectType === 'WATCHLIST' && p.id === item.id)
-                return <tr key={item.id} className={item.tickerSymbol ? 'clickable-row' : ''}
-                    onClick={() => item.tickerSymbol && setViewingChart({ symbol: item.tickerSymbol, name: item.name, currency: item.currency, triggered: moverEntry?.triggered })}>
-                  <td><div className="name-cell"><strong title={item.name}>{item.name}</strong>{item.notes && <InfoTip text={item.notes} />}</div></td>
-                  <td>{item.tickerSymbol || '—'}</td>
-                  <td className="actions actions-vertical">
-                    <button className="primary-link" onClick={e => { e.stopPropagation(); setEditingWatch(item) }}>Edit</button>
-                    <button className="danger-link" onClick={e => { e.stopPropagation(); void removeWatch(item) }}>Delete</button>
-                  </td>
-                </tr>
-              })}</tbody>
-            </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Hot Picks too.</p>}
+        <button className="action-col-head action-col-toggle watchlist-toggle" onClick={() => setWatchlistOpen(open => !open)} aria-expanded={watchlistOpen}>
+          <span className="action-col-icon">👁</span><h4>Watchlist</h4><span className="action-col-count">{watchlist.length}</span>
+          <span className="action-col-caret">{toggleLabel(watchlistOpen)}</span>
+        </button>
+        {watchlistOpen && <>
+          <div className="watchlist-actions">
+            <span className="watchlist-count">{watchlist.length ? `${watchlist.length} symbol${watchlist.length === 1 ? '' : 's'} tracked` : 'No symbols yet'}</span>
+            <button className="outline compact" onClick={() => setAddingWatch(true)}>+ Add to watchlist</button>
+          </div>
+          {watchlist.length ? <div className="table-panel"><table>
+            <thead><tr><th>Name</th><th>Ticker</th><th /></tr></thead>
+            <tbody>{watchlist.map(item => {
+              const moverEntry = topMovers?.find(p => p.subjectType === 'WATCHLIST' && p.id === item.id)
+              return <tr key={item.id} className={item.tickerSymbol ? 'clickable-row' : ''}
+                  onClick={() => item.tickerSymbol && setViewingChart({ symbol: item.tickerSymbol, name: item.name, currency: item.currency, triggered: moverEntry?.triggered })}>
+                <td><div className="name-cell"><strong title={item.name}>{item.name}</strong>{item.notes && <InfoTip text={item.notes} />}</div></td>
+                <td>{item.tickerSymbol || '—'}</td>
+                <td className="actions actions-vertical">
+                  <button className="primary-link" onClick={e => { e.stopPropagation(); setEditingWatch(item) }}>Edit</button>
+                  <button className="danger-link" onClick={e => { e.stopPropagation(); void removeWatch(item) }}>Delete</button>
+                </td>
+              </tr>
+            })}</tbody>
+          </table></div> : <p className="hint">Track a symbol you don't hold — like an index or a stock you're watching — to get it into Movers too.</p>}
+        </>}
+      </section>
+    </div>
+
+    <aside className="signals-side">
+      <section className="panel signals-radar">
+        <div className="panel-heading"><h3>👀 Radar <InfoTip text="A passive feed, not an inbox — lower-urgency flags, EMI/interest payouts coming up beyond the immediate window, and anything you've snoozed." /></h3></div>
+        {!radarItems.length && !data.upcoming.length && !data.deferred.length
+          ? <p className="hint">Nothing on your radar right now.</p>
+          : <>
+            {radarItems.length > 0 && <div className="radar-group">
+              <h5 className="radar-group-label">Worth a look</h5>
+              <div className="dense-list">{radarItems.map(a => renderActionRow(a, true))}</div>
+            </div>}
+            {data.upcoming.length > 0 && <div className="radar-group">
+              <h5 className="radar-group-label">Upcoming</h5>
+              <div className="dense-list">{data.upcoming.map(a => <button key={a.key} className="dense-row signal-row" onClick={() => a.holdingId && onOpen(a.holdingId)}>
+                {a.broker && <span className="source-chip" title={a.broker}>{initials(a.broker)}</span>}
+                <div className="signal-row-body"><strong>{a.title}</strong><span>{a.detail}</span></div>
+              </button>)}</div>
+            </div>}
+            {data.deferred.length > 0 && <div className="radar-group">
+              <h5 className="radar-group-label">Snoozed</h5>
+              <div className="dense-list">{data.deferred.map(d => <div key={d.key} className="dense-row signal-row">
+                <div className="signal-row-body"><strong>{d.label} — {d.holdingName}</strong><span>Snoozed until {since(d.deferredUntil)}</span></div>
+                <button className="warning-tool delete" title="Un-snooze" aria-label="Un-snooze" onClick={() => void restoreDeferred(d.key)}>✕</button>
+              </div>)}</div>
+            </div>}
           </>}
-        </div>,
-      }} />
-    </section>,
-    }} />
+      </section>
+    </aside>
+
     {(addingWatch || editingWatch) && <WatchlistModal item={editingWatch}
       onClose={() => { setAddingWatch(false); setEditingWatch(null) }}
       onSaved={() => { setAddingWatch(false); setEditingWatch(null); void loadWatchlist(); void loadTopMovers() }} />}
     {viewingChart && <ViewMoverItemModal symbol={viewingChart.symbol} name={viewingChart.name} currency={viewingChart.currency} triggered={viewingChart.triggered}
       onClose={() => setViewingChart(null)} />}
-  </>
+  </div>
+}
+
+// First letter of each of the first two words, or the first two letters of a one-word name —
+// a lightweight stand-in for a broker/bank logo (no icon assets exist for real institution
+// logos — see BrokersView's identical treatment for connected-broker tiles).
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/)
+  return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase()
 }
 
 export function thresholdForm(thresholds: MovementThresholds | null): Record<PeriodKey, string> {
@@ -288,7 +278,7 @@ export function WatchlistModal({ item, onClose, onSaved }: { item: WatchlistEntr
 const chartRanges: ChartRange[] = ['1D', '1W', '1M', '3M', '6M', '1Y']
 
 // ViewMoverItem: a symbol's price history over a chosen window (up to 1 year), for anything
-// market-linked — a Hot Picks entry or a watchlist item alike. Backed by /api/market/history,
+// market-linked — a Movers entry or a watchlist item alike. Backed by /api/market/history,
 // which reads straight from the same Yahoo Finance feed as live quotes.
 export function ViewMoverItemModal({ symbol, name, currency, triggered, onClose }: {
   symbol: string; name: string; currency?: string; triggered?: TopMover['triggered']; onClose: () => void

@@ -16,6 +16,7 @@ public record ActionItemResponse(
         String detail,
         String holdingId,
         String holdingName,
+        String broker,        // the holding's broker/lender, for Signals' Tasks source indicator — may be blank
         LocalDate dueDate,
         BigDecimal amount,
         String period,        // the due date for EMI / interest items, so the client can post "mark paid"

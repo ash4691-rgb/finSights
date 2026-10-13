@@ -106,7 +106,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
 
   // Leaving a page always drops out of layout-edit mode.
   useEffect(() => { setLayoutEditing(false) }, [page])
-  const canEditLayout = page === 'dashboard' || page === 'insights'
+  const canEditLayout = page === 'dashboard'
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -375,8 +375,9 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
             <button className="tool-action" onClick={() => setLayoutEditing(e => {
               const next = !e
               if (next) {
-                // A page whose widgets zone ships no seed (Signals, since it dropped its own —
-                // see layout-config.ts) gets the tour's own demo section, once ever.
+                // Edit layout is Overview-only now (Signals is a fixed Tasks/Movers/Radar
+                // layout) — a page whose widgets zone ships no seed of its own gets the tour's
+                // own demo section, once ever.
                 const zoneKey = sectionsZoneKeyFor(page)
                 const config = zoneKey ? PAGE_LAYOUT[page as keyof typeof PAGE_LAYOUT]?.[zoneKey] : undefined
                 if (config?.kind === 'sections' && config.seed.length === 0 && hasNoPersistedSections(page)) {
@@ -402,7 +403,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         : <HoldingsView holdings={holdings} categories={categories} reload={load} onEdit={setEditingHolding} onAdd={() => setCreatingHolding(true)} onOpen={setHoldingDetail} />)}
       {page === 'transactions' && <TransactionsView holdings={holdings} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} dataVersion={dataVersion} reload={load} />}
       {page === 'insights' && (settings && dashboard
-        ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />
+        ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} />
         : <SectionError what="signals" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} notice={brokerNotice} onDismissNotice={() => setBrokerNotice(null)} />}
       {page === 'settings' && (settings
