@@ -40,7 +40,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class InterestPayoutService {
 
-    private static final int DUE_SOON_DAYS = 5;     // how early a not-yet-due payout appears
+    private static final int DUE_SOON_DAYS = 5;     // how early a not-yet-due payout appears in dueItems()
+    private static final int UPCOMING_DAYS = 35;     // how far ahead upcomingItems() looks, past DUE_SOON_DAYS
     private static final int MAX_OCCURRENCES = 4;   // cap the backlog shown for one holding
 
     private final HoldingRepository holdings;
@@ -67,7 +68,7 @@ public class InterestPayoutService {
             BigDecimal payout = payoutAmount(h);
             if (payout.signum() <= 0) continue;
 
-            for (LocalDate due : dueDates(h, today)) {
+            for (LocalDate due : dueDates(h, today, DUE_SOON_DAYS)) {
                 boolean overdue = due.isBefore(today);
                 items.add(new ActionItemResponse(
                         overdue ? "INTEREST_OVERDUE" : "INTEREST_DUE",
@@ -75,7 +76,35 @@ public class InterestPayoutService {
                         (overdue ? "Interest payout overdue — " : "Interest payout due — ") + h.getName(),
                         money(payout, h) + (overdue ? ", was due " + due : ", due " + due)
                                 + ". Confirm to book it as realised income.",
-                        h.getId(), h.getName(), due, payout, due.toString(), null,
+                        h.getId(), h.getName(), h.getBroker(), due, payout, due.toString(), null,
+                        ActionItemResponse.keyOf("INTEREST", h.getId(), due.toString())));
+            }
+        }
+        items.sort((a, b) -> a.dueDate().compareTo(b.dueDate()));
+        return items;
+    }
+
+    /** Payouts due further out than {@link #DUE_SOON_DAYS} but within {@link #UPCOMING_DAYS} —
+     * a heads-up for Signals' Radar, not yet something to act on (that's dueItems()). */
+    @Transactional(readOnly = true)
+    public List<ActionItemResponse> upcomingItems() {
+        String userId = currentUser.currentUser().getId();
+        LocalDate today = LocalDate.now();
+        LocalDate dueSoonHorizon = today.plusDays(DUE_SOON_DAYS);
+        List<ActionItemResponse> items = new ArrayList<>();
+
+        for (Holding h : holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId)) {
+            if (!paysPeriodicInterest(h)) continue;
+            BigDecimal payout = payoutAmount(h);
+            if (payout.signum() <= 0) continue;
+
+            for (LocalDate due : dueDates(h, today, UPCOMING_DAYS)) {
+                if (!due.isAfter(dueSoonHorizon)) continue; // already covered by dueItems()
+                items.add(new ActionItemResponse(
+                        "INTEREST_DUE", "INFO",
+                        "Interest payout upcoming — " + h.getName(),
+                        money(payout, h) + ", due " + due,
+                        h.getId(), h.getName(), h.getBroker(), due, payout, due.toString(), null,
                         ActionItemResponse.keyOf("INTEREST", h.getId(), due.toString())));
             }
         }
@@ -91,7 +120,7 @@ public class InterestPayoutService {
         if (!paysPeriodicInterest(holding)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This holding has no interest-payout schedule");
         }
-        if (!dueDates(holding, LocalDate.now()).contains(dueDate)) {
+        if (!dueDates(holding, LocalDate.now(), DUE_SOON_DAYS).contains(dueDate)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "That payout is already recorded, or is not due yet");
         }
@@ -104,7 +133,7 @@ public class InterestPayoutService {
     }
 
     /** Grid payout dates still owed, earliest first, anchored past the latest INTEREST on the ledger. */
-    private List<LocalDate> dueDates(Holding h, LocalDate today) {
+    private List<LocalDate> dueDates(Holding h, LocalDate today, int horizonDays) {
         Period step = stepFor(h.getCompoundingFrequency());
         LocalDate firstDue = h.getFixedRateStartDate().plus(step);
         List<Transaction> ledger = transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(h.getId());
@@ -114,7 +143,7 @@ public class InterestPayoutService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(HashSet::new));
         return DueSchedule.unsettled(firstDue, step, settled,
-                today.plusDays(DUE_SOON_DAYS), h.getFixedRateEndDate(), MAX_OCCURRENCES);
+                today.plusDays(horizonDays), h.getFixedRateEndDate(), MAX_OCCURRENCES);
     }
 
     private boolean paysPeriodicInterest(Holding h) {

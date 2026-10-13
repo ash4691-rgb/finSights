@@ -39,7 +39,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class EmiService {
 
-    private static final int DUE_SOON_DAYS = 5;     // how early a not-yet-due instalment appears
+    private static final int DUE_SOON_DAYS = 5;     // how early a not-yet-due instalment appears in dueItems()
+    private static final int UPCOMING_DAYS = 35;     // how far ahead upcomingItems() looks, past DUE_SOON_DAYS
     private static final int MAX_OCCURRENCES = 6;   // cap the backlog shown for one loan
 
     private final HoldingRepository holdings;
@@ -68,7 +69,7 @@ public class EmiService {
             BigDecimal amount = instalmentAmount(h);
             String noun = freq == RepaymentFrequency.ONE_TIME ? "Repayment" : "Instalment";
 
-            for (LocalDate due : occurrences(h, today)) {
+            for (LocalDate due : occurrences(h, today, DUE_SOON_DAYS)) {
                 if (due.isAfter(today.plusDays(DUE_SOON_DAYS))) continue;
                 boolean overdue = due.isBefore(today);
                 String kind = overdue ? "EMI_OVERDUE" : "EMI_DUE";
@@ -77,7 +78,39 @@ public class EmiService {
                         overdue ? "WARN" : "INFO",
                         (overdue ? noun + " overdue — " : noun + " due — ") + h.getName(),
                         money(amount, h) + (overdue ? ", was due " + due : ", due " + due),
-                        h.getId(), h.getName(), due, amount, due.toString(), null,
+                        h.getId(), h.getName(), h.getBroker(), due, amount, due.toString(), null,
+                        ActionItemResponse.keyOf("EMI", h.getId(), due.toString())));
+            }
+        }
+        items.sort((a, b) -> a.dueDate().compareTo(b.dueDate()));
+        return items;
+    }
+
+    /** Instalments due further out than {@link #DUE_SOON_DAYS} but within {@link #UPCOMING_DAYS} —
+     * a heads-up for Signals' Radar, not yet something to act on (that's dueItems()). */
+    @Transactional(readOnly = true)
+    public List<ActionItemResponse> upcomingItems() {
+        String userId = currentUser.currentUser().getId();
+        LocalDate today = LocalDate.now();
+        LocalDate dueSoonHorizon = today.plusDays(DUE_SOON_DAYS);
+        List<ActionItemResponse> items = new ArrayList<>();
+
+        for (Holding h : holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId)) {
+            if (h.getCategory() == null || h.getCategory().getKind() != HoldingKind.LIABILITY) continue;
+            RepaymentFrequency freq = h.getRepaymentFrequency();
+            if (freq == null) continue;
+            BigDecimal amount = instalmentAmount(h);
+            String noun = freq == RepaymentFrequency.ONE_TIME ? "Repayment" : "Instalment";
+
+            for (LocalDate due : occurrences(h, today, UPCOMING_DAYS)) {
+                // A one-time repayment's occurrences() ignores its horizon arg (always returns
+                // the single due date if unsettled — see below), so bound both ends here instead.
+                if (!due.isAfter(dueSoonHorizon) || due.isAfter(today.plusDays(UPCOMING_DAYS))) continue;
+                items.add(new ActionItemResponse(
+                        "EMI_DUE", "INFO",
+                        noun + " upcoming — " + h.getName(),
+                        money(amount, h) + ", due " + due,
+                        h.getId(), h.getName(), h.getBroker(), due, amount, due.toString(), null,
                         ActionItemResponse.keyOf("EMI", h.getId(), due.toString())));
             }
         }
@@ -93,7 +126,7 @@ public class EmiService {
         if (holding.getRepaymentFrequency() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This holding has no repayment schedule");
         }
-        if (!occurrences(holding, LocalDate.now()).contains(dueDate)) {
+        if (!occurrences(holding, LocalDate.now(), DUE_SOON_DAYS).contains(dueDate)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "That instalment is already settled, or is not due yet");
         }
@@ -141,9 +174,9 @@ public class EmiService {
     }
 
     /** Instalment dates still owed, earliest first, anchored past the last one settled. */
-    private List<LocalDate> occurrences(Holding h, LocalDate today) {
+    private List<LocalDate> occurrences(Holding h, LocalDate today, int horizonDays) {
         RepaymentFrequency freq = h.getRepaymentFrequency();
-        LocalDate horizon = today.plusDays(DUE_SOON_DAYS);
+        LocalDate horizon = today.plusDays(horizonDays);
 
         if (freq == RepaymentFrequency.ONE_TIME) {
             LocalDate due = h.getRepaymentDueDate();

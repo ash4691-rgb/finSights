@@ -18,10 +18,12 @@ import org.springframework.stereotype.Service;
 public class InsightsService {
     private final HoldingService holdings;
     private final ActionCentreService actionCentre;
+    private final ActionDismissalService actionDismissals;
 
-    public InsightsService(HoldingService holdings, ActionCentreService actionCentre) {
+    public InsightsService(HoldingService holdings, ActionCentreService actionCentre, ActionDismissalService actionDismissals) {
         this.holdings = holdings;
         this.actionCentre = actionCentre;
+        this.actionDismissals = actionDismissals;
     }
 
     public InsightsResponse insights(String currency) {
@@ -53,7 +55,9 @@ public class InsightsService {
                 breakdown(assets, h -> originalCurrencyById.getOrDefault(h.id(), h.currency())),
                 breakdown(assets, this::liquidityBucket),
                 gainers, losers,
-                actionCentre.actions(all, converted));
+                actionCentre.actions(all, converted),
+                actionCentre.upcoming(),
+                actionDismissals.deferredItems());
     }
 
     private String liquidityBucket(HoldingResponse h) {

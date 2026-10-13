@@ -5,6 +5,7 @@ import com.finsights.portfolio.dto.BrokersResponse.BrokerGroup;
 import com.finsights.portfolio.dto.BrokersResponse.Source;
 import com.finsights.portfolio.dto.HoldingResponse;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -67,9 +68,13 @@ public class BrokerService {
                     lastUpdated = h.updatedAt();
                 }
             }
+            BigDecimal invested = sum(items, HoldingResponse::investedValue);
+            BigDecimal profitLoss = sum(items, HoldingResponse::profitLoss);
+            BigDecimal profitLossPercentage = invested.signum() == 0 ? BigDecimal.ZERO
+                    : profitLoss.divide(invested, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100));
             brokers.add(new BrokerGroup(name, items.size(),
-                    sum(items, HoldingResponse::currentValue), sum(items, HoldingResponse::investedValue),
-                    sum(items, HoldingResponse::profitLoss), lastUpdated,
+                    sum(items, HoldingResponse::currentValue), invested,
+                    profitLoss, profitLossPercentage, lastUpdated,
                     new ArrayList<>(classes), new ArrayList<>(currencies)));
         });
         brokers.sort(Comparator.comparing(BrokerGroup::currentValue).reversed());

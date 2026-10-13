@@ -59,7 +59,7 @@ public class PendingBrokerHoldingService {
                         + "name. Link them if it's the same position, or review the existing one first."
                 : "Synced from " + broker + " — pick a category to add it as a holding.";
         return new ActionItemResponse(kind, "WARN", title, detail,
-                conflict ? row.getConflictingHoldingId() : null, row.getSuggestedName(),
+                conflict ? row.getConflictingHoldingId() : null, row.getSuggestedName(), broker,
                 null, row.getCurrentValue(), null, row.getId(),
                 ActionItemResponse.keyOf(kind, row.getId(), null));
     }

@@ -112,7 +112,7 @@ public class SettingsService {
             }
             user.setNotifyThresholdPercent(threshold);
         }
-        // Hot-picks thresholds are always set (null included) so the Insights page can clear one back to "off".
+        // Hot-picks thresholds are always set (null included) so the Signals page can clear one back to "off".
         user.setDailyThresholdPercent(nonNegative(request.dailyThresholdPercent(), "dailyThresholdPercent"));
         user.setWeeklyThresholdPercent(nonNegative(request.weeklyThresholdPercent(), "weeklyThresholdPercent"));
         user.setMonthlyThresholdPercent(nonNegative(request.monthlyThresholdPercent(), "monthlyThresholdPercent"));
