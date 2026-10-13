@@ -6,7 +6,7 @@ export function TourNudge({ onDismiss, onStart, stackedAboveGoku }: { onDismiss:
   return <div className={`tour-nudge${stackedAboveGoku ? ' tour-nudge-above-goku' : ''}`}>
     <button type="button" className="tour-nudge-close" onClick={onDismiss} aria-label="Dismiss">×</button>
     <p className="tour-nudge-title">New here?</p>
-    <p className="hint">A 60-second tour of the five ideas FinSights is built on — Overview, Holdings, Transactions, Categories and Insights.</p>
+    <p className="hint">A 60-second tour of the five ideas FinSights is built on — Overview, Holdings, Transactions, Categories and Signals.</p>
     <div className="tour-nudge-actions">
       <button type="button" className="outline" onClick={onDismiss}>Maybe later</button>
       <button type="button" className="primary" onClick={onStart}>Take the tour</button>
