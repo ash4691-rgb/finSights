@@ -21,8 +21,14 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -50,17 +56,26 @@ public class NewsService {
     private static final int MAX_PER_SYMBOL = 5;   // stored per ticker
     private static final int MAX_FOR_USER = 8;     // shown in Radar
     private static final String MF_PREFIX = "MF:"; // mirrors MarketDataService — a scheme code has no usable search text
+    /** "News older than 14 days are not required" — applied at read time in headlinesFor() so it
+     * self-heals any already-cached row too, not just newly-fetched ones. */
+    private static final Duration MAX_AGE = Duration.ofDays(14);
+    /** Bounded, same reasoning as MarketDataService.QUOTE_CONCURRENCY — Google News is a free,
+     * unauthenticated feed more sensitive to bursts than Yahoo, hence the smaller cap. */
+    private static final int FETCH_CONCURRENCY = 5;
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final NewsCacheRepository cache;
     private final HoldingService holdings;
     private final WatchlistService watchlist;
+    private final TickerPreferenceService preferences;
     private final ObjectMapper sharedJson;
 
-    public NewsService(NewsCacheRepository cache, HoldingService holdings, WatchlistService watchlist, ObjectMapper sharedJson) {
+    public NewsService(NewsCacheRepository cache, HoldingService holdings, WatchlistService watchlist,
+                        TickerPreferenceService preferences, ObjectMapper sharedJson) {
         this.cache = cache;
         this.holdings = holdings;
         this.watchlist = watchlist;
+        this.preferences = preferences;
         this.sharedJson = sharedJson;
     }
 
@@ -74,36 +89,65 @@ public class NewsService {
      * hold a single connection from the small (5-max) Hikari pool for the entire loop's duration,
      * starving concurrent requests. {@code cache.findBySymbol}/{@code cache.save} each still get
      * their own short, implicit transaction from the repository proxy — only the HTTP call itself
-     * now happens outside any transaction. */
-    public void refreshAll(java.util.Set<String> symbols) {
+     * now happens outside any transaction.
+     *
+     * Fetches up to {@link #FETCH_CONCURRENCY} symbols' RSS feeds at once rather than one at a
+     * time — "with multiple symbols, if possible": Google News RSS has no multi-symbol batch query
+     * (unlike Yahoo's quote endpoint), so concurrency is the only lever available here. */
+    public void refreshAll(Set<String> symbols) {
+        Map<String, NewsCache> existingBySymbol = new HashMap<>();
+        List<String> toRefresh = new ArrayList<>();
         for (String symbol : symbols) {
             if (symbol == null || symbol.isBlank() || symbol.startsWith(MF_PREFIX)) continue;
             Optional<NewsCache> existing = cache.findBySymbol(symbol);
-            if (existing.isPresent() && existing.get().getFetchedAt().isAfter(Instant.now().minus(TTL))) continue;
-            try {
-                List<Headline> headlines = fetch(symbol);
-                save(symbol, headlines, existing.orElse(null));
-            } catch (Exception e) {
-                log.debug("News fetch failed for '{}': {}", symbol, e.toString());
+            existing.ifPresent(row -> existingBySymbol.put(symbol, row));
+            if (existing.isEmpty() || existing.get().getFetchedAt().isBefore(Instant.now().minus(TTL))) {
+                toRefresh.add(symbol);
             }
+        }
+        if (toRefresh.isEmpty()) return;
+
+        ExecutorService executor = Executors.newFixedThreadPool(Math.min(FETCH_CONCURRENCY, toRefresh.size()));
+        try {
+            List<Callable<Void>> tasks = toRefresh.stream()
+                    .<Callable<Void>>map(symbol -> () -> {
+                        try {
+                            save(symbol, fetch(symbol), existingBySymbol.get(symbol));
+                        } catch (Exception e) {
+                            log.debug("News fetch failed for '{}': {}", symbol, e.toString());
+                        }
+                        return null;
+                    })
+                    .toList();
+            executor.invokeAll(tasks);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            executor.shutdown();
         }
     }
 
-    /** The current user's news feed: every cached headline for their market-linked holdings and
-     * watchlist symbols, newest first, capped at {@link #MAX_FOR_USER}. Read-only — a symbol with
-     * no cache row yet (never refreshed) or a stale one (last refresh failed) just contributes
-     * whatever's there, including nothing. */
+    /** The current user's news feed: every cached headline (within {@link #MAX_AGE}) for their
+     * market-linked holdings and watchlist symbols, minus anything they've excluded, ranked
+     * starred-tickers-first and newest-first within each group, capped at {@link #MAX_FOR_USER}.
+     * Read-only — a symbol with no cache row yet (never refreshed) or a stale one (last refresh
+     * failed) just contributes whatever's there, including nothing. */
     public List<NewsItemResponse> forUser() {
+        Set<String> starred = preferences.starredSymbols();
+        Set<String> excluded = preferences.excludedSymbols();
         List<NewsItemResponse> out = new ArrayList<>();
         for (HoldingResponse h : holdings.list()) {
             if (h.kind() == HoldingKind.LIABILITY || !isMarketLinked(h.valuationMethod())) continue;
-            headlinesFor(h.tickerSymbol()).forEach(hl -> out.add(toResponse("HOLDING", h.id(), h.name(), h.tickerSymbol(), hl)));
+            if (isExcluded(h.tickerSymbol(), excluded)) continue;
+            headlinesFor(h.tickerSymbol()).forEach(hl -> out.add(toResponse("HOLDING", h.id(), h.name(), h.tickerSymbol(), hl, starred)));
         }
         for (WatchlistResponse w : watchlist.list()) {
-            headlinesFor(w.tickerSymbol()).forEach(hl -> out.add(toResponse("WATCHLIST", w.id(), w.name(), w.tickerSymbol(), hl)));
+            if (isExcluded(w.tickerSymbol(), excluded)) continue;
+            headlinesFor(w.tickerSymbol()).forEach(hl -> out.add(toResponse("WATCHLIST", w.id(), w.name(), w.tickerSymbol(), hl, starred)));
         }
         return out.stream()
-                .sorted(Comparator.comparing(NewsItemResponse::publishedAt).reversed())
+                .sorted(Comparator.comparing(NewsItemResponse::starred).reversed()
+                        .thenComparing(Comparator.comparing(NewsItemResponse::publishedAt).reversed()))
                 .limit(MAX_FOR_USER)
                 .toList();
     }
@@ -112,11 +156,17 @@ public class NewsService {
         return method == ValuationMethod.MARKET_PRICE || method == ValuationMethod.BROKER_SYNC;
     }
 
+    private boolean isExcluded(String symbol, Set<String> excluded) {
+        return symbol != null && excluded.contains(symbol.trim().toUpperCase());
+    }
+
     private List<Headline> headlinesFor(String symbol) {
         if (symbol == null || symbol.isBlank() || symbol.startsWith(MF_PREFIX)) return List.of();
+        Instant cutoff = Instant.now().minus(MAX_AGE);
         return cache.findBySymbol(symbol).map(row -> {
             try {
-                return sharedJson.readValue(row.getItemsJson(), new TypeReference<List<Headline>>() { });
+                List<Headline> all = sharedJson.readValue(row.getItemsJson(), new TypeReference<List<Headline>>() { });
+                return all.stream().filter(hl -> hl.publishedAt().isAfter(cutoff)).toList();
             } catch (Exception e) {
                 log.debug("Corrupt cached news for '{}': {}", symbol, e.toString());
                 return List.<Headline>of();
@@ -124,8 +174,9 @@ public class NewsService {
         }).orElseGet(List::of);
     }
 
-    private NewsItemResponse toResponse(String subjectType, String id, String name, String tickerSymbol, Headline hl) {
-        return new NewsItemResponse(subjectType, id, name, tickerSymbol, hl.title(), hl.link(), hl.source(), hl.publishedAt());
+    private NewsItemResponse toResponse(String subjectType, String id, String name, String tickerSymbol, Headline hl, Set<String> starred) {
+        boolean isStarred = tickerSymbol != null && starred.contains(tickerSymbol.trim().toUpperCase());
+        return new NewsItemResponse(subjectType, id, name, tickerSymbol, hl.title(), hl.link(), hl.source(), hl.publishedAt(), isStarred);
     }
 
     private void save(String symbol, List<Headline> headlines, NewsCache existing) {
