@@ -364,7 +364,6 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
           </>}
           {page === 'categories' && <button className="tool-action" onClick={exportCategoriesCsv} disabled={!categories.length}>↓ Export</button>}
           {page === 'holdings' && <>
-            <button className="tool-action" onClick={() => setShowCasImport(true)} disabled={!categories.length} title={categories.length ? '' : 'Add a category first'}>↑ Import from CAS</button>
             <button className="tool-action" onClick={exportHoldingsCsv} disabled={!holdings.length}>↓ Export</button>
           </>}
           {canEditLayout && <>
@@ -405,7 +404,8 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       {page === 'insights' && (settings && dashboard
         ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} />
         : <SectionError what="signals" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
-      {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} notice={brokerNotice} onDismissNotice={() => setBrokerNotice(null)} />}
+      {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} notice={brokerNotice} onDismissNotice={() => setBrokerNotice(null)}
+        hasCategories={!!categories.length} onUploadCas={() => setShowCasImport(true)} onUploadTransactions={() => setShowImport(true)} />}
       {page === 'settings' && (settings
         ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme}
             persona={persona} onStartOnboarding={() => setShowPersonaOnboardingFromSettings(true)} onReassessRisk={() => setShowRiskAssessment(true)}
