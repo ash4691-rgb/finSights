@@ -1,6 +1,7 @@
 package com.finsights.portfolio.service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,5 +27,8 @@ public class StatementImportRateLimiter {
         return count.incrementAndGet() <= dailyLimit;
     }
 
-    private String key(String userId) { return userId + ":" + LocalDate.now(); }
+    // Explicit zone, not just style: an implicit default-timezone LocalDate.now() ties the
+    // upload-day boundary to whatever zone the JVM happens to be started in — fine on a stable
+    // host, but a silent behavior change if that ever differs across deploys.
+    private String key(String userId) { return userId + ":" + LocalDate.now(ZoneId.systemDefault()); }
 }
