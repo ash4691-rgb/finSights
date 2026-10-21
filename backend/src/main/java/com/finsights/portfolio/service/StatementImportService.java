@@ -23,14 +23,17 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
@@ -165,7 +168,7 @@ public class StatementImportService {
                 ? buildPdfRequestBody(json, model, Base64.getEncoder().encodeToString(decrypted))
                 : buildTextRequestBody(json, model, decodeText(decrypted));
         JsonNode response = callClaude(body);
-        StatementExtractionResponse extracted = parseExtraction(json, response);
+        StatementExtractionResponse extracted = parseExtraction(response);
         return matchAgainstExisting(enrichWithTickers(extracted), userId);
     }
 
@@ -205,9 +208,10 @@ public class StatementImportService {
      * <p>The obvious limitation: if a user edits that description's free-text Notes field after
      * import, the tag is gone and this holding can no longer be matched or offered for cleanup —
      * an acceptable trade for not adding a schema column for a pilot feature.
+     *
+     * <p>Package-private (not private) purely so it can be unit-tested directly against a mocked
+     * {@link HoldingRepository}.
      */
-    /** Package-private (not private) purely so it can be unit-tested directly against a mocked
-     *  {@link HoldingRepository}. */
     StatementExtractionResponse matchAgainstExisting(StatementExtractionResponse extracted, String userId) {
         Map<String, Holding> byIsin = new LinkedHashMap<>();
         for (Holding h : holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId)) {
@@ -275,12 +279,11 @@ public class StatementImportService {
         try {
             for (SymbolSuggestion suggestion : marketData.search(instrumentName)) {
                 String symbol = suggestion.symbol();
-                if (symbol == null) continue;
-                String upper = symbol.toUpperCase();
                 // Statement holdings are Indian equities/ETFs — a Yahoo hit on a foreign exchange
                 // is never the right instrument here, whatever its name similarity score.
-                if (!upper.endsWith(".NS") && !upper.endsWith(".BO")) continue;
-                if (namesLikelyMatch(instrumentName, suggestion.name())) return symbol;
+                boolean isIndianListing = symbol != null
+                        && (symbol.toUpperCase(Locale.ROOT).endsWith(".NS") || symbol.toUpperCase(Locale.ROOT).endsWith(".BO"));
+                if (isIndianListing && namesLikelyMatch(instrumentName, suggestion.name())) return symbol;
             }
         } catch (RuntimeException e) {
             log.debug("Ticker guess failed for '{}': {}", instrumentName, e.toString());
@@ -312,11 +315,9 @@ public class StatementImportService {
 
     private static Set<String> significantWords(String name) {
         if (name == null || name.isBlank()) return Set.of();
-        Set<String> words = new LinkedHashSet<>();
-        for (String word : name.toUpperCase().replaceAll("[^A-Z0-9 ]", " ").split("\\s+")) {
-            if (!word.isBlank() && !CORPORATE_SUFFIXES.contains(word)) words.add(word);
-        }
-        return words;
+        return Arrays.stream(name.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9 ]", " ").split("\\s+"))
+                .filter(word -> !word.isBlank() && !CORPORATE_SUFFIXES.contains(word))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     /**
@@ -394,88 +395,103 @@ public class StatementImportService {
         return body;
     }
 
+    // Keys repeated across the hand-built JSON schema below — one spelling each, not one per use.
+    private static final String SCHEMA_TYPE = "type";
+    private static final String SCHEMA_OBJECT = "object";
+    private static final String SCHEMA_ARRAY = "array";
+    private static final String SCHEMA_PROPERTIES = "properties";
+    private static final String SCHEMA_REQUIRED = "required";
+    private static final String SCHEMA_ITEMS = "items";
+    private static final String SCHEMA_DESCRIPTION = "description";
+    private static final String FIELD_INSTRUMENT_NAME = "instrumentName";
+    private static final String FIELD_ISIN = "isin";
+    private static final String FIELD_QUANTITY = "quantity";
+    private static final String FIELD_STATEMENT_TYPE = "statementType";
+    private static final String INSTRUMENT_NAME_DESCRIPTION = "Company or instrument name exactly as printed";
+    private static final String ISIN_DESCRIPTION = "The 12-character ISIN for this instrument";
+
     private static ObjectNode toolDefinition(ObjectMapper json) {
         ObjectNode holdingSchema = json.createObjectNode();
-        holdingSchema.put("type", "object");
+        holdingSchema.put(SCHEMA_TYPE, SCHEMA_OBJECT);
         ObjectNode holdingProps = json.createObjectNode();
-        holdingProps.set("instrumentName", textProp(json, "Company or instrument name exactly as printed"));
-        holdingProps.set("isin", textProp(json, "The 12-character ISIN for this instrument"));
-        holdingProps.set("quantity", numberProp(json, "Units held"));
+        holdingProps.set(FIELD_INSTRUMENT_NAME, textProp(json, INSTRUMENT_NAME_DESCRIPTION));
+        holdingProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION));
+        holdingProps.set(FIELD_QUANTITY, numberProp(json, "Units held"));
         holdingProps.set("averageCostPerUnit", numberProp(json, "Average cost per unit — omit entirely if the statement doesn't show one"));
         ObjectNode depository = textProp(json, "Which depository this line is held under, if shown");
         depository.set("enum", json.createArrayNode().add("NSDL").add("CDSL").add("UNKNOWN"));
         holdingProps.set("depository", depository);
-        holdingSchema.set("properties", holdingProps);
-        holdingSchema.set("required", json.createArrayNode().add("instrumentName").add("isin").add("quantity"));
+        holdingSchema.set(SCHEMA_PROPERTIES, holdingProps);
+        holdingSchema.set(SCHEMA_REQUIRED, json.createArrayNode().add(FIELD_INSTRUMENT_NAME).add(FIELD_ISIN).add(FIELD_QUANTITY));
 
         ObjectNode holdingsArray = json.createObjectNode();
-        holdingsArray.put("type", "array");
-        holdingsArray.set("items", holdingSchema);
+        holdingsArray.put(SCHEMA_TYPE, SCHEMA_ARRAY);
+        holdingsArray.set(SCHEMA_ITEMS, holdingSchema);
 
         ObjectNode txnSchema = json.createObjectNode();
-        txnSchema.put("type", "object");
+        txnSchema.put(SCHEMA_TYPE, SCHEMA_OBJECT);
         ObjectNode txnProps = json.createObjectNode();
         txnProps.set("date", textProp(json, "YYYY-MM-DD"));
         ObjectNode txnType = textProp(json, "Closest fit to the broker's own wording");
         txnType.set("enum", json.createArrayNode().add("BUY").add("SELL").add("SPLIT").add("INTEREST").add("ADJUSTMENT").add("REPAY"));
-        txnProps.set("type", txnType);
-        txnProps.set("instrumentName", textProp(json, "Company or instrument name exactly as printed"));
-        txnProps.set("isin", textProp(json, "The 12-character ISIN for this instrument"));
-        txnProps.set("quantity", numberProp(json, "Omit if this line has no quantity (e.g. INTEREST)"));
+        txnProps.set(SCHEMA_TYPE, txnType);
+        txnProps.set(FIELD_INSTRUMENT_NAME, textProp(json, INSTRUMENT_NAME_DESCRIPTION));
+        txnProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION));
+        txnProps.set(FIELD_QUANTITY, numberProp(json, "Omit if this line has no quantity (e.g. INTEREST)"));
         txnProps.set("amount", numberProp(json, "Omit if this line has no amount (e.g. SPLIT)"));
         txnProps.set("notes", textProp(json, "Any short free-text note from the statement line, if present"));
-        txnSchema.set("properties", txnProps);
-        txnSchema.set("required", json.createArrayNode().add("date").add("type").add("instrumentName").add("isin"));
+        txnSchema.set(SCHEMA_PROPERTIES, txnProps);
+        txnSchema.set(SCHEMA_REQUIRED, json.createArrayNode().add("date").add(SCHEMA_TYPE).add(FIELD_INSTRUMENT_NAME).add(FIELD_ISIN));
 
         ObjectNode transactionsArray = json.createObjectNode();
-        transactionsArray.put("type", "array");
-        transactionsArray.set("items", txnSchema);
+        transactionsArray.put(SCHEMA_TYPE, SCHEMA_ARRAY);
+        transactionsArray.set(SCHEMA_ITEMS, txnSchema);
 
         ObjectNode warningsArray = json.createObjectNode();
-        warningsArray.put("type", "array");
-        warningsArray.set("items", textProp(json, null));
-        warningsArray.put("description", "Anything skipped, unclear, or out of scope — see the rules above.");
+        warningsArray.put(SCHEMA_TYPE, SCHEMA_ARRAY);
+        warningsArray.set(SCHEMA_ITEMS, textProp(json, null));
+        warningsArray.put(SCHEMA_DESCRIPTION, "Anything skipped, unclear, or out of scope — see the rules above.");
 
         ObjectNode statementType = textProp(json, "What this statement contains");
         statementType.set("enum", json.createArrayNode().add("HOLDINGS").add("TRANSACTIONS").add("MIXED"));
 
         ObjectNode topProps = json.createObjectNode();
-        topProps.set("statementType", statementType);
+        topProps.set(FIELD_STATEMENT_TYPE, statementType);
         topProps.set("statementDate", textProp(json, "As-of date of the statement, YYYY-MM-DD, if determinable"));
         topProps.set("holdings", holdingsArray);
         topProps.set("transactions", transactionsArray);
         topProps.set("warnings", warningsArray);
 
         ObjectNode inputSchema = json.createObjectNode();
-        inputSchema.put("type", "object");
-        inputSchema.set("properties", topProps);
-        inputSchema.set("required", json.createArrayNode().add("statementType"));
+        inputSchema.put(SCHEMA_TYPE, SCHEMA_OBJECT);
+        inputSchema.set(SCHEMA_PROPERTIES, topProps);
+        inputSchema.set(SCHEMA_REQUIRED, json.createArrayNode().add(FIELD_STATEMENT_TYPE));
 
         ObjectNode tool = json.createObjectNode();
         tool.put("name", TOOL_NAME);
-        tool.put("description", "Report the holdings and/or transactions found in this statement.");
+        tool.put(SCHEMA_DESCRIPTION, "Report the holdings and/or transactions found in this statement.");
         tool.set("input_schema", inputSchema);
         return tool;
     }
 
     private static ObjectNode textProp(ObjectMapper json, String description) {
         ObjectNode node = json.createObjectNode();
-        node.put("type", "string");
-        if (description != null) node.put("description", description);
+        node.put(SCHEMA_TYPE, "string");
+        if (description != null) node.put(SCHEMA_DESCRIPTION, description);
         return node;
     }
 
     private static ObjectNode numberProp(ObjectMapper json, String description) {
         ObjectNode node = json.createObjectNode();
-        node.put("type", "number");
-        if (description != null) node.put("description", description);
+        node.put(SCHEMA_TYPE, "number");
+        if (description != null) node.put(SCHEMA_DESCRIPTION, description);
         return node;
     }
 
     /** Package-private and pure so it can be unit-tested against a canned API response. Fault
      *  tolerant per row, same philosophy as TransactionImportRunner: a malformed row is dropped
      *  into {@code warnings} rather than failing the whole statement. */
-    static StatementExtractionResponse parseExtraction(ObjectMapper json, JsonNode apiResponse) {
+    static StatementExtractionResponse parseExtraction(JsonNode apiResponse) {
         JsonNode toolInput = null;
         for (JsonNode block : apiResponse.path("content")) {
             if ("tool_use".equals(block.path("type").asText()) && TOOL_NAME.equals(block.path("name").asText())) {

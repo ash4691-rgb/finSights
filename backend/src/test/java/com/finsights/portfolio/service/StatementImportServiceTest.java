@@ -348,7 +348,7 @@ class StatementImportServiceTest {
                 }
                 """);
 
-        StatementExtractionResponse result = StatementImportService.parseExtraction(json, response);
+        StatementExtractionResponse result = StatementImportService.parseExtraction(response);
 
         assertThat(result.statementType()).isEqualTo(StatementType.HOLDINGS);
         assertThat(result.statementDate()).isEqualTo("2026-09-30");
@@ -385,7 +385,7 @@ class StatementImportServiceTest {
                 }
                 """);
 
-        StatementExtractionResponse result = StatementImportService.parseExtraction(json, response);
+        StatementExtractionResponse result = StatementImportService.parseExtraction(response);
 
         assertThat(result.statementType()).isEqualTo(StatementType.TRANSACTIONS);
         assertThat(result.transactions()).hasSize(1);
@@ -400,7 +400,7 @@ class StatementImportServiceTest {
     void missingToolUseBlockReturnsNothingWithAnExplanationInsteadOfThrowing() throws Exception {
         JsonNode response = json.readTree("{\"content\": [{\"type\": \"text\", \"text\": \"I couldn't read this.\"}]}");
 
-        StatementExtractionResponse result = StatementImportService.parseExtraction(json, response);
+        StatementExtractionResponse result = StatementImportService.parseExtraction(response);
 
         assertThat(result.holdings()).isEmpty();
         assertThat(result.transactions()).isEmpty();
@@ -413,7 +413,7 @@ class StatementImportServiceTest {
                 {"content": [{"type": "tool_use", "name": "extract_statement", "input": {"statementType": "SOMETHING_ELSE"}}]}
                 """);
 
-        StatementExtractionResponse result = StatementImportService.parseExtraction(json, response);
+        StatementExtractionResponse result = StatementImportService.parseExtraction(response);
 
         assertThat(result.statementType()).isEqualTo(StatementType.HOLDINGS);
     }
