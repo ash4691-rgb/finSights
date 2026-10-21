@@ -18,5 +18,15 @@ public record StatementExtractionResponse(
         String statementDate,
         List<String> warnings
 ) {
+    // Defensive copies so a caller handed this response can't mutate state shared with whoever
+    // built it (or be handed a list they can mutate back into it) — the lists always come from
+    // List.of()/.toList() today, but the accessor's signature doesn't promise that.
+    public StatementExtractionResponse {
+        holdings = List.copyOf(holdings);
+        toRemove = List.copyOf(toRemove);
+        transactions = List.copyOf(transactions);
+        warnings = List.copyOf(warnings);
+    }
+
     public enum StatementType { HOLDINGS, TRANSACTIONS, MIXED }
 }
