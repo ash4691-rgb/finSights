@@ -570,7 +570,11 @@ public class StatementImportService {
             return json.readTree(response.body());
         } catch (ResponseStatusException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for the Anthropic API", e);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Couldn't read that statement right now — try again shortly.");
+        } catch (IOException e) {
             log.warn("Failed to reach the Anthropic API for a statement extraction request", e);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Couldn't read that statement right now — try again shortly.");
         }
