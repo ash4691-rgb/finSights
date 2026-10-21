@@ -73,11 +73,12 @@ export type Transaction = {
   id: string; holdingId: string; holdingName: string; categoryId: string; categoryName: string; broker?: string
   currency: string; type: TransactionType; date: string; amount: number; quantity?: number; principalPortion?: number; interestPaid?: boolean; notes?: string; createdAt?: string
 }
-export type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
 export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; broker?: string; dueDate?: string; amount?: number; period?: string; pendingId?: string; key: string }
 export type DeferredAction = { key: string; kind: string; label: string; holdingName: string; deferredUntil: string }
 export type NewsItem = { subjectType: 'HOLDING' | 'WATCHLIST'; id: string; name: string; tickerSymbol?: string; title: string; link: string; source: string; publishedAt: string; starred: boolean }
-export type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[]; upcoming: ActionItem[]; deferred: DeferredAction[]; news: NewsItem[] }
+// Signals' four sections — each its own GET (/api/insights/actions|upcoming|deferred|news), not one
+// bundled response, so a slow or failing section never blocks the others. See InsightsController's
+// doc comment for why (the old bundled Insights type/response this replaced is gone from git history).
 export type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
 export type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
 export type TopMover = {

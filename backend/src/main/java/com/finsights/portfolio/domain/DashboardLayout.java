@@ -14,7 +14,11 @@ public class DashboardLayout {
     private UserAccount user;
     @Column(nullable = false, length = 32)
     private String page;
-    @Lob @Column(nullable = false)
+    /** Deliberately NOT {@code @Lob} — see NewsCache.itemsJson's doc comment: Postgres large objects
+     *  (what {@code @Lob String} maps to) need session-scoped handles PgBouncer's transaction-mode
+     *  pooling (Neon's pooled connection string) breaks, surfacing as "Large Objects may not be
+     *  used in auto-commit mode" on every save. Plain TEXT avoids that entirely. */
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String config;
     @Version private long version;
     private Instant createdAt = Instant.now();

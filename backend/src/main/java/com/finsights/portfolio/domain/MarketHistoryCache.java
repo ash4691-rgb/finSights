@@ -20,8 +20,11 @@ public class MarketHistoryCache {
     private String currency;
     @Column(nullable = false)
     private Instant fetchedAt;
-    /** JSON-serialized List<MarketHistoryResponse.Point> — opaque here, same convention as DashboardLayout.config. */
-    @Lob @Column(nullable = false)
+    /** JSON-serialized List<MarketHistoryResponse.Point> — opaque here, same convention as DashboardLayout.config.
+     *  Deliberately NOT {@code @Lob} — see NewsCache.itemsJson's doc comment: Postgres large objects
+     *  (what {@code @Lob String} maps to) need session-scoped handles PgBouncer's transaction-mode
+     *  pooling (Neon's pooled connection string) breaks. Plain TEXT avoids that entirely. */
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String pointsJson;
 
     public String getId() { return id; }

@@ -134,6 +134,41 @@ public class LivePriceService {
         return Optional.of(new MarketHistoryResponse(key, currency, series));
     }
 
+    /** Whether {@link #ownHistory} can ever serve this range — used by MarketController to decide
+     *  whether a backfill is worth attempting on a miss (1D/1W never are, needing intraday data
+     *  this table doesn't keep). */
+    public boolean supportsOwnHistory(String rangeKey) {
+        return OWN_HISTORY_RANGE_DAYS.containsKey(rangeKey);
+    }
+
+    /** Persists every point of a live-fetched daily series into our own table in one batch — called
+     *  by MarketController when {@link #ownHistory} comes up short, so a single live fetch (for
+     *  whatever's the fullest span available, typically "1Y" regardless of what range the user
+     *  actually asked for) immediately gives this symbol close to a full year of coverage for next
+     *  time, rather than waiting on the 15-minute scheduler to build it up one day at a time. Same
+     *  symbol+date upsert as {@link #recordHistory}, just batched over a whole series at once. */
+    public void backfillHistory(String symbol, MarketHistoryResponse response) {
+        if (symbol == null || symbol.isBlank() || response.points().isEmpty()) return;
+        String key = symbol.trim().toUpperCase();
+        Map<LocalDate, PriceHistoryPoint> existing = priceHistory.findBySymbol(key).stream()
+                .collect(Collectors.toMap(PriceHistoryPoint::getPriceDate, p -> p, (a, b) -> a));
+        Instant now = Instant.now();
+        List<PriceHistoryPoint> rows = response.points().stream()
+                .map(point -> {
+                    LocalDate date = point.timestamp().atZone(ZoneOffset.UTC).toLocalDate();
+                    PriceHistoryPoint row = existing.getOrDefault(date, new PriceHistoryPoint());
+                    row.setSymbol(key);
+                    row.setPriceDate(date);
+                    row.setPrice(point.price());
+                    row.setCurrency(response.currency());
+                    row.setUpdatedAt(now);
+                    return row;
+                })
+                .toList();
+        priceHistory.saveAll(rows);
+        log.debug("Backfilled {} day(s) of history for '{}'", rows.size(), key);
+    }
+
     /** Builds and persists the updated rows, returning them directly — deliberately not the
      *  result of saveAll() itself, so the caller's in-memory merge doesn't depend on what a
      *  particular JpaRepository implementation (or a test double) happens to hand back. */
