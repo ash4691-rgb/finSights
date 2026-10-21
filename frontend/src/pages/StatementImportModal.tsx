@@ -117,7 +117,7 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
     <div className="import-upload">
       <label className="outline file-label">{busy ? 'Reading…' : file ? 'Choose a different file' : '↑ Choose a statement'}
         <input type="file" accept=".pdf,.csv,.xml,application/pdf,text/csv,text/xml,application/xml" hidden disabled={busy}
-          onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f, password); e.target.value = '' }} />
+          onChange={e => { const f = e.target.files?.[0]; if (f) { void upload(f, password) } e.target.value = '' }} />
       </label>
       {file && <span className="hint">{file.name}</span>}
     </div>
