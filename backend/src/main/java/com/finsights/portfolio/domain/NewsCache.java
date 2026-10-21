@@ -17,8 +17,12 @@ public class NewsCache {
     private String symbol;
     @Column(nullable = false)
     private Instant fetchedAt;
-    /** JSON-serialized List<NewsService.Headline> — opaque here, same convention as MarketHistoryCache.pointsJson. */
-    @Lob @Column(nullable = false)
+    /** JSON-serialized List<NewsService.Headline> — opaque here, same convention as MarketHistoryCache.pointsJson.
+     *  Deliberately NOT {@code @Lob}: Hibernate maps a {@code @Lob String} to Postgres's large-object
+     *  (oid) type, which requires session-scoped LO handles — incompatible with Neon's pooled
+     *  connection, which routes through PgBouncer in transaction mode (see application.yml's own
+     *  comment on that). Plain TEXT needs no large-object machinery at all. */
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String itemsJson;
 
     public String getId() { return id; }
