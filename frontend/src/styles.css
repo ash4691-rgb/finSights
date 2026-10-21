@@ -600,6 +600,13 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 /* minmax's floor is never smaller than (100% - 5 gaps) / 6, so at most 6 tiles ever fit per row
    no matter how wide the panel gets — it only drops below 6 (growing each tile) on a narrower one. */
 .broker-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(max(165px,calc((100% - 50px) / 6)),1fr));gap:10px}
+.upload-option-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.upload-option{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:left}
+.upload-option:not(.coming-soon):hover{border-color:var(--border-strong)}
+.upload-option:disabled{opacity:.6;cursor:not-allowed}
+.upload-option strong{font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px}
+.upload-option-icon{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+.upload-option.coming-soon{cursor:default}
 .broker-tile{display:flex;flex-direction:column;align-items:center;gap:10px;padding:22px 14px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:center}
 .broker-tile:hover{border-color:var(--border-strong)}
 .broker-tile.connected{border-color:var(--success-text)}
