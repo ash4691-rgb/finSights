@@ -492,57 +492,64 @@ public class StatementImportService {
      *  tolerant per row, same philosophy as TransactionImportRunner: a malformed row is dropped
      *  into {@code warnings} rather than failing the whole statement. */
     static StatementExtractionResponse parseExtraction(JsonNode apiResponse) {
-        JsonNode toolInput = null;
-        for (JsonNode block : apiResponse.path("content")) {
-            if ("tool_use".equals(block.path("type").asText()) && TOOL_NAME.equals(block.path("name").asText())) {
-                toolInput = block.path("input");
-                break;
-            }
-        }
+        JsonNode toolInput = findToolInput(apiResponse);
         if (toolInput == null || toolInput.isMissingNode()) {
             return new StatementExtractionResponse(StatementType.HOLDINGS, List.of(), List.of(), List.of(), null,
                     List.of("Couldn't read anything from this statement — try a different file."));
         }
 
         List<String> warnings = new ArrayList<>();
-        for (JsonNode node : toolInput.path("warnings")) warnings.add(node.asText());
+        toolInput.path("warnings").forEach(node -> warnings.add(node.asText()));
 
         List<ExtractedHolding> holdingRows = new ArrayList<>();
-        for (JsonNode row : toolInput.path("holdings")) {
-            String name = blankToNull(row.path("instrumentName").asText(null));
-            String isin = blankToNull(row.path("isin").asText(null));
-            JsonNode quantityNode = row.path("quantity");
-            if (name == null || isin == null || !quantityNode.isNumber() || quantityNode.decimalValue().signum() <= 0) {
-                warnings.add("Skipped a holding row with an incomplete name, ISIN, or quantity" + (name != null ? " (" + name + ")" : ""));
-                continue;
-            }
-            JsonNode avgCostNode = row.path("averageCostPerUnit");
-            BigDecimal avgCost = avgCostNode.isNumber() ? avgCostNode.decimalValue() : null;
-            String depository = blankToNull(row.path("depository").asText(null));
-            holdingRows.add(new ExtractedHolding(name, isin.trim().toUpperCase(), quantityNode.decimalValue(), avgCost, depository, null, null));
-        }
+        for (JsonNode row : toolInput.path("holdings")) parseHoldingRow(row, holdingRows, warnings);
 
         List<ExtractedTransaction> txnRows = new ArrayList<>();
-        for (JsonNode row : toolInput.path("transactions")) {
-            String date = blankToNull(row.path("date").asText(null));
-            String name = blankToNull(row.path("instrumentName").asText(null));
-            String isin = blankToNull(row.path("isin").asText(null));
-            TransactionType type = parseTransactionType(row.path("type").asText(null));
-            if (date == null || name == null || isin == null || type == null) {
-                warnings.add("Skipped a transaction row with an incomplete date, type, name, or ISIN" + (name != null ? " (" + name + ")" : ""));
-                continue;
-            }
-            JsonNode quantityNode = row.path("quantity");
-            JsonNode amountNode = row.path("amount");
-            BigDecimal quantity = quantityNode.isNumber() ? quantityNode.decimalValue() : null;
-            BigDecimal amount = amountNode.isNumber() ? amountNode.decimalValue() : null;
-            String notes = blankToNull(row.path("notes").asText(null));
-            txnRows.add(new ExtractedTransaction(date, type, name, isin.trim().toUpperCase(), quantity, amount, notes, null));
-        }
+        for (JsonNode row : toolInput.path("transactions")) parseTransactionRow(row, txnRows, warnings);
 
-        StatementType statementType = parseStatementType(toolInput.path("statementType").asText(null));
+        StatementType statementType = parseStatementType(toolInput.path(FIELD_STATEMENT_TYPE).asText(null));
         String statementDate = blankToNull(toolInput.path("statementDate").asText(null));
         return new StatementExtractionResponse(statementType, holdingRows, List.of(), txnRows, statementDate, warnings);
+    }
+
+    private static JsonNode findToolInput(JsonNode apiResponse) {
+        for (JsonNode block : apiResponse.path("content")) {
+            if ("tool_use".equals(block.path(SCHEMA_TYPE).asText()) && TOOL_NAME.equals(block.path("name").asText())) {
+                return block.path("input");
+            }
+        }
+        return null;
+    }
+
+    private static void parseHoldingRow(JsonNode row, List<ExtractedHolding> holdingRows, List<String> warnings) {
+        String name = blankToNull(row.path(FIELD_INSTRUMENT_NAME).asText(null));
+        String isin = blankToNull(row.path(FIELD_ISIN).asText(null));
+        JsonNode quantityNode = row.path(FIELD_QUANTITY);
+        if (name == null || isin == null || !quantityNode.isNumber() || quantityNode.decimalValue().signum() <= 0) {
+            warnings.add("Skipped a holding row with an incomplete name, ISIN, or quantity" + (name != null ? " (" + name + ")" : ""));
+            return;
+        }
+        JsonNode avgCostNode = row.path("averageCostPerUnit");
+        BigDecimal avgCost = avgCostNode.isNumber() ? avgCostNode.decimalValue() : null;
+        String depository = blankToNull(row.path("depository").asText(null));
+        holdingRows.add(new ExtractedHolding(name, isin.trim().toUpperCase(Locale.ROOT), quantityNode.decimalValue(), avgCost, depository, null, null));
+    }
+
+    private static void parseTransactionRow(JsonNode row, List<ExtractedTransaction> txnRows, List<String> warnings) {
+        String date = blankToNull(row.path("date").asText(null));
+        String name = blankToNull(row.path(FIELD_INSTRUMENT_NAME).asText(null));
+        String isin = blankToNull(row.path(FIELD_ISIN).asText(null));
+        TransactionType type = parseTransactionType(row.path(SCHEMA_TYPE).asText(null));
+        if (date == null || name == null || isin == null || type == null) {
+            warnings.add("Skipped a transaction row with an incomplete date, type, name, or ISIN" + (name != null ? " (" + name + ")" : ""));
+            return;
+        }
+        JsonNode quantityNode = row.path(FIELD_QUANTITY);
+        JsonNode amountNode = row.path("amount");
+        BigDecimal quantity = quantityNode.isNumber() ? quantityNode.decimalValue() : null;
+        BigDecimal amount = amountNode.isNumber() ? amountNode.decimalValue() : null;
+        String notes = blankToNull(row.path("notes").asText(null));
+        txnRows.add(new ExtractedTransaction(date, type, name, isin.trim().toUpperCase(Locale.ROOT), quantity, amount, notes, null));
     }
 
     private static StatementType parseStatementType(String value) {
