@@ -214,6 +214,58 @@ class LivePriceServiceTest {
         assertThat(result.get().points().get(1).price()).isEqualByComparingTo("2950");
     }
 
+    @Test
+    void supportsOwnHistoryIsTrueOnlyForTheDailyGranularityRanges() {
+        assertThat(service.supportsOwnHistory("1M")).isTrue();
+        assertThat(service.supportsOwnHistory("3M")).isTrue();
+        assertThat(service.supportsOwnHistory("6M")).isTrue();
+        assertThat(service.supportsOwnHistory("1Y")).isTrue();
+        assertThat(service.supportsOwnHistory("1D")).isFalse();
+        assertThat(service.supportsOwnHistory("1W")).isFalse();
+    }
+
+    // --- backfillHistory() ---------------------------------------------------------------------
+
+    @Test
+    void backfillHistoryInsertsOneRowPerPointForASymbolWithNoExistingHistory() {
+        when(priceHistory.findBySymbol("RELIANCE.NS")).thenReturn(List.of());
+        MarketHistoryResponse live = new MarketHistoryResponse("RELIANCE.NS", "INR", List.of(
+                new MarketHistoryResponse.Point(Instant.parse("2026-09-01T00:00:00Z"), new BigDecimal("2800")),
+                new MarketHistoryResponse.Point(Instant.parse("2026-09-02T00:00:00Z"), new BigDecimal("2820"))));
+
+        service.backfillHistory("RELIANCE.NS", live);
+
+        ArgumentCaptor<List<PriceHistoryPoint>> captor = ArgumentCaptor.forClass(List.class);
+        verify(priceHistory).saveAll(captor.capture());
+        assertThat(captor.getValue()).hasSize(2);
+        assertThat(captor.getValue()).extracting(PriceHistoryPoint::getPriceDate)
+                .containsExactly(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 2));
+        assertThat(captor.getValue()).extracting(p -> p.getPrice().toString()).containsExactly("2800", "2820");
+    }
+
+    @Test
+    void backfillHistoryUpdatesAnExistingDayInPlaceRatherThanDuplicatingIt() {
+        PriceHistoryPoint existingPoint = point("RELIANCE.NS", LocalDate.of(2026, 9, 1), "2750");
+        when(priceHistory.findBySymbol("RELIANCE.NS")).thenReturn(List.of(existingPoint));
+        MarketHistoryResponse live = new MarketHistoryResponse("RELIANCE.NS", "INR", List.of(
+                new MarketHistoryResponse.Point(Instant.parse("2026-09-01T00:00:00Z"), new BigDecimal("2800"))));
+
+        service.backfillHistory("RELIANCE.NS", live);
+
+        assertThat(existingPoint.getPrice()).isEqualByComparingTo("2800"); // same row, updated in place
+        ArgumentCaptor<List<PriceHistoryPoint>> captor = ArgumentCaptor.forClass(List.class);
+        verify(priceHistory).saveAll(captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+    }
+
+    @Test
+    void backfillHistoryDoesNothingForAnEmptySeries() {
+        service.backfillHistory("RELIANCE.NS", new MarketHistoryResponse("RELIANCE.NS", "INR", List.of()));
+
+        verify(priceHistory, never()).findBySymbol(any());
+        verify(priceHistory, never()).saveAll(any());
+    }
+
     private PriceHistoryPoint point(String symbol, LocalDate date, String price) {
         PriceHistoryPoint p = new PriceHistoryPoint();
         p.setSymbol(symbol);

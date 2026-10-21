@@ -14,6 +14,10 @@ public interface PriceHistoryPointRepository extends JpaRepository<PriceHistoryP
 
     List<PriceHistoryPoint> findBySymbolAndPriceDateGreaterThanEqualOrderByPriceDateAsc(String symbol, LocalDate from);
 
+    /** Every point currently stored for a symbol, regardless of date — used by backfillHistory()
+     *  to upsert a live-fetched series in one batch rather than one row at a time. */
+    List<PriceHistoryPoint> findBySymbol(String symbol);
+
     @Modifying
     @Transactional
     @Query("delete from PriceHistoryPoint p where p.priceDate < :cutoff")
