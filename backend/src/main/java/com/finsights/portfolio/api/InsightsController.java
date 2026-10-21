@@ -10,12 +10,14 @@ import com.finsights.portfolio.service.ActionDismissalService;
 import com.finsights.portfolio.service.InsightsService;
 import com.finsights.portfolio.service.MovementThresholdService;
 import com.finsights.portfolio.service.PortfolioSnapshotService;
+import com.finsights.portfolio.service.TickerPreferenceService;
 import com.finsights.portfolio.service.TopMoversService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,14 +34,17 @@ public class InsightsController {
     private final MovementThresholdService movementThresholds;
     private final PortfolioSnapshotService portfolioSnapshots;
     private final ActionDismissalService actionDismissals;
+    private final TickerPreferenceService tickerPreferences;
 
     public InsightsController(InsightsService insights, TopMoversService topMovers, MovementThresholdService movementThresholds,
-                             PortfolioSnapshotService portfolioSnapshots, ActionDismissalService actionDismissals) {
+                             PortfolioSnapshotService portfolioSnapshots, ActionDismissalService actionDismissals,
+                             TickerPreferenceService tickerPreferences) {
         this.insights = insights;
         this.topMovers = topMovers;
         this.movementThresholds = movementThresholds;
         this.portfolioSnapshots = portfolioSnapshots;
         this.actionDismissals = actionDismissals;
+        this.tickerPreferences = tickerPreferences;
     }
 
     @GetMapping
@@ -82,5 +87,32 @@ public class InsightsController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void restoreAction(@RequestParam String key) {
         actionDismissals.restore(key);
+    }
+
+    /** Star a ticker: boosts its news to the top of this user's Radar. */
+    @PostMapping("/news/{symbol}/star")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void starTicker(@PathVariable String symbol) {
+        tickerPreferences.star(symbol);
+    }
+
+    @DeleteMapping("/news/{symbol}/star")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void unstarTicker(@PathVariable String symbol) {
+        tickerPreferences.unstar(symbol);
+    }
+
+    /** Cross: hides this ticker's news from this user's Radar — a personal preference, not a
+     *  global unfollow (see TickerPreference's doc comment). */
+    @PostMapping("/news/{symbol}/exclude")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void excludeTicker(@PathVariable String symbol) {
+        tickerPreferences.exclude(symbol);
+    }
+
+    @DeleteMapping("/news/{symbol}/exclude")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void restoreTicker(@PathVariable String symbol) {
+        tickerPreferences.restore(symbol);
     }
 }

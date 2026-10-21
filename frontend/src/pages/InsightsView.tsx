@@ -4,7 +4,7 @@ import { api } from '../api'
 import { money, since, ago, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput, InfoTip, useEscToClose } from '../ui'
 import { useChartHover } from '../charts'
-import type { Insights, Settings, Dashboard, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory, Category } from '../types'
+import type { Insights, Settings, Dashboard, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory, Category, NewsItem } from '../types'
 
 // ---------------------------------------------------------------------------
 
@@ -95,6 +95,19 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   const restoreDeferred = async (key: string) => {
     try { await api(`/api/insights/actions?key=${encodeURIComponent(key)}`, { method: 'DELETE' }); await reload() }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not restore that item') }
+  }
+  // Star/cross act on the ticker, not the individual headline — starring boosts every headline for
+  // that symbol to the top (see NewsService#forUser's ranking); the cross hides the ticker's news
+  // from this user's Radar specifically, without touching the shared tracked-symbol pool.
+  const toggleStarTicker = async (n: NewsItem) => {
+    if (!n.tickerSymbol) return
+    try { await api(`/api/insights/news/${encodeURIComponent(n.tickerSymbol)}/star`, { method: n.starred ? 'DELETE' : 'POST' }); await reload() }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not update that ticker') }
+  }
+  const excludeTicker = async (n: NewsItem) => {
+    if (!n.tickerSymbol) return
+    try { await api(`/api/insights/news/${encodeURIComponent(n.tickerSymbol)}/exclude`, { method: 'POST' }); await reload() }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not remove that ticker') }
   }
 
   // Shared by Tasks (pendingActions) and Radar's lower-urgency items — same row, same tools
@@ -212,10 +225,19 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
           : <>
             {data.news.length > 0 && <div className="radar-group">
               <h5 className="radar-group-label">News</h5>
-              <div className="dense-list">{data.news.map(n => <a key={n.link} className="dense-row signal-row" href={n.link} target="_blank" rel="noopener noreferrer">
+              <div className="dense-list">{data.news.map(n => <div key={n.link} className="dense-row signal-row">
                 <span className="source-chip" title={n.name}>{initials(n.name)}</span>
-                <div className="signal-row-body"><strong>{n.title}</strong><span>{n.source} · {ago(n.publishedAt)}</span></div>
-              </a>)}</div>
+                <a className="signal-row-body" href={n.link} target="_blank" rel="noopener noreferrer">
+                  <strong>{n.title}</strong><span>{n.source} · {ago(n.publishedAt)}</span>
+                </a>
+                <div className="warning-tools">
+                  <button className={`warning-tool star${n.starred ? ' active' : ''}`}
+                    title={n.starred ? 'Unstar this ticker' : "Star this ticker — boosts its news to the top"}
+                    aria-label={n.starred ? 'Unstar' : 'Star'} onClick={() => void toggleStarTicker(n)}>{n.starred ? '★' : '☆'}</button>
+                  <button className="warning-tool delete" title="Remove this ticker from Radar" aria-label="Remove"
+                    onClick={() => void excludeTicker(n)}>✕</button>
+                </div>
+              </div>)}</div>
             </div>}
             {radarItems.length > 0 && <div className="radar-group">
               <h5 className="radar-group-label">Worth a look</h5>

@@ -1,10 +1,7 @@
 package com.finsights.portfolio.service;
 
-import com.finsights.portfolio.domain.ValuationMethod;
-import com.finsights.portfolio.repository.HoldingRepository;
-import com.finsights.portfolio.repository.WatchlistRepository;
 import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,37 +9,36 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Keeps {@link NewsService}'s cache warm for every symbol anyone currently holds (MARKET_PRICE) or
- * watches, every hour — same union-of-tickers approach as {@link LivePriceRefreshScheduler}, just
- * on a longer interval since headlines don't need 15-minute freshness.
+ * Keeps {@link NewsService}'s cache warm for every symbol in the tracked pool (see
+ * {@link TrackedSymbolPoolService}), every 15 minutes — same cadence as
+ * {@link LivePriceRefreshScheduler} now (price and news are two independent flows reading the
+ * same pool, not one combined job — each degrades/fails on its own). NewsService's own per-symbol
+ * TTL (1h) still governs how often any one symbol is actually re-fetched; this just controls how
+ * often the pool is checked.
  */
 @Component
 public class NewsRefreshScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsRefreshScheduler.class);
 
-    private final HoldingRepository holdings;
-    private final WatchlistRepository watchlist;
+    private final TrackedSymbolPoolService pool;
     private final NewsService news;
     private final boolean enabled;
 
-    public NewsRefreshScheduler(HoldingRepository holdings, WatchlistRepository watchlist, NewsService news,
+    public NewsRefreshScheduler(TrackedSymbolPoolService pool, NewsService news,
                                 @Value("${app.news.enabled}") boolean enabled) {
-        this.holdings = holdings;
-        this.watchlist = watchlist;
+        this.pool = pool;
         this.news = news;
         this.enabled = enabled;
     }
 
-    @Scheduled(fixedDelayString = "PT60M")
+    @Scheduled(fixedDelayString = "PT15M")
     public void refresh() {
         if (!enabled) return;
-        Set<String> symbols = new HashSet<>();
-        holdings.findDistinctTickerSymbolsByValuationMethod(ValuationMethod.MARKET_PRICE).forEach(symbols::add);
-        watchlist.findDistinctTickerSymbols().forEach(symbols::add);
+        List<String> symbols = pool.sync();
         if (symbols.isEmpty()) return;
         try {
-            news.refreshAll(symbols);
+            news.refreshAll(new HashSet<>(symbols));
         } catch (RuntimeException ex) {
             log.warn("News refresh failed", ex);
         }

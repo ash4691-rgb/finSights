@@ -1,13 +1,20 @@
 package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.domain.LivePrice;
+import com.finsights.portfolio.domain.PriceHistoryPoint;
+import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.repository.LivePriceRepository;
+import com.finsights.portfolio.repository.PriceHistoryPointRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -32,13 +39,21 @@ public class LivePriceService {
      *  symbol only just started being tracked) and a one-off fetch is worth the cost rather
      *  than serving an indefinitely stale price. */
     private static final Duration STALE_FALLBACK_THRESHOLD = Duration.ofMinutes(45);
+    /** Chart ranges {@link #ownHistory} can serve — all four are daily-interval already (see
+     *  MarketDataService's DERIVED_FROM_DAILY_SERIES), matching this table's daily granularity.
+     *  1D/1W need intraday data this table never stores, so they always fall back to Yahoo. */
+    private static final Map<String, Integer> OWN_HISTORY_RANGE_DAYS = Map.of("1M", 31, "3M", 92, "6M", 183, "1Y", 365);
+    /** "Up to 1 year, minimal data points": one row per symbol per day, nothing older kept. */
+    private static final int HISTORY_RETENTION_DAYS = 366;
 
     private final LivePriceRepository livePrices;
     private final MarketDataService marketData;
+    private final PriceHistoryPointRepository priceHistory;
 
-    public LivePriceService(LivePriceRepository livePrices, MarketDataService marketData) {
+    public LivePriceService(LivePriceRepository livePrices, MarketDataService marketData, PriceHistoryPointRepository priceHistory) {
         this.livePrices = livePrices;
         this.marketData = marketData;
+        this.priceHistory = priceHistory;
     }
 
     /**
@@ -77,8 +92,46 @@ public class LivePriceService {
         if (symbols == null || symbols.isEmpty()) return;
         Set<String> normalized = normalize(symbols);
         Map<String, MarketQuoteResponse> quotes = marketData.quotes(normalized);
-        int saved = upsert(quotes).size();
-        log.info("Live price refresh: {} of {} tracked symbol(s) priced", saved, normalized.size());
+        List<LivePrice> saved = upsert(quotes);
+        recordHistory(saved);
+        priceHistory.deleteOlderThan(LocalDate.now(ZoneOffset.UTC).minusDays(HISTORY_RETENTION_DAYS));
+        log.info("Live price refresh: {} of {} tracked symbol(s) priced", saved.size(), normalized.size());
+    }
+
+    /** Upserts today's row per symbol — at most one data point per symbol per day, however many
+     *  times refreshAll() runs today, so a year of history stays ~365 rows per symbol, not ~35,000
+     *  (one per 15-minute tick). Each call is its own short save, same reasoning as NewsService's
+     *  refreshAll — never held open across the batch. */
+    private void recordHistory(List<LivePrice> rows) {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        for (LivePrice row : rows) {
+            PriceHistoryPoint point = priceHistory.findBySymbolAndPriceDate(row.getSymbol(), today).orElseGet(PriceHistoryPoint::new);
+            point.setSymbol(row.getSymbol());
+            point.setPriceDate(today);
+            point.setPrice(row.getPrice());
+            point.setCurrency(row.getCurrency());
+            point.setUpdatedAt(Instant.now());
+            priceHistory.save(point);
+        }
+    }
+
+    /** Serves 1M/3M/6M/1Y straight from our own accumulated daily history once there's enough
+     *  back-history to cover the requested window — empty otherwise (a brand-new symbol, or one
+     *  this feature hasn't been tracking for the full window yet), so the caller falls back to
+     *  MarketDataService's Yahoo-backed history() exactly like before this existed. */
+    public Optional<MarketHistoryResponse> ownHistory(String symbol, String rangeKey) {
+        if (symbol == null || symbol.isBlank() || !OWN_HISTORY_RANGE_DAYS.containsKey(rangeKey)) return Optional.empty();
+        String key = symbol.trim().toUpperCase();
+        LocalDate requiredStart = LocalDate.now(ZoneOffset.UTC).minusDays(OWN_HISTORY_RANGE_DAYS.get(rangeKey));
+        List<PriceHistoryPoint> points = priceHistory.findBySymbolAndPriceDateGreaterThanEqualOrderByPriceDateAsc(key, requiredStart);
+        // A couple of days' grace for weekends/holidays/a missed refresh cycle — otherwise, not
+        // enough back-history yet, so let the caller fall back to the live Yahoo chart call.
+        if (points.isEmpty() || points.get(0).getPriceDate().isAfter(requiredStart.plusDays(2))) return Optional.empty();
+        String currency = points.get(points.size() - 1).getCurrency();
+        List<MarketHistoryResponse.Point> series = points.stream()
+                .map(p -> new MarketHistoryResponse.Point(p.getPriceDate().atStartOfDay(ZoneOffset.UTC).toInstant(), p.getPrice()))
+                .toList();
+        return Optional.of(new MarketHistoryResponse(key, currency, series));
     }
 
     /** Builds and persists the updated rows, returning them directly — deliberately not the

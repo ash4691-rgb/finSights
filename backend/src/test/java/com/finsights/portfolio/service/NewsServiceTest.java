@@ -2,6 +2,7 @@ package com.finsights.portfolio.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -33,13 +34,19 @@ class NewsServiceTest {
     @Mock NewsCacheRepository cache;
     @Mock HoldingService holdings;
     @Mock WatchlistService watchlist;
+    @Mock TickerPreferenceService preferences;
 
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     private NewsService service;
 
     @BeforeEach
     void setUp() {
-        service = new NewsService(cache, holdings, watchlist, json);
+        service = new NewsService(cache, holdings, watchlist, preferences, json);
+        // Most forUser() tests don't care about star/exclude — an empty pair of sets is the
+        // "no preferences set" baseline, overridden explicitly by the tests that do care. lenient()
+        // because plenty of tests here (parse()/refreshAll()) never call forUser() at all.
+        lenient().when(preferences.starredSymbols()).thenReturn(Set.of());
+        lenient().when(preferences.excludedSymbols()).thenReturn(Set.of());
     }
 
     // --- parse() ------------------------------------------------------------------------------
@@ -119,6 +126,21 @@ class NewsServiceTest {
         verify(cache, never()).save(any());
     }
 
+    @Test
+    void refreshAllChecksEveryStaleSymbolBeforeFetchingAnyOfThem() {
+        // Both symbols are stale (no cache row at all) — this is the pre-fetch selection step,
+        // exercised without ever reaching the real HTTP fetch (fetch() has no mockable seam, same
+        // restriction MarketDataServiceTest lives with for quote()/quotes()). What's verifiable
+        // here is that refreshAll() considers every symbol in the batch, not just the first.
+        when(cache.findBySymbol("RELIANCE.NS")).thenReturn(Optional.empty());
+        when(cache.findBySymbol("TCS.NS")).thenReturn(Optional.empty());
+
+        service.refreshAll(Set.of("RELIANCE.NS", "TCS.NS"));
+
+        verify(cache).findBySymbol("RELIANCE.NS");
+        verify(cache).findBySymbol("TCS.NS");
+    }
+
     // --- forUser() --------------------------------------------------------------------------
 
     @Test
@@ -127,8 +149,8 @@ class NewsServiceTest {
         WatchlistResponse watch = watchlistItem("w-1", "NIFTY", "Nifty 50");
         when(holdings.list()).thenReturn(List.of(holding));
         when(watchlist.list()).thenReturn(List.of(watch));
-        stubCache("RELIANCE", headline("Reliance news", Instant.parse("2026-10-13T09:00:00Z")));
-        stubCache("NIFTY", headline("Nifty news", Instant.parse("2026-10-13T10:00:00Z")));
+        stubCache("RELIANCE", headline("Reliance news", Instant.now().minus(2, ChronoUnit.HOURS)));
+        stubCache("NIFTY", headline("Nifty news", Instant.now().minus(1, ChronoUnit.HOURS)));
 
         List<NewsItemResponse> result = service.forUser();
 
@@ -170,9 +192,10 @@ class NewsServiceTest {
         WatchlistResponse watch = watchlistItem("w-1", "NIFTY", "Nifty 50");
         when(holdings.list()).thenReturn(List.of());
         when(watchlist.list()).thenReturn(List.of(watch));
+        Instant base = Instant.now().minus(1, ChronoUnit.HOURS);
         NewsService.Headline[] ten = new NewsService.Headline[10];
         for (int i = 0; i < 10; i++) {
-            ten[i] = new NewsService.Headline("H" + i, "https://a/" + i, "ET", Instant.parse("2026-10-13T00:00:00Z").plusSeconds(i));
+            ten[i] = new NewsService.Headline("H" + i, "https://a/" + i, "ET", base.plusSeconds(i));
         }
         stubCache("NIFTY", ten);
 
@@ -180,6 +203,54 @@ class NewsServiceTest {
 
         assertThat(result).hasSize(8);
         assertThat(result.get(0).title()).isEqualTo("H9"); // newest of the ten
+    }
+
+    @Test
+    void forUserDropsHeadlinesOlderThanTheFourteenDayRetentionWindow() throws Exception {
+        WatchlistResponse watch = watchlistItem("w-1", "NIFTY", "Nifty 50");
+        when(holdings.list()).thenReturn(List.of());
+        when(watchlist.list()).thenReturn(List.of(watch));
+        stubCache("NIFTY",
+                headline("Too old", Instant.now().minus(15, ChronoUnit.DAYS)),
+                headline("Still fresh", Instant.now().minus(13, ChronoUnit.DAYS)));
+
+        List<NewsItemResponse> result = service.forUser();
+
+        assertThat(result).extracting(NewsItemResponse::title).containsExactly("Still fresh");
+    }
+
+    @Test
+    void forUserBoostsAStarredTickersOlderNewsAboveAnUnstarredTickersNewerNews() throws Exception {
+        HoldingResponse starredHolding = holding("h-1", "RELIANCE", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
+        WatchlistResponse plainWatch = watchlistItem("w-1", "NIFTY", "Nifty 50");
+        when(holdings.list()).thenReturn(List.of(starredHolding));
+        when(watchlist.list()).thenReturn(List.of(plainWatch));
+        when(preferences.starredSymbols()).thenReturn(Set.of("RELIANCE"));
+        stubCache("RELIANCE", headline("Older but starred", Instant.now().minus(2, ChronoUnit.HOURS)));
+        stubCache("NIFTY", headline("Newer but unstarred", Instant.now().minus(1, ChronoUnit.HOURS)));
+
+        List<NewsItemResponse> result = service.forUser();
+
+        assertThat(result).extracting(NewsItemResponse::title).containsExactly("Older but starred", "Newer but unstarred");
+        assertThat(result.get(0).starred()).isTrue();
+        assertThat(result.get(1).starred()).isFalse();
+    }
+
+    @Test
+    void forUserHidesNewsForATickerTheUserHasExcluded() throws Exception {
+        HoldingResponse holding = holding("h-1", "RELIANCE", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
+        WatchlistResponse watch = watchlistItem("w-1", "NIFTY", "Nifty 50");
+        when(holdings.list()).thenReturn(List.of(holding));
+        when(watchlist.list()).thenReturn(List.of(watch));
+        when(preferences.excludedSymbols()).thenReturn(Set.of("RELIANCE"));
+        // No stubCache("RELIANCE", ...) — excluded tickers are skipped before the cache is ever
+        // consulted (see isExcluded's short-circuit in forUser()), so stubbing it would be dead code.
+        stubCache("NIFTY", headline("Nifty news", Instant.now().minus(2, ChronoUnit.HOURS)));
+
+        List<NewsItemResponse> result = service.forUser();
+
+        assertThat(result).extracting(NewsItemResponse::title).containsExactly("Nifty news");
+        verify(cache, never()).findBySymbol("RELIANCE");
     }
 
     private void stubCache(String symbol, NewsService.Headline... headlines) throws Exception {

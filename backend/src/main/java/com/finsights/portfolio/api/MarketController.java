@@ -3,6 +3,7 @@ package com.finsights.portfolio.api;
 import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.dto.SymbolSuggestion;
+import com.finsights.portfolio.service.LivePriceService;
 import com.finsights.portfolio.service.MarketDataService;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
@@ -16,9 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MarketController {
 
     private final MarketDataService marketData;
+    private final LivePriceService livePrices;
 
-    public MarketController(MarketDataService marketData) {
+    public MarketController(MarketDataService marketData, LivePriceService livePrices) {
         this.marketData = marketData;
+        this.livePrices = livePrices;
     }
 
     @GetMapping("/search")
@@ -34,6 +37,11 @@ public class MarketController {
     @GetMapping("/history")
     ResponseEntity<MarketHistoryResponse> history(@RequestParam("symbol") String symbol,
                                                    @RequestParam(value = "range", defaultValue = "1M") String range) {
-        return marketData.history(symbol, range).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+        // Our own accumulated daily history first (free, no external call) — falls back to the
+        // live Yahoo-backed series when there isn't enough back-history yet (see ownHistory()).
+        return livePrices.ownHistory(symbol, range)
+                .or(() -> marketData.history(symbol, range))
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }
