@@ -29,7 +29,6 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -67,8 +66,15 @@ public class NewsService {
 
     /** Refreshes any symbol whose cache is missing or older than {@link #TTL} — called only by
      * {@link NewsRefreshScheduler}, never from a request thread. Never throws: one symbol's
-     * failure (network, rate-limit, malformed feed) never blocks the rest. */
-    @Transactional
+     * failure (network, rate-limit, malformed feed) never blocks the rest.
+     *
+     * Deliberately NOT {@code @Transactional} at this level — same reasoning as
+     * {@link LivePriceService#refreshAll}: each {@code fetch(symbol)} is a blocking external HTTP
+     * call (up to ~7s worst case), and wrapping the whole per-symbol loop in one transaction would
+     * hold a single connection from the small (5-max) Hikari pool for the entire loop's duration,
+     * starving concurrent requests. {@code cache.findBySymbol}/{@code cache.save} each still get
+     * their own short, implicit transaction from the repository proxy — only the HTTP call itself
+     * now happens outside any transaction. */
     public void refreshAll(java.util.Set<String> symbols) {
         for (String symbol : symbols) {
             if (symbol == null || symbol.isBlank() || symbol.startsWith(MF_PREFIX)) continue;
