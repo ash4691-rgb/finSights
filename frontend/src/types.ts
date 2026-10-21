@@ -100,21 +100,34 @@ export type Source = { key: string; name: string; status: string; description: s
 export type Brokers = { brokers: BrokerGroup[]; sources: Source[] }
 export type ValuationDetail = { method: ValuationMethod; investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; steps: string[]; projectedMaturityDate?: string; projectedMaturityValue?: number }
 export type ImportResult = { created: number; updated: number; skipped: number; errors: { row: number; message: string }[] }
-// One equity/ETF position found in an uploaded CAS statement — a draft, not a saved holding. The
+// One equity/ETF position found in an uploaded statement — a draft, not a saved holding. The
 // Holdings page pre-fills the ordinary Add Holding form with this and the user reviews/edits/saves
 // it like any manual entry; nothing here is written to the database on its own.
 export type ExtractedHolding = {
   instrumentName: string; isin: string; quantity: number; averageCostPerUnit?: number; depository?: string
   // Best-effort guess, not a fact — the review form still shows it as an editable field.
   tickerSymbol?: string
-  // Set when this ISIN matches a holding already created from a past CAS import — it needs no
-  // review, just a quiet "already in your portfolio" confirmation.
+  // Set when this ISIN matches a holding already created from a past statement import — it needs
+  // no review, just a quiet "already in your portfolio" confirmation.
   matchedHoldingId?: string
 }
-// An existing CAS-tagged holding whose ISIN didn't turn up in the latest statement — a candidate
-// to delete, applied only when the user clicks Done.
-export type CasHoldingToRemove = { holdingId: string; name: string; broker?: string }
-export type CasExtractionResult = { holdings: ExtractedHolding[]; toRemove: CasHoldingToRemove[]; statementDate?: string; warnings: string[] }
+// One transaction found in an uploaded statement — a draft, not a saved transaction. Only ever
+// surfaced with matchedHoldingId set: logging a transaction against a holding that doesn't exist
+// isn't possible through the ordinary Log Transaction form, so an unmatched row is dropped into
+// the extraction's warnings instead.
+export type ExtractedTransaction = {
+  date: string; type: TransactionType; instrumentName: string; isin: string
+  quantity?: number; amount?: number; notes?: string; matchedHoldingId: string
+}
+// An existing statement-tagged holding whose ISIN didn't turn up in the latest holdings statement
+// — a candidate to delete, applied only when the user clicks Done.
+export type HoldingToRemove = { holdingId: string; name: string; broker?: string }
+export type StatementType = 'HOLDINGS' | 'TRANSACTIONS' | 'MIXED'
+export type StatementExtractionResult = {
+  statementType: StatementType
+  holdings: ExtractedHolding[]; toRemove: HoldingToRemove[]; transactions: ExtractedTransaction[]
+  statementDate?: string; warnings: string[]
+}
 export type FxRates = { base: string; asOf: string; ratesToBase: Record<string, number>; note: string }
 export type Theme = 'light' | 'dark'
 export type GokuConfig = { available: boolean; admin: boolean; reason?: string }

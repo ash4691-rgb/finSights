@@ -109,15 +109,19 @@ export const txnTypeHint: Partial<Record<TransactionType, string>> = {
   REPAY: 'A loan repayment — interest for the period is settled first, the rest cuts the outstanding balance.',
 }
 
-export function TransactionModal({ transaction, holdings, displayCurrency, fxRatesToBase, onClose, onSaved }: {
+export function TransactionModal({ transaction, holdings, displayCurrency, fxRatesToBase, onClose, onSaved, draft }: {
   transaction: Transaction | null; holdings: Holding[]; displayCurrency?: string; fxRatesToBase?: Record<string, number>; onClose: () => void; onSaved: () => void
+  // Pre-fills part of a brand-new transaction's form — a statement-import draft, say — without
+  // faking a Transaction object for `transaction` above: that would flip into edit mode. Ignored
+  // once `transaction` is set; editing always wins.
+  draft?: Partial<{ holdingId: string; type: TransactionType; date: string; amount: string; quantity: string; notes: string }>
 }) {
   const holdingOf = (id: string) => holdings.find(h => h.id === id)
   const isLiab = (id: string) => holdingOf(id)?.kind === 'LIABILITY'
-  const startHoldingId = transaction?.holdingId ?? holdings[0]?.id ?? ''
+  const startHoldingId = transaction?.holdingId ?? draft?.holdingId ?? holdings[0]?.id ?? ''
   const [form, setForm] = useState(() => transaction
     ? { holdingId: transaction.holdingId, type: transaction.type, date: transaction.date.slice(0, 10), amount: String(transaction.amount), quantity: transaction.quantity != null ? String(transaction.quantity) : '', interestPaid: !!transaction.interestPaid, notes: transaction.notes || '' }
-    : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', interestPaid: false, notes: '' })
+    : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', interestPaid: false, notes: '', ...draft })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   // The passed-in transaction may be from a view-currency-converted list — its amount is only

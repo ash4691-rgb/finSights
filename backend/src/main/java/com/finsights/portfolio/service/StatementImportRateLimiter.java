@@ -8,14 +8,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * A per-user daily cap on CAS statement uploads, so a runaway client (or someone re-uploading the
- * same file on a loop) can't turn into a runaway Anthropic bill — each upload is a real API call
- * against a user-supplied file. In-memory by design, same trade-off as GokuRateLimiter: this
- * feature doesn't have enough volume yet to justify a table that has to survive a redeploy.
+ * A per-user daily cap on statement uploads (CAS, holding, or transaction statements — one shared
+ * allowance), so a runaway client (or someone re-uploading the same file on a loop) can't turn
+ * into a runaway Anthropic bill — each upload is a real API call against a user-supplied file.
+ * In-memory by design, same trade-off as GokuRateLimiter: this feature doesn't have enough volume
+ * yet to justify a table that has to survive a redeploy.
  */
 @Service
-public class CasImportRateLimiter {
-    @Value("${app.cas-import.daily-upload-limit:10}") private int dailyLimit;
+public class StatementImportRateLimiter {
+    @Value("${app.statement-import.daily-upload-limit:10}") private int dailyLimit;
 
     private final Map<String, AtomicInteger> countsByUserAndDay = new ConcurrentHashMap<>();
 

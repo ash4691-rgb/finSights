@@ -76,9 +76,10 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(corsOrigin));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        // X-Document-Password: CAS import's statement password (CasImportController) — only sent
-        // when a password is actually entered, which is exactly why this was CORS-blocked only
-        // "with password": the browser's preflight rejects any header not in this allowlist.
+        // X-Document-Password: a statement upload's PDF password (StatementImportController) —
+        // only sent when a password is actually entered, which is exactly why this was
+        // CORS-blocked only "with password": the browser's preflight rejects any header not in
+        // this allowlist.
         configuration.setAllowedHeaders(List.of("Content-Type", "X-Demo-User", "X-Document-Password"));
         configuration.setExposedHeaders(List.of("Content-Disposition"));
         configuration.setAllowCredentials(true);

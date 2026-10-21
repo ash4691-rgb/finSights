@@ -9,9 +9,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.finsights.portfolio.domain.Holding;
+import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.UserAccount;
-import com.finsights.portfolio.dto.CasExtractionResponse;
 import com.finsights.portfolio.dto.ExtractedHolding;
+import com.finsights.portfolio.dto.ExtractedTransaction;
+import com.finsights.portfolio.dto.StatementExtractionResponse;
+import com.finsights.portfolio.dto.StatementExtractionResponse.StatementType;
 import com.finsights.portfolio.dto.SymbolSuggestion;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
@@ -36,29 +39,39 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
-class CasImportServiceTest {
+class StatementImportServiceTest {
 
-    @Mock CasImportRateLimiter rateLimiter;
+    @Mock StatementImportRateLimiter rateLimiter;
     @Mock CurrentUserService currentUser;
     @Mock MarketDataService marketData;
     @Mock com.finsights.portfolio.repository.HoldingRepository holdings;
     private final ObjectMapper json = new ObjectMapper();
-    private CasImportService service;
+    private StatementImportService service;
 
     @BeforeEach
     void setUp() {
-        service = new CasImportService(rateLimiter, currentUser, marketData, holdings);
+        service = new StatementImportService(rateLimiter, currentUser, marketData, holdings);
     }
 
     @Test
-    void rejectsAnOversizedUploadWithoutCallingTheModelOrConsumingTheDailyLimit() {
-        byte[] tooBig = new byte[CasImportService.MAX_PDF_BYTES + 1];
+    void rejectsAnOversizedPdfUploadWithoutCallingTheModelOrConsumingTheDailyLimit() {
+        byte[] tooBig = new byte[StatementImportService.MAX_PDF_BYTES + 1];
+        System.arraycopy("%PDF-1.4".getBytes(StandardCharsets.US_ASCII), 0, tooBig, 0, 8);
         assertThatThrownBy(() -> service.extract(tooBig, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("larger than");
         // Rejected before it ever reaches the user/rate-limit lookup — an oversized file is not
         // this user's quota to spend.
         org.mockito.Mockito.verifyNoInteractions(rateLimiter, currentUser);
+    }
+
+    @Test
+    void rejectsAnOversizedTextUploadWithTheTextLimitNotThePdfOne() {
+        byte[] tooBig = new byte[StatementImportService.MAX_TEXT_BYTES + 1];
+        java.util.Arrays.fill(tooBig, (byte) 'a');
+        assertThatThrownBy(() -> service.extract(tooBig, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("larger than");
     }
 
     @Test
@@ -83,17 +96,17 @@ class CasImportServiceTest {
 
     @Test
     void passesThroughAPdfThatNeedsNoPassword() throws Exception {
-        byte[] decrypted = CasImportService.decryptIfNeeded(unencryptedPdf(), null);
+        byte[] decrypted = StatementImportService.decryptIfNeeded(unencryptedPdf(), null);
         assertThat(Loader.loadPDF(decrypted).isEncrypted()).isFalse();
     }
 
     @Test
     void asksForAPasswordWhenTheStatementIsLockedAndNoneWasGiven() throws Exception {
         byte[] locked = encryptedPdf("ABCDE1234F");
-        assertThatThrownBy(() -> CasImportService.decryptIfNeeded(locked, null))
+        assertThatThrownBy(() -> StatementImportService.decryptIfNeeded(locked, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("password-protected");
-        assertThatThrownBy(() -> CasImportService.decryptIfNeeded(locked, ""))
+        assertThatThrownBy(() -> StatementImportService.decryptIfNeeded(locked, ""))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("password-protected");
     }
@@ -101,7 +114,7 @@ class CasImportServiceTest {
     @Test
     void rejectsTheWrongPasswordWithADistinctMessage() throws Exception {
         byte[] locked = encryptedPdf("ABCDE1234F");
-        assertThatThrownBy(() -> CasImportService.decryptIfNeeded(locked, "WRONGPAN1X"))
+        assertThatThrownBy(() -> StatementImportService.decryptIfNeeded(locked, "WRONGPAN1X"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("didn't work");
     }
@@ -109,13 +122,13 @@ class CasImportServiceTest {
     @Test
     void decryptsWithTheCorrectPassword() throws Exception {
         byte[] locked = encryptedPdf("ABCDE1234F");
-        byte[] decrypted = CasImportService.decryptIfNeeded(locked, "ABCDE1234F");
+        byte[] decrypted = StatementImportService.decryptIfNeeded(locked, "ABCDE1234F");
         assertThat(Loader.loadPDF(decrypted).isEncrypted()).isFalse();
     }
 
     @Test
-    void rejectsSomethingThatIsNotAPdfAtAll() {
-        assertThatThrownBy(() -> CasImportService.decryptIfNeeded(new byte[] { 1, 2, 3 }, null))
+    void rejectsSomethingThatClaimsToBeAPdfButIsNot() {
+        assertThatThrownBy(() -> StatementImportService.decryptIfNeeded(new byte[] { '%', 'P', 'D', 'F', 1, 2, 3 }, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Couldn't open");
     }
@@ -143,17 +156,17 @@ class CasImportServiceTest {
 
     @Test
     void namesLikelyMatchToleratesSuffixAndOrderingDifferences() {
-        assertThat(CasImportService.namesLikelyMatch("Reliance Industries Limited", "Reliance Industries Ltd")).isTrue();
-        assertThat(CasImportService.namesLikelyMatch("TATA CONSULTANCY SERVICES LTD", "Tata Consultancy Services Limited")).isTrue();
-        assertThat(CasImportService.namesLikelyMatch("HDFC Bank Limited", "HDFC Bank Ltd.")).isTrue();
+        assertThat(StatementImportService.namesLikelyMatch("Reliance Industries Limited", "Reliance Industries Ltd")).isTrue();
+        assertThat(StatementImportService.namesLikelyMatch("TATA CONSULTANCY SERVICES LTD", "Tata Consultancy Services Limited")).isTrue();
+        assertThat(StatementImportService.namesLikelyMatch("HDFC Bank Limited", "HDFC Bank Ltd.")).isTrue();
     }
 
     @Test
     void namesLikelyMatchRejectsUnrelatedOrBarelyOverlappingNames() {
-        assertThat(CasImportService.namesLikelyMatch("Reliance Industries Limited", "Reliance Power Limited")).isFalse();
-        assertThat(CasImportService.namesLikelyMatch("Infosys Limited", "Wipro Limited")).isFalse();
-        assertThat(CasImportService.namesLikelyMatch("", "Reliance Industries")).isFalse();
-        assertThat(CasImportService.namesLikelyMatch(null, "Reliance Industries")).isFalse();
+        assertThat(StatementImportService.namesLikelyMatch("Reliance Industries Limited", "Reliance Power Limited")).isFalse();
+        assertThat(StatementImportService.namesLikelyMatch("Infosys Limited", "Wipro Limited")).isFalse();
+        assertThat(StatementImportService.namesLikelyMatch("", "Reliance Industries")).isFalse();
+        assertThat(StatementImportService.namesLikelyMatch(null, "Reliance Industries")).isFalse();
     }
 
     @Test
@@ -167,14 +180,6 @@ class CasImportServiceTest {
     }
 
     @Test
-    void resolveTickerSkipsAnIndianHitWhoseNameDoesNotActuallyMatch() {
-        when(marketData.search("Totally Different Co")).thenReturn(List.of(
-                new SymbolSuggestion("RELIANCE.NS", "Reliance Industries Limited", "NSE", "Equity")));
-
-        assertThat(service.resolveTicker("Totally Different Co")).isNull();
-    }
-
-    @Test
     void resolveTickerReturnsNullWhenSearchFailsOrFindsNothingIndian() {
         when(marketData.search("Foreign Only Co")).thenReturn(List.of(
                 new SymbolSuggestion("FOCO", "Foreign Only Co", "NASDAQ", "Equity")));
@@ -185,7 +190,7 @@ class CasImportServiceTest {
     }
 
     @Test
-    void matchAgainstExistingTagsARowWhoseIsinIsAlreadyInAPreviousCasImport() {
+    void matchAgainstExistingTagsAHoldingRowWhoseIsinIsAlreadyInAPreviousStatementImport() {
         Holding existing = new Holding();
         existing.setName("Reliance Industries");
         existing.setBroker("Zerodha");
@@ -195,8 +200,8 @@ class CasImportServiceTest {
 
         ExtractedHolding row = new ExtractedHolding("Reliance Industries", "INE002A01018",
                 new BigDecimal("10"), new BigDecimal("2450.50"), "NSDL", "RELIANCE.NS", null);
-        CasExtractionResponse result = service.matchAgainstExisting(
-                new CasExtractionResponse(List.of(row), List.of(), null, List.of()), "u1");
+        StatementExtractionResponse result = service.matchAgainstExisting(
+                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(row), List.of(), List.of(), null, List.of()), "u1");
 
         assertThat(result.holdings()).hasSize(1);
         assertThat(result.holdings().get(0).matchedHoldingId()).isEqualTo("h-existing-1");
@@ -209,8 +214,8 @@ class CasImportServiceTest {
 
         ExtractedHolding row = new ExtractedHolding("Infosys", "INE009A01021",
                 BigDecimal.TEN, null, "NSDL", "INFY.NS", null);
-        CasExtractionResponse result = service.matchAgainstExisting(
-                new CasExtractionResponse(List.of(row), List.of(), null, List.of()), "u1");
+        StatementExtractionResponse result = service.matchAgainstExisting(
+                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(row), List.of(), List.of(), null, List.of()), "u1");
 
         assertThat(result.holdings()).hasSize(1);
         assertThat(result.holdings().get(0).matchedHoldingId()).isNull();
@@ -218,19 +223,35 @@ class CasImportServiceTest {
     }
 
     @Test
-    void matchAgainstExistingFlagsATaggedHoldingNotSeenInThisStatementForRemoval() {
+    void matchAgainstExistingFlagsATaggedHoldingNotSeenInAHoldingsStatementForRemoval() {
         Holding stale = new Holding();
         stale.setName("Old Fund House Units");
         stale.setBroker("Groww");
         stale.setDescription("ISIN INE999Z99999");
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(stale));
 
-        CasExtractionResponse result = service.matchAgainstExisting(
-                new CasExtractionResponse(List.of(), List.of(), null, List.of()), "u1");
+        StatementExtractionResponse result = service.matchAgainstExisting(
+                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(), List.of(), List.of(), null, List.of()), "u1");
 
         assertThat(result.toRemove()).hasSize(1);
         assertThat(result.toRemove().get(0).name()).isEqualTo("Old Fund House Units");
         assertThat(result.toRemove().get(0).broker()).isEqualTo("Groww");
+    }
+
+    @Test
+    void matchAgainstExistingNeverFlagsRemovalsFromATransactionsOnlyStatement() {
+        Holding stale = new Holding();
+        stale.setName("Old Fund House Units");
+        stale.setBroker("Groww");
+        stale.setDescription("ISIN INE999Z99999");
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(stale));
+
+        // A transactions-only statement says nothing about what else is or isn't still held — it
+        // must never generate a removal candidate just because it didn't mention this holding.
+        StatementExtractionResponse result = service.matchAgainstExisting(
+                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), List.of(), null, List.of()), "u1");
+
+        assertThat(result.toRemove()).isEmpty();
     }
 
     @Test
@@ -241,20 +262,53 @@ class CasImportServiceTest {
         manual.setDescription("Matures next year");
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(manual));
 
-        CasExtractionResponse result = service.matchAgainstExisting(
-                new CasExtractionResponse(List.of(), List.of(), null, List.of()), "u1");
+        StatementExtractionResponse result = service.matchAgainstExisting(
+                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(), List.of(), List.of(), null, List.of()), "u1");
 
-        // Never tagged as a CAS import, so it's never a removal candidate just for being absent
-        // from this statement — only holdings this feature itself created are eligible for that.
+        // Never tagged from a statement import, so it's never a removal candidate just for being
+        // absent from this statement — only holdings this feature itself created are eligible.
         assertThat(result.toRemove()).isEmpty();
     }
 
     @Test
-    void requestBodyCarriesThePdfAsABase64DocumentBlockAndForcesTheExtractionTool() {
-        ObjectNode body = CasImportService.buildRequestBody(json, "claude-sonnet-5", "QkFTRTY0");
+    void matchAgainstExistingMatchesATransactionRowToItsExistingHoldingByIsin() {
+        Holding existing = new Holding();
+        existing.setName("Reliance Industries");
+        existing.setBroker("Zerodha");
+        existing.setDescription("ISIN INE002A01018");
+        org.springframework.test.util.ReflectionTestUtils.setField(existing, "id", "h-existing-1");
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(existing));
+
+        ExtractedTransaction txn = new ExtractedTransaction("2026-09-15", TransactionType.BUY,
+                "Reliance Industries", "INE002A01018", BigDecimal.TEN, new BigDecimal("24505"), null, null);
+        StatementExtractionResponse result = service.matchAgainstExisting(
+                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), List.of(txn), null, List.of()), "u1");
+
+        assertThat(result.transactions()).hasSize(1);
+        assertThat(result.transactions().get(0).matchedHoldingId()).isEqualTo("h-existing-1");
+        assertThat(result.warnings()).isEmpty();
+    }
+
+    @Test
+    void matchAgainstExistingDropsAnUnmatchedTransactionIntoWarningsInsteadOfSurfacingIt() {
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of());
+
+        ExtractedTransaction txn = new ExtractedTransaction("2026-09-15", TransactionType.BUY,
+                "Infosys", "INE009A01021", BigDecimal.TEN, new BigDecimal("1500"), null, null);
+        StatementExtractionResponse result = service.matchAgainstExisting(
+                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), List.of(txn), null, List.of()), "u1");
+
+        assertThat(result.transactions()).isEmpty();
+        assertThat(result.warnings()).hasSize(1);
+        assertThat(result.warnings().get(0)).contains("Infosys").contains("no existing holding");
+    }
+
+    @Test
+    void pdfRequestBodyCarriesTheDocumentAsABase64BlockAndForcesTheExtractionTool() {
+        ObjectNode body = StatementImportService.buildPdfRequestBody(json, "claude-sonnet-5", "QkFTRTY0");
 
         assertThat(body.path("model").asText()).isEqualTo("claude-sonnet-5");
-        assertThat(body.path("tool_choice").path("name").asText()).isEqualTo("extract_holdings");
+        assertThat(body.path("tool_choice").path("name").asText()).isEqualTo("extract_statement");
         JsonNode content = body.path("messages").path(0).path("content");
         assertThat(content.path(0).path("type").asText()).isEqualTo("document");
         assertThat(content.path(0).path("source").path("data").asText()).isEqualTo("QkFTRTY0");
@@ -262,14 +316,26 @@ class CasImportServiceTest {
     }
 
     @Test
-    void parsesAWellFormedToolResponseIntoExtractedHoldings() throws Exception {
+    void textRequestBodyInlinesTheStatementAsPlainTextRatherThanADocumentBlock() {
+        ObjectNode body = StatementImportService.buildTextRequestBody(json, "claude-sonnet-5", "date,type\n2026-01-01,BUY");
+
+        assertThat(body.path("tool_choice").path("name").asText()).isEqualTo("extract_statement");
+        JsonNode content = body.path("messages").path(0).path("content");
+        assertThat(content).hasSize(1);
+        assertThat(content.path(0).path("type").asText()).isEqualTo("text");
+        assertThat(content.path(0).path("text").asText()).contains("date,type\n2026-01-01,BUY");
+    }
+
+    @Test
+    void parsesAWellFormedHoldingsToolResponse() throws Exception {
         JsonNode response = json.readTree("""
                 {
                   "content": [
                     {
                       "type": "tool_use",
-                      "name": "extract_holdings",
+                      "name": "extract_statement",
                       "input": {
+                        "statementType": "HOLDINGS",
                         "statementDate": "2026-09-30",
                         "holdings": [
                           {"instrumentName": "Reliance Industries", "isin": "ine002a01018", "quantity": 10, "averageCostPerUnit": 2450.50, "depository": "NSDL"},
@@ -282,8 +348,9 @@ class CasImportServiceTest {
                 }
                 """);
 
-        CasExtractionResponse result = CasImportService.parseExtraction(json, response);
+        StatementExtractionResponse result = StatementImportService.parseExtraction(json, response);
 
+        assertThat(result.statementType()).isEqualTo(StatementType.HOLDINGS);
         assertThat(result.statementDate()).isEqualTo("2026-09-30");
         assertThat(result.holdings()).hasSize(1);
         assertThat(result.holdings().get(0).instrumentName()).isEqualTo("Reliance Industries");
@@ -298,13 +365,57 @@ class CasImportServiceTest {
     }
 
     @Test
-    void missingToolUseBlockReturnsNoHoldingsWithAnExplanationInsteadOfThrowing() throws Exception {
+    void parsesAWellFormedTransactionsToolResponse() throws Exception {
+        JsonNode response = json.readTree("""
+                {
+                  "content": [
+                    {
+                      "type": "tool_use",
+                      "name": "extract_statement",
+                      "input": {
+                        "statementType": "TRANSACTIONS",
+                        "transactions": [
+                          {"date": "2026-09-15", "type": "BUY", "instrumentName": "Reliance Industries", "isin": "ine002a01018", "quantity": 10, "amount": 24505},
+                          {"date": "2026-09-16", "type": "NOT_A_REAL_TYPE", "instrumentName": "Bad Row", "isin": "INE999Z99999"}
+                        ],
+                        "warnings": []
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        StatementExtractionResponse result = StatementImportService.parseExtraction(json, response);
+
+        assertThat(result.statementType()).isEqualTo(StatementType.TRANSACTIONS);
+        assertThat(result.transactions()).hasSize(1);
+        assertThat(result.transactions().get(0).type()).isEqualTo(TransactionType.BUY);
+        assertThat(result.transactions().get(0).isin()).isEqualTo("INE002A01018");
+        assertThat(result.transactions().get(0).amount()).isEqualByComparingTo(new BigDecimal("24505"));
+        // An unparseable transaction type is dropped with an explanation, not guessed.
+        assertThat(result.warnings()).anyMatch(w -> w.contains("Bad Row"));
+    }
+
+    @Test
+    void missingToolUseBlockReturnsNothingWithAnExplanationInsteadOfThrowing() throws Exception {
         JsonNode response = json.readTree("{\"content\": [{\"type\": \"text\", \"text\": \"I couldn't read this.\"}]}");
 
-        CasExtractionResponse result = CasImportService.parseExtraction(json, response);
+        StatementExtractionResponse result = StatementImportService.parseExtraction(json, response);
 
         assertThat(result.holdings()).isEmpty();
+        assertThat(result.transactions()).isEmpty();
         assertThat(result.warnings()).isNotEmpty();
+    }
+
+    @Test
+    void unrecognizedStatementTypeFallsBackToHoldingsRatherThanThrowing() throws Exception {
+        JsonNode response = json.readTree("""
+                {"content": [{"type": "tool_use", "name": "extract_statement", "input": {"statementType": "SOMETHING_ELSE"}}]}
+                """);
+
+        StatementExtractionResponse result = StatementImportService.parseExtraction(json, response);
+
+        assertThat(result.statementType()).isEqualTo(StatementType.HOLDINGS);
     }
 
     // --- callClaude: the actual HTTP exchange, against a real local server rather than a mock,
@@ -330,7 +441,7 @@ class CasImportServiceTest {
         });
         server.start();
 
-        JsonNode result = CasImportService.callClaude(HttpClient.newHttpClient(),
+        JsonNode result = StatementImportService.callClaude(HttpClient.newHttpClient(),
                 URI.create("http://localhost:" + server.getAddress().getPort() + "/"), "key", json, json.createObjectNode());
 
         assertThat(result.path("content").isArray()).isTrue();
@@ -349,7 +460,7 @@ class CasImportServiceTest {
         });
         server.start();
 
-        assertThatThrownBy(() -> CasImportService.callClaude(HttpClient.newHttpClient(),
+        assertThatThrownBy(() -> StatementImportService.callClaude(HttpClient.newHttpClient(),
                 URI.create("http://localhost:" + server.getAddress().getPort() + "/"), "key", json, json.createObjectNode()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Couldn't read that statement");
@@ -358,7 +469,7 @@ class CasImportServiceTest {
     @Test
     void callClaudeTurnsATransportFailureIntoABadGateway() {
         // Nothing listening on this port — connection refused, exercising the catch-all branch.
-        assertThatThrownBy(() -> CasImportService.callClaude(HttpClient.newHttpClient(),
+        assertThatThrownBy(() -> StatementImportService.callClaude(HttpClient.newHttpClient(),
                 URI.create("http://localhost:1/"), "key", json, json.createObjectNode()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Couldn't read that statement");

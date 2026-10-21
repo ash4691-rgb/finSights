@@ -14,8 +14,9 @@ import { GokuAdminButton, GokuAdminModal, GokuLauncher, GokuPanel, useGoku } fro
 import type { Page, Dashboard, Category, Holding, User, Settings, Country, FxRates, Theme, Persona } from './types'
 import { DashboardView } from './pages/DashboardView'
 import { CategoriesView, CategoryDrawer, CategoryModal } from './pages/CategoriesView'
-import { HoldingsView, HoldingModal, HoldingDrawer, CasImportModal } from './pages/HoldingsView'
+import { HoldingsView, HoldingModal, HoldingDrawer } from './pages/HoldingsView'
 import { TransactionsView, ImportModal } from './pages/TransactionsView'
+import { StatementImportModal } from './pages/StatementImportModal'
 import { InsightsView } from './pages/InsightsView'
 import { BrokersView, type BrokerNotice } from './pages/BrokersView'
 import { SettingsView } from './pages/SettingsView'
@@ -66,7 +67,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [countries, setCountries] = useState<Country[]>([])
   const [dataVersion, setDataVersion] = useState(0)
   const [showImport, setShowImport] = useState(false)
-  const [showCasImport, setShowCasImport] = useState(false)
+  const [showStatementImport, setShowStatementImport] = useState(false)
   const [exportingTransactions, setExportingTransactions] = useState(false)
   const [layoutEditing, setLayoutEditing] = useState(false)
   const [layoutNonce, setLayoutNonce] = useState(0)
@@ -240,7 +241,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     setHoldingDetail(current => current && current.id === saved.id ? saved : current)
   }
 
-  // CasImportModal's "Done" deletes every holding it flagged as not seen in the latest statement,
+  // StatementImportModal's "Done" deletes every holding it flagged as not seen in the latest statement,
   // then reports the ids here — same instant-splice reasoning as applyHoldingUpdate, just removing
   // instead of upserting, plus closing categoryDetail's drawer if it was on a holding that's gone.
   const removeHoldingsFromState = (ids: string[]) => {
@@ -405,7 +406,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
         ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} />
         : <SectionError what="signals" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} notice={brokerNotice} onDismissNotice={() => setBrokerNotice(null)}
-        hasCategories={!!categories.length} onUploadCas={() => setShowCasImport(true)} onUploadTransactions={() => setShowImport(true)} />}
+        hasCategories={!!categories.length} onUploadStatement={() => setShowStatementImport(true)} />}
       {page === 'settings' && (settings
         ? <SettingsView settings={settings} countries={countries} dashboard={dashboard} holdings={holdings} reload={load} theme={theme} setTheme={setTheme}
             persona={persona} onStartOnboarding={() => setShowPersonaOnboardingFromSettings(true)} onReassessRisk={() => setShowRiskAssessment(true)}
@@ -421,7 +422,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {(creatingHolding || creatingHoldingFor || editingHolding) && <HoldingModal holding={editingHolding} category={creatingHoldingFor} categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => { setCreatingHolding(false); setCreatingHoldingFor(null); setEditingHolding(null) }} onSaved={mergeSavedHolding} onGoToTransactions={() => setPage('transactions')} />}
     {holdingDetail && <HoldingDrawer holding={holdingDetail} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setHoldingDetail(null)} onEdit={h => { setHoldingDetail(null); setEditingHolding(h) }} onHoldingUpdated={applyHoldingUpdate} reload={load} />}
     {showImport && <ImportModal onClose={() => setShowImport(false)} onImported={() => void load()} />}
-    {showCasImport && <CasImportModal categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => setShowCasImport(false)} onSaved={mergeSavedHolding} onRemoved={removeHoldingsFromState} />}
+    {showStatementImport && <StatementImportModal categories={categories} holdings={holdings} displayCurrency={displayCurrency} onClose={() => setShowStatementImport(false)} onSaved={mergeSavedHolding} onRemoved={removeHoldingsFromState} onTransactionSaved={() => void load()} />}
     {showLayoutOnboarding && <CustomLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}

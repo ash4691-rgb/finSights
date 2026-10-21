@@ -47,13 +47,12 @@ const connectSteps = (s: Source): string[] => {
 // sources — see the "Connect a source" panel below — so building out per-widget layout editing
 // for this page ahead of the underlying feature isn't worth the complexity. Revisit once sync
 // actually ships for more brokers.
-export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNotice, hasCategories, onUploadCas, onUploadTransactions }: {
+export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNotice, hasCategories, onUploadStatement }: {
   displayCurrency: string; dataVersion: number; notice?: BrokerNotice | null; onDismissNotice?: () => void
-  // Whether there's anywhere to file a CAS-extracted holding yet — mirrors the same guard the
+  // Whether there's anywhere to file an extracted holding yet — mirrors the same guard the
   // Holdings page used to put directly on its own "Import from CAS" button.
   hasCategories: boolean
-  onUploadCas: () => void
-  onUploadTransactions: () => void
+  onUploadStatement: () => void
 }) {
   const [data, setData] = useState<Brokers | null>(null)
   const [error, setError] = useState('')
@@ -152,24 +151,12 @@ export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNot
     </section>
     <section className="panel">
       <div className="panel-heading"><h3>Upload data manually</h3><span>One-off statements</span></div>
-      <p className="hint">Already have a statement on hand? Upload it directly — no account connection needed.</p>
-      <div className="upload-option-grid">
-        <button type="button" className="upload-option" onClick={onUploadCas} disabled={!hasCategories} title={hasCategories ? '' : 'Add a category first'}>
-          <span className="upload-option-icon">↑</span>
-          <strong>CAS statement</strong>
-          <span className="hint">CDSL/NSDL Consolidated Account Statement (PDF) — extracts holdings for review.</span>
-        </button>
-        <button type="button" className="upload-option" onClick={onUploadTransactions}>
-          <span className="upload-option-icon">↑</span>
-          <strong>Transactions statement</strong>
-          <span className="hint">Bulk-load buys, sells and other transactions from a CSV or XML file.</span>
-        </button>
-        <div className="upload-option coming-soon">
-          <span className="upload-option-icon">↑</span>
-          <strong>Holding statement <em className="badge">Coming soon</em></strong>
-          <span className="hint">Upload a generic holdings statement directly — not available yet.</span>
-        </div>
-      </div>
+      <p className="hint">Already have a statement on hand? Upload a CAS statement, a broker's holding statement, or a transaction statement (PDF, CSV, or XML) — we'll work out what it is and pull out the holdings and transactions for you to review, with any personal details left out.</p>
+      <button type="button" className="upload-option" onClick={onUploadStatement} disabled={!hasCategories} title={hasCategories ? '' : 'Add a category first'}>
+        <span className="upload-option-icon">↑</span>
+        <strong>Upload a statement</strong>
+        <span className="hint">CAS statement, broker holding statement, or transaction statement — PDF, CSV, or XML.</span>
+      </button>
     </section>
     <section className="panel">
       <div className="panel-heading"><h3>Connect a source</h3><span>Automated sync</span></div>
