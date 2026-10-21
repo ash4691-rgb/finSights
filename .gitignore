@@ -6,5 +6,6 @@ backend/.mvn/apache-maven-*/
 backend/data/
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 .env
 *.log
