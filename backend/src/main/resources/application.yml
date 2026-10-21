@@ -94,6 +94,13 @@ app:
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
     model: ${GOKU_MODEL:claude-haiku-4-5-20251001}
     daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
+  news:
+    # Signals' Radar news feed (NewsService/NewsRefreshScheduler) — Google News RSS, no API key,
+    # so there's nothing to leave blank the way Resend/Kite's api-key defaults do. This flag is
+    # purely an operational kill switch: if the undocumented feed starts failing hard or getting
+    # rate-limited in production, set NEWS_ENABLED=false to stop the hourly scheduler without a
+    # code change — forUser() keeps working either way, it just reads an unrefreshed/empty cache.
+    enabled: ${NEWS_ENABLED:true}
   # CAS (CDSL/NSDL Consolidated Account Statement) upload — extraction only, never writes a
   # holding directly; see CasImportService. Shares the same Anthropic account as Goku but its own
   # config block since the two features have nothing else to do with each other, and extraction

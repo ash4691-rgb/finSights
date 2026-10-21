@@ -19,11 +19,14 @@ public class InsightsService {
     private final HoldingService holdings;
     private final ActionCentreService actionCentre;
     private final ActionDismissalService actionDismissals;
+    private final NewsService news;
 
-    public InsightsService(HoldingService holdings, ActionCentreService actionCentre, ActionDismissalService actionDismissals) {
+    public InsightsService(HoldingService holdings, ActionCentreService actionCentre,
+                           ActionDismissalService actionDismissals, NewsService news) {
         this.holdings = holdings;
         this.actionCentre = actionCentre;
         this.actionDismissals = actionDismissals;
+        this.news = news;
     }
 
     public InsightsResponse insights(String currency) {
@@ -57,7 +60,8 @@ public class InsightsService {
                 gainers, losers,
                 actionCentre.actions(all, converted),
                 actionCentre.upcoming(),
-                actionDismissals.deferredItems());
+                actionDismissals.deferredItems(),
+                news.forUser());
     }
 
     private String liquidityBucket(HoldingResponse h) {
