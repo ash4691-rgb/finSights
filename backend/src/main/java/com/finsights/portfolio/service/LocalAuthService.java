@@ -75,6 +75,25 @@ public class LocalAuthService {
         return user;
     }
 
+    /** Settings' "Change password" — only for accounts that sign in with an email/password (a
+     *  stored hash); demo and Google accounts have none and get a 400 rather than silently being
+     *  handed a password. A wrong current password is also a 400, not a 401: the frontend treats
+     *  any 401 as "your session expired" and signs the user out. */
+    @Transactional
+    public void changePassword(UserAccount user, String currentPassword, String newPassword) {
+        if (user.getPasswordHash() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This account doesn't sign in with a password");
+        }
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
+        }
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a new password that's different from your current one");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        users.save(user);
+    }
+
     /** Explicit, user-initiated "resend the activation link" — offered as a button once login
      *  fails with the "not verified" message above. Capped at MAX_VERIFICATION_RESENDS_PER_DAY
      *  so repeated clicks can't be used to spam a mailbox indefinitely.

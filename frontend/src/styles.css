@@ -661,6 +661,9 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .settings-field input,.settings-field select{background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px;max-width:340px}
 .settings-status{font-size:12px;color:var(--positive);margin-left:10px}
 .danger-zone{border-color:var(--danger-border)}
+.password-change{margin:6px 0 14px}
+.password-change-closed{display:flex;align-items:center;gap:12px}
+.password-change-form{display:grid;gap:10px;max-width:340px}
 .danger-zone-inline{margin-top:18px;padding-top:16px;border-top:1px dashed var(--danger-border)}
 .danger-zone-row{display:flex;gap:10px;margin-bottom:10px}
 .danger-zone-row input{flex:1;background:var(--surface-input);border:1px solid var(--border-strong);color:var(--text);border-radius:7px;padding:10px;font-size:13px;max-width:340px}

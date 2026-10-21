@@ -198,7 +198,8 @@ public class SettingsService {
                 Boolean.TRUE.equals(user.getCustomLayoutOnboardingDismissed()),
                 Boolean.TRUE.equals(user.getUserOnboardingDismissed()),
                 Boolean.TRUE.equals(user.getPersonaOnboardingDismissed()),
-                Boolean.TRUE.equals(user.getRiskOnboardingDismissed()));
+                Boolean.TRUE.equals(user.getRiskOnboardingDismissed()),
+                user.getPasswordHash() != null);
     }
 
     /** "Don't show this again" for the CustomLayoutOnboarding tour — a one-way flip, separate

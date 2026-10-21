@@ -236,4 +236,56 @@ class LocalAuthServiceTest {
         assertThatThrownBy(() -> service.verifyEmail("nope"))
                 .isInstanceOf(ResponseStatusException.class);
     }
+
+    private UserAccount userWithPassword(String raw) {
+        UserAccount user = new UserAccount("sam@example.com", "Sam");
+        user.setPasswordHash(new BCryptPasswordEncoder().encode(raw));
+        return user;
+    }
+
+    @Test
+    void changePasswordReplacesTheHashWhenTheCurrentPasswordMatches() {
+        UserAccount user = userWithPassword("hunter2horse");
+
+        service.changePassword(user, "hunter2horse", "correct-horse-battery");
+
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+        assertThat(encoder.matches("correct-horse-battery", user.getPasswordHash())).isTrue();
+        assertThat(encoder.matches("hunter2horse", user.getPasswordHash())).isFalse();
+        verify(users).save(user);
+    }
+
+    @Test
+    void changePasswordRejectsAWrongCurrentPasswordWithA400NotA401() {
+        UserAccount user = userWithPassword("hunter2horse");
+        String before = user.getPasswordHash();
+
+        assertThatThrownBy(() -> service.changePassword(user, "wrong-guess", "correct-horse-battery"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("400")
+                .hasMessageContaining("Current password is incorrect");
+        assertThat(user.getPasswordHash()).isEqualTo(before);
+        verify(users, never()).save(any(UserAccount.class));
+    }
+
+    @Test
+    void changePasswordRejectsReusingTheCurrentPassword() {
+        UserAccount user = userWithPassword("hunter2horse");
+
+        assertThatThrownBy(() -> service.changePassword(user, "hunter2horse", "hunter2horse"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("different");
+        verify(users, never()).save(any(UserAccount.class));
+    }
+
+    @Test
+    void changePasswordIsRefusedForAccountsWithoutAPassword() {
+        UserAccount googleUser = new UserAccount("sam@example.com", "Sam");
+
+        assertThatThrownBy(() -> service.changePassword(googleUser, "anything", "correct-horse-battery"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("doesn't sign in with a password");
+        assertThat(googleUser.getPasswordHash()).isNull();
+        verify(users, never()).save(any(UserAccount.class));
+    }
 }

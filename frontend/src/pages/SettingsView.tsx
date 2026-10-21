@@ -27,6 +27,11 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
   const [confirmText, setConfirmText] = useState('')
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [pwOpen, setPwOpen] = useState(false)
+  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
+  const [pwBusy, setPwBusy] = useState(false)
+  const [pwError, setPwError] = useState('')
+  const [pwDone, setPwDone] = useState(false)
   // Accordion — at most one section open at a time.
   const [openSection, setOpenSection] = useState('User profile')
   const sectionProps = (title: string) => ({
@@ -93,6 +98,17 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
     try { await deleteAction.run() }
     catch (e) { setDeleteError(e instanceof Error ? e.message : 'Could not complete that — try again.') }
     finally { setDeleteBusy(false) }
+  }
+  const closePasswordForm = () => { setPwOpen(false); setPwForm({ current: '', next: '', confirm: '' }); setPwError('') }
+  const changePassword = async () => {
+    if (pwForm.next.length < 8) { setPwError('New password must be at least 8 characters.'); return }
+    if (pwForm.next !== pwForm.confirm) { setPwError("The new passwords don't match."); return }
+    setPwBusy(true); setPwError('')
+    try {
+      await api('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: pwForm.current, newPassword: pwForm.next }) })
+      closePasswordForm(); setPwDone(true)
+    } catch (e) { setPwError(e instanceof Error ? e.message : 'Could not change your password — try again.') }
+    finally { setPwBusy(false) }
   }
   const brokersConnected = new Set(holdings.map(h => h.broker).filter((b): b is string => !!b)).size
   const saveBar = <>
@@ -196,7 +212,24 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
       <div className="pulse-row"><span>Net worth</span><strong>{dashboard ? money(dashboard.netWorth) : '—'}</strong></div>
       <div className="pulse-row"><span>Holdings tracked</span><strong>{settings.holdingCount}</strong></div>
       <div className="pulse-row"><span>Brokers connected</span><strong>{brokersConnected}</strong></div>
-      <div className="pulse-row"><span>Authentication</span><strong>{settings.demoMode ? 'Demo mode' : 'Google'}</strong></div>
+      <div className="pulse-row"><span>Authentication</span><strong>{settings.demoMode ? 'Demo mode' : settings.hasPassword ? 'Email & password' : 'Google'}</strong></div>
+      {settings.hasPassword && <div className="password-change">
+        {!pwOpen
+          ? <div className="password-change-closed">
+              <button className="outline" onClick={() => { setPwOpen(true); setPwDone(false) }}>Change password</button>
+              {pwDone && <span className="settings-status">Password updated.</span>}
+            </div>
+          : <form className="password-change-form" onSubmit={e => { e.preventDefault(); void changePassword() }}>
+              <div className="settings-field"><label>Current password</label><input type="password" autoComplete="current-password" autoFocus value={pwForm.current} onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))} /></div>
+              <div className="settings-field"><label>New password</label><input type="password" autoComplete="new-password" value={pwForm.next} onChange={e => setPwForm(f => ({ ...f, next: e.target.value }))} placeholder="At least 8 characters" /></div>
+              <div className="settings-field"><label>Confirm new password</label><input type="password" autoComplete="new-password" value={pwForm.confirm} onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))} /></div>
+              {pwError && <p className="form-error">{pwError}</p>}
+              <div className="button-row">
+                <button type="submit" className="primary" disabled={pwBusy || !pwForm.current || !pwForm.next || !pwForm.confirm}>{pwBusy ? 'Updating…' : 'Update password'}</button>
+                <button type="button" className="outline" onClick={closePasswordForm} disabled={pwBusy}>Cancel</button>
+              </div>
+            </form>}
+      </div>}
       <button className="outline" onClick={() => void exportJson()}>Export all data (JSON)</button>
       <div className="danger-zone-inline">
         <div className="panel-heading"><h3>Delete data</h3><span>Cannot be undone</span></div>

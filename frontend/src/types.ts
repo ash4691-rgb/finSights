@@ -52,6 +52,8 @@ export type Settings = {
   quarterlyThresholdPercent?: number; yearlyThresholdPercent?: number
   demoMode: boolean; holdingCount: number; memberSince: string; customLayoutOnboardingDismissed: boolean
   userOnboardingDismissed: boolean; personaOnboardingDismissed: boolean; riskOnboardingDismissed: boolean
+  // True only for email/password accounts — gates Settings' "Change password".
+  hasPassword: boolean
 }
 export type SalaryRange = 'UNDER_5L' | 'L5_TO_10L' | 'L10_TO_25L' | 'L25_TO_50L' | 'ABOVE_50L' | 'PREFER_NOT_TO_SAY'
 export type PortfolioSize = 'UNDER_1L' | 'L1_TO_10L' | 'L10_TO_50L' | 'L50_TO_2CR' | 'ABOVE_2CR' | 'PREFER_NOT_TO_SAY'

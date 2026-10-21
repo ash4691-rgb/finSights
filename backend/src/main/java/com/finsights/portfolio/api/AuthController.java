@@ -2,6 +2,7 @@ package com.finsights.portfolio.api;
 
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.AuthConfigResponse;
+import com.finsights.portfolio.dto.ChangePasswordRequest;
 import com.finsights.portfolio.dto.CurrentUserResponse;
 import com.finsights.portfolio.dto.LoginRequest;
 import com.finsights.portfolio.dto.MessageResponse;
@@ -77,6 +78,12 @@ public class AuthController {
         UserAccount user = localAuth.login(request.email(), request.password());
         establishSession(user.getEmail(), httpRequest, httpResponse);
         return toResponse(user);
+    }
+
+    @PostMapping("/change-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        localAuth.changePassword(currentUser.currentUser(), request.currentPassword(), request.newPassword());
     }
 
     @PostMapping("/logout")
