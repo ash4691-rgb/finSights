@@ -821,16 +821,21 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .goku-input-row textarea{flex:1;resize:none;max-height:90px;font:inherit}
 .goku-remaining{margin:0 16px 12px;font-size:10.5px;color:var(--text-4);text-align:right}
 .goku-admin-btn{margin-top:2px;opacity:.85}
-.goku-admin-add{display:flex;gap:8px}
-.goku-admin-add input{flex:1}
 .goku-admin-error{color:var(--negative)}
-.goku-admin-list{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto}
-.goku-admin-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid var(--border-soft)}
+.goku-admin-search{position:relative}
+.goku-admin-search input{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border-strong);background:var(--surface-input);color:var(--text);font-size:13px}
+.goku-admin-selected{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;background:var(--surface-2);border-radius:9px}
+.goku-admin-selected strong{font-size:13px;overflow-wrap:anywhere;display:block}
+.goku-admin-selected small{color:var(--text-3);font-size:11px}
+.goku-admin-selected select{flex-shrink:0;font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text)}
+.goku-admin-groups{margin-top:18px;display:flex;flex-direction:column;gap:8px}
+.goku-model-group{border:1px solid var(--border-soft);border-radius:9px;overflow:hidden}
+.goku-model-group summary{padding:10px 12px;font-size:13px;font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.goku-model-group summary::-webkit-details-marker{display:none}
+.goku-model-group-count{font-size:11px;font-weight:400;color:var(--text-3);background:var(--surface-2);border-radius:20px;padding:1px 8px}
+.goku-admin-list{list-style:none;margin:0;padding:0 12px 10px;display:flex;flex-direction:column;gap:2px;max-height:300px;overflow-y:auto}
+.goku-admin-list li{padding:7px 2px;font-size:12.5px;border-top:1px solid var(--border-soft);overflow-wrap:anywhere}
 .goku-admin-list li:first-child{border-top:0}
-.goku-admin-list li div{display:flex;flex-direction:column;gap:2px;min-width:0}
-.goku-admin-list li strong{font-size:13px;overflow-wrap:anywhere}
-.goku-admin-list li small{color:var(--text-3);font-size:11px}
-.goku-admin-list li select{flex-shrink:0;font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text)}
 @media(max-width:900px){
   .public-features{grid-template-columns:1fr}
   .public-hero-copy h1{font-size:34px}
