@@ -105,10 +105,21 @@ export function GokuPanel({ goku }: Readonly<{ goku: Goku }>) {
   </section>
 }
 
+// Friendly labels for the model ids the backend offers — falls back to the raw id for anything
+// not in this list, so a config change on the backend (GOKU_AVAILABLE_MODELS) never breaks the
+// dropdown, it just shows a less pretty label until this map catches up.
+const MODEL_LABELS: Record<string, string> = {
+  'claude-opus-5-5': 'Opus',
+  'claude-sonnet-5': 'Sonnet',
+  'claude-haiku-4-5-20251001': 'Haiku',
+}
+const modelLabel = (model: string) => MODEL_LABELS[model] ?? model
+
 // Database-backed allowlist admin panel — every call is re-checked server-side against
 // app.goku.admin-allowlist, so hiding this modal is a convenience, not the access control.
 export function GokuAdminModal({ goku }: Readonly<{ goku: Goku }>) {
   const [entries, setEntries] = useState<GokuAllowedUser[]>([])
+  const [models, setModels] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
@@ -118,8 +129,8 @@ export function GokuAdminModal({ goku }: Readonly<{ goku: Goku }>) {
   useEffect(() => {
     if (!goku.showAdmin) return
     setLoading(true)
-    api<GokuAllowedUser[]>('/api/goku/admin/allowlist')
-      .then(setEntries)
+    Promise.all([api<GokuAllowedUser[]>('/api/goku/admin/allowlist'), api<string[]>('/api/goku/admin/allowlist/models')])
+      .then(([list, modelList]) => { setEntries(list); setModels(modelList) })
       .catch(err => setError(err instanceof Error ? err.message : 'Could not load the allowlist'))
       .finally(() => setLoading(false))
   }, [goku.showAdmin])
@@ -152,6 +163,18 @@ export function GokuAdminModal({ goku }: Readonly<{ goku: Goku }>) {
     }
   }
 
+  const assignModel = async (target: string, model: string) => {
+    setError('')
+    try {
+      const updated = await api<GokuAllowedUser>(`/api/goku/admin/allowlist/model?email=${encodeURIComponent(target)}`, {
+        method: 'PUT', body: JSON.stringify({ model }),
+      })
+      setEntries(list => list.map(e => e.email === updated.email ? updated : e))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change that model')
+    }
+  }
+
   return <div className="modal-backdrop"><section className="modal narrow">
     <div className="modal-header">
       <div><p className="eyebrow">GOKU</p><h2>Who can access Goku</h2></div>
@@ -174,6 +197,9 @@ export function GokuAdminModal({ goku }: Readonly<{ goku: Goku }>) {
       : <ul className="goku-admin-list">
           {entries.map(e => <li key={e.email}>
             <div><strong>{e.email}</strong><small>added {ago(e.addedAt)}{e.addedBy ? ` by ${e.addedBy}` : ''}</small></div>
+            <select aria-label={`Model for ${e.email}`} value={e.model} onChange={ev => void assignModel(e.email, ev.target.value)}>
+              {models.map(m => <option key={m} value={m}>{modelLabel(m)}</option>)}
+            </select>
             <button type="button" className="icon-btn delete" title="Remove access" aria-label={`Remove ${e.email}`} onClick={() => void remove(e.email)}>🗑</button>
           </li>)}
           {entries.length === 0 && <li className="hint">No one is allowed yet.</li>}

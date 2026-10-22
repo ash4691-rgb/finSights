@@ -830,6 +830,7 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .goku-admin-list li div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .goku-admin-list li strong{font-size:13px;overflow-wrap:anywhere}
 .goku-admin-list li small{color:var(--text-3);font-size:11px}
+.goku-admin-list li select{flex-shrink:0;font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text)}
 @media(max-width:900px){
   .public-features{grid-template-columns:1fr}
   .public-hero-copy h1{font-size:34px}

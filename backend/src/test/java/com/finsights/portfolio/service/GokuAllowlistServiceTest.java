@@ -1,6 +1,7 @@
 package com.finsights.portfolio.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class GokuAllowlistServiceTest {
@@ -30,9 +32,15 @@ class GokuAllowlistServiceTest {
     @BeforeEach
     void setUp() throws Exception {
         service = new GokuAllowlistService(repository);
-        Field field = GokuAllowlistService.class.getDeclaredField("seedAllowlist");
-        field.setAccessible(true);
-        field.set(service, "ash4691@gmail.com,demo@finsights.local");
+        set("seedAllowlist", "ash4691@gmail.com,demo@finsights.local");
+        set("defaultModel", "claude-haiku-4-5-20251001");
+        set("availableModelsRaw", "claude-opus-5-5,claude-sonnet-5,claude-haiku-4-5-20251001");
+    }
+
+    private void set(String field, Object value) throws Exception {
+        Field f = GokuAllowlistService.class.getDeclaredField(field);
+        f.setAccessible(true);
+        f.set(service, value);
     }
 
     @Test
@@ -100,6 +108,70 @@ class GokuAllowlistServiceTest {
         List<GokuAllowedUserResponse> result = service.list();
 
         assertThat(result).extracting(GokuAllowedUserResponse::email).containsExactly("a@x.com", "b@x.com");
+        assertThat(result).extracting(GokuAllowedUserResponse::model)
+                .containsExactly("claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001");
+    }
+
+    @Test
+    void availableModelsReturnsTheConfiguredList() {
+        assertThat(service.availableModels()).containsExactly(
+                "claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5-20251001");
+    }
+
+    @Test
+    void modelForFallsBackToTheDefaultWhenNoOverrideIsSet() {
+        GokuAllowedUser user = new GokuAllowedUser("someone@gmail.com", "seed");
+        when(repository.findByEmailIgnoreCase("someone@gmail.com")).thenReturn(Optional.of(user));
+
+        assertThat(service.modelFor("someone@gmail.com")).isEqualTo("claude-haiku-4-5-20251001");
+    }
+
+    @Test
+    void modelForFallsBackToTheDefaultForAnUnknownOrBlankEmail() {
+        when(repository.findByEmailIgnoreCase("nobody@gmail.com")).thenReturn(Optional.empty());
+
+        assertThat(service.modelFor("nobody@gmail.com")).isEqualTo("claude-haiku-4-5-20251001");
+        assertThat(service.modelFor(null)).isEqualTo("claude-haiku-4-5-20251001");
+        assertThat(service.modelFor("")).isEqualTo("claude-haiku-4-5-20251001");
+    }
+
+    @Test
+    void modelForReturnsTheUsersAssignedModel() {
+        GokuAllowedUser user = new GokuAllowedUser("someone@gmail.com", "seed");
+        user.setModel("claude-opus-5-5");
+        when(repository.findByEmailIgnoreCase("someone@gmail.com")).thenReturn(Optional.of(user));
+
+        assertThat(service.modelFor("someone@gmail.com")).isEqualTo("claude-opus-5-5");
+    }
+
+    @Test
+    void setModelAssignsASupportedModelAndReturnsTheEffectiveValue() {
+        GokuAllowedUser user = new GokuAllowedUser("someone@gmail.com", "seed");
+        when(repository.findByEmailIgnoreCase("someone@gmail.com")).thenReturn(Optional.of(user));
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        GokuAllowedUserResponse result = service.setModel(" Someone@Gmail.com ", "claude-sonnet-5");
+
+        assertThat(result.model()).isEqualTo("claude-sonnet-5");
+        assertThat(user.getModel()).isEqualTo("claude-sonnet-5");
+    }
+
+    @Test
+    void setModelRejectsAModelOutsideTheAvailableList() {
+        GokuAllowedUser user = new GokuAllowedUser("someone@gmail.com", "seed");
+        when(repository.findByEmailIgnoreCase("someone@gmail.com")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.setModel("someone@gmail.com", "gpt-5"))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void setModelThrowsNotFoundForAnEmailOffTheAllowlist() {
+        when(repository.findByEmailIgnoreCase("nobody@gmail.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.setModel("nobody@gmail.com", "claude-opus-5-5"))
+                .isInstanceOf(ResponseStatusException.class);
     }
 
     private static GokuAllowedUser argThatEmail(String email) {

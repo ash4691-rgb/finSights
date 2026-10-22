@@ -20,6 +20,9 @@ public class GokuAllowedUser {
     private String addedBy;
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
+    /** Per-user model override, e.g. "claude-opus-5-5". Null/blank means "use app.goku.model". */
+    @Column(length = 64)
+    private String model;
 
     protected GokuAllowedUser() { }
 
@@ -32,4 +35,6 @@ public class GokuAllowedUser {
     public String getEmail() { return email; }
     public String getAddedBy() { return addedBy; }
     public Instant getCreatedAt() { return createdAt; }
+    public String getModel() { return model; }
+    public void setModel(String model) { this.model = model; }
 }
