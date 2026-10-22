@@ -507,6 +507,16 @@ class StatementImportServiceTest {
     }
 
     @Test
+    void mergeExtractionsOfNoChunksReturnsAnEmptyHoldingsOnlyResponse() {
+        StatementExtractionResponse merged = StatementImportService.mergeExtractions(List.of());
+
+        assertThat(merged.statementType()).isEqualTo(StatementType.HOLDINGS);
+        assertThat(merged.holdings()).isEmpty();
+        assertThat(merged.transactions()).isEmpty();
+        assertThat(merged.warnings()).isEmpty();
+    }
+
+    @Test
     void mergeExtractionsReturnsTheSingleResponseUnchangedWhenThereIsOnlyOneChunk() {
         ExtractedHolding row = new ExtractedHolding("Infosys", "INE009A01021", BigDecimal.TEN, null, null, null, null);
         StatementExtractionResponse only = new StatementExtractionResponse(
@@ -705,6 +715,106 @@ class StatementImportServiceTest {
                 URI.create("http://localhost:" + server.getAddress().getPort() + "/"), "key", json, json.createObjectNode()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Couldn't read that statement");
+    }
+
+    @Test
+    void extractSplitsALargeSpreadsheetIntoOneCallPerChunkAndMergesTheResults() throws Exception {
+        when(currentUser.currentUser()).thenReturn(new UserAccount("demo@finsights.local", "Demo"));
+        when(rateLimiter.tryConsume(any())).thenReturn(true);
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of());
+        when(marketData.search(any())).thenReturn(List.of());
+
+        java.util.concurrent.atomic.AtomicInteger callCount = new java.util.concurrent.atomic.AtomicInteger();
+        server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/", exchange -> {
+            int call = callCount.incrementAndGet();
+            String isin = call == 1 ? "INE000A0001" : "INE000A0002";
+            byte[] responseBytes = """
+                    {"content": [{"type": "tool_use", "name": "extract_statement", "input": {
+                      "statementType": "HOLDINGS",
+                      "holdings": [{"instrumentName": "Demo Company %d", "isin": "%s", "quantity": 10}],
+                      "warnings": []
+                    }}]}
+                    """.formatted(call, isin).getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, responseBytes.length);
+            try (var out = exchange.getResponseBody()) { out.write(responseBytes); }
+            exchange.close();
+        });
+        server.start();
+        service.messagesUri = URI.create("http://localhost:" + server.getAddress().getPort() + "/");
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "apiKey", "test-key");
+
+        // 151 data rows at a 150-row cap forces exactly two extraction calls.
+        byte[] xlsx = xlsxWorkbook(wb -> {
+            var sheet = wb.createSheet("Holdings");
+            for (int i = 0; i < 151; i++) writeRow(sheet, i, "Row " + i);
+        });
+
+        StatementExtractionResponse result = service.extract(xlsx, null);
+
+        assertThat(callCount.get()).isEqualTo(2);
+        assertThat(result.holdings()).hasSize(2);
+        assertThat(result.holdings()).extracting(ExtractedHolding::isin)
+                .containsExactlyInAnyOrder("INE000A0001", "INE000A0002");
+    }
+
+    @Test
+    void extractCallsTheModelOnceForAPdfUploadAndReturnsWhatItReports() throws Exception {
+        when(currentUser.currentUser()).thenReturn(new UserAccount("demo@finsights.local", "Demo"));
+        when(rateLimiter.tryConsume(any())).thenReturn(true);
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of());
+        when(marketData.search(any())).thenReturn(List.of());
+
+        server = singleResponseServer("""
+                {"content": [{"type": "tool_use", "name": "extract_statement", "input": {
+                  "statementType": "HOLDINGS",
+                  "holdings": [{"instrumentName": "Infosys", "isin": "INE009A01021", "quantity": 10}],
+                  "warnings": []
+                }}]}
+                """);
+        service.messagesUri = URI.create("http://localhost:" + server.getAddress().getPort() + "/");
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "apiKey", "test-key");
+
+        StatementExtractionResponse result = service.extract(unencryptedPdf(), null);
+
+        assertThat(result.holdings()).hasSize(1);
+        assertThat(result.holdings().get(0).instrumentName()).isEqualTo("Infosys");
+    }
+
+    @Test
+    void extractCallsTheModelOnceForAPlainTextUploadAndReturnsWhatItReports() throws Exception {
+        when(currentUser.currentUser()).thenReturn(new UserAccount("demo@finsights.local", "Demo"));
+        when(rateLimiter.tryConsume(any())).thenReturn(true);
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of());
+
+        server = singleResponseServer("""
+                {"content": [{"type": "tool_use", "name": "extract_statement", "input": {
+                  "statementType": "TRANSACTIONS",
+                  "transactions": [],
+                  "warnings": ["nothing matched"]
+                }}]}
+                """);
+        service.messagesUri = URI.create("http://localhost:" + server.getAddress().getPort() + "/");
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "apiKey", "test-key");
+
+        StatementExtractionResponse result = service.extract("date,type\n2026-01-01,BUY".getBytes(StandardCharsets.UTF_8), null);
+
+        assertThat(result.statementType()).isEqualTo(StatementType.TRANSACTIONS);
+        assertThat(result.warnings()).contains("nothing matched");
+    }
+
+    private static HttpServer singleResponseServer(String responseJson) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        server.createContext("/", exchange -> {
+            byte[] responseBytes = responseJson.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, responseBytes.length);
+            try (var out = exchange.getResponseBody()) { out.write(responseBytes); }
+            exchange.close();
+        });
+        server.start();
+        return server;
     }
 
     @Test
