@@ -96,13 +96,20 @@ redeploying. `GOKU_SEED_ALLOWLIST` (comma-separated emails, defaults to
 boot against an otherwise-empty database — after that, every change goes through the admin panel.
 Who can *see* the admin panel is a separate, much smaller, config-only allowlist —
 `GOKU_ADMIN_ALLOWLIST` (defaults to `ash4691@gmail.com`) — kept out of the database on purpose,
-since granting admin access is a higher-trust action than granting chat access. Other env vars:
-`GOKU_ENABLED` (default `true`), `GOKU_MODEL` (default `claude-haiku-4-5-20251001`),
+since granting admin access is a higher-trust action than granting chat access.
+
+Each allowed user also runs on one of three fixed tiers — Haiku, Sonnet, or Opus — assigned from
+the same admin panel (search any registered email, pick a tier; "No access" revokes it). Each
+tier is pinned to one model id via `GOKU_MODEL_HAIKU` (default `claude-haiku-4-5-20251001`),
+`GOKU_MODEL_SONNET` (default `claude-sonnet-5`), `GOKU_MODEL_OPUS` (default `claude-opus-5-5`) —
+update these if the account behind `ANTHROPIC_API_KEY` doesn't have access to one of them, or
+when a newer model supersedes one of the defaults. Anyone not explicitly assigned a tier (e.g. a
+seeded row) runs on Haiku. Other env vars: `GOKU_ENABLED` (default `true`),
 `GOKU_DAILY_QUERY_LIMIT` (default `40`, per user per day).
 
 `GET /api/goku/config` tells the frontend whether to render the chat entry and/or the admin entry;
-the backend re-checks both independently on every call to `/api/goku/chat` and
-`/api/goku/admin/allowlist`, regardless of what the frontend shows.
+the backend re-checks both independently on every call to `/api/goku/chat` and every
+`/api/goku/admin/*` endpoint, regardless of what the frontend shows.
 
 ## Tests
 

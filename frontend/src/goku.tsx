@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
-import { ago } from './util'
-import { Field, useEscToClose } from './ui'
-import type { GokuAllowedUser, GokuChatReply, GokuConfig, GokuMessage } from './types'
+import { useEscToClose } from './ui'
+import type { GokuAccessResult, GokuChatReply, GokuConfig, GokuGroupedByTier, GokuMessage, GokuTier, GokuUserSearchResult } from './types'
 
 // Goku's state + send logic, lifted out of the launcher/panel so both can render as siblings
 // at the top of App.tsx. Conversation lives only in this hook's state; Goku keeps no
@@ -105,50 +104,77 @@ export function GokuPanel({ goku }: Readonly<{ goku: Goku }>) {
   </section>
 }
 
+const TIER_LABELS: Record<GokuTier, string> = { NO_ACCESS: 'No access', HAIKU: 'Haiku', SONNET: 'Sonnet', OPUS: 'Opus' }
+const TIERS: GokuTier[] = ['NO_ACCESS', 'HAIKU', 'SONNET', 'OPUS']
+const MODEL_GROUPS: Extract<GokuTier, 'HAIKU' | 'SONNET' | 'OPUS'>[] = ['HAIKU', 'SONNET', 'OPUS']
+const EMPTY_GROUPED: GokuGroupedByTier = { HAIKU: [], SONNET: [], OPUS: [] }
+
 // Database-backed allowlist admin panel — every call is re-checked server-side against
 // app.goku.admin-allowlist, so hiding this modal is a convenience, not the access control.
+//
+// Top: a typeahead over every registered user (not just ones already allowed) — picking one
+// shows a single tier dropdown that both grants/changes/revokes their access in one PUT.
+// Bottom: everyone currently allowed, grouped into the three tiers so an admin can see who's on
+// what without hunting through one flat list.
 export function GokuAdminModal({ goku }: Readonly<{ goku: Goku }>) {
-  const [entries, setEntries] = useState<GokuAllowedUser[]>([])
-  const [loading, setLoading] = useState(true)
-  const [email, setEmail] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<GokuUserSearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [selected, setSelected] = useState<GokuUserSearchResult | null>(null)
+  const [assigning, setAssigning] = useState(false)
+  const [grouped, setGrouped] = useState<GokuGroupedByTier>(EMPTY_GROUPED)
+  const [loadingGrouped, setLoadingGrouped] = useState(true)
   const [error, setError] = useState('')
+  const boxRef = useRef<HTMLDivElement>(null)
   useEscToClose(() => goku.setShowAdmin(false), false)
 
-  useEffect(() => {
-    if (!goku.showAdmin) return
-    setLoading(true)
-    api<GokuAllowedUser[]>('/api/goku/admin/allowlist')
-      .then(setEntries)
+  const loadGrouped = () => {
+    setLoadingGrouped(true)
+    api<GokuGroupedByTier>('/api/goku/admin/allowlist/grouped')
+      .then(setGrouped)
       .catch(err => setError(err instanceof Error ? err.message : 'Could not load the allowlist'))
-      .finally(() => setLoading(false))
+      .finally(() => setLoadingGrouped(false))
+  }
+
+  useEffect(() => {
+    if (goku.showAdmin) loadGrouped()
   }, [goku.showAdmin])
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) { setResults([]); setSearching(false); return }
+    setSearching(true)
+    const timer = setTimeout(() => {
+      api<GokuUserSearchResult[]>(`/api/goku/admin/users?q=${encodeURIComponent(q)}`)
+        .then(setResults).catch(() => setResults([])).finally(() => setSearching(false))
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setResults([]) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
 
   if (!goku.showAdmin) return null
 
-  const add = async () => {
-    const trimmed = email.trim()
-    if (!trimmed || saving) return
-    setSaving(true)
-    setError('')
-    try {
-      const entry = await api<GokuAllowedUser>('/api/goku/admin/allowlist', { method: 'POST', body: JSON.stringify({ email: trimmed }) })
-      setEntries(list => list.some(e => e.email === entry.email) ? list : [...list, entry])
-      setEmail('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that email')
-    } finally {
-      setSaving(false)
-    }
-  }
+  const pick = (result: GokuUserSearchResult) => { setSelected(result); setQuery(''); setResults([]) }
 
-  const remove = async (target: string) => {
+  const assign = async (tier: GokuTier) => {
+    if (!selected || assigning) return
+    setAssigning(true)
     setError('')
     try {
-      await api(`/api/goku/admin/allowlist?email=${encodeURIComponent(target)}`, { method: 'DELETE' })
-      setEntries(list => list.filter(e => e.email !== target))
+      const result = await api<GokuAccessResult>(`/api/goku/admin/allowlist/access?email=${encodeURIComponent(selected.email)}`, {
+        method: 'PUT', body: JSON.stringify({ tier }),
+      })
+      setSelected(s => s && { ...s, tier: result.tier })
+      loadGrouped()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that email')
+      setError(err instanceof Error ? err.message : 'Could not change that access')
+    } finally {
+      setAssigning(false)
     }
   }
 
@@ -160,23 +186,37 @@ export function GokuAdminModal({ goku }: Readonly<{ goku: Goku }>) {
     {goku.unavailableReason && <p className="hint goku-admin-error">
       Chat isn't showing for you yet: {goku.unavailableReason}
     </p>}
-    <Field label="Add an email" wide>
-      <div className="goku-admin-add">
-        <input type="email" value={email} placeholder="name@example.com" disabled={saving}
-          onChange={e => setEmail(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void add() } }} />
-        <button type="button" className="primary" onClick={() => void add()} disabled={saving || !email.trim()}>Add</button>
-      </div>
-    </Field>
     {error && <p className="hint goku-admin-error">{error}</p>}
-    {loading
-      ? <p className="hint">Loading…</p>
-      : <ul className="goku-admin-list">
-          {entries.map(e => <li key={e.email}>
-            <div><strong>{e.email}</strong><small>added {ago(e.addedAt)}{e.addedBy ? ` by ${e.addedBy}` : ''}</small></div>
-            <button type="button" className="icon-btn delete" title="Remove access" aria-label={`Remove ${e.email}`} onClick={() => void remove(e.email)}>🗑</button>
-          </li>)}
-          {entries.length === 0 && <li className="hint">No one is allowed yet.</li>}
-        </ul>}
+
+    <div className="goku-admin-search" ref={boxRef}>
+      <input type="email" value={query} placeholder="Search by email…"
+        onChange={e => { setQuery(e.target.value); setSelected(null) }} />
+      {query.trim().length >= 2 && (searching || results.length > 0) && <ul className="tag-menu">
+        {searching && results.length === 0 && <li className="tag-menu-note">Searching…</li>}
+        {results.map(r => <li key={r.email}><button type="button" onMouseDown={e => e.preventDefault()} onClick={() => pick(r)}>
+          <b>{r.email}</b> <span>{TIER_LABELS[r.tier]}</span>
+        </button></li>)}
+      </ul>}
+    </div>
+
+    {selected && <div className="goku-admin-selected">
+      <div><strong>{selected.email}</strong>{selected.displayName && <small>{selected.displayName}</small>}</div>
+      <select aria-label={`Access for ${selected.email}`} value={selected.tier} disabled={assigning}
+        onChange={e => void assign(e.target.value as GokuTier)}>
+        {TIERS.map(t => <option key={t} value={t}>{TIER_LABELS[t]}</option>)}
+      </select>
+    </div>}
+
+    <div className="goku-admin-groups">
+      {loadingGrouped
+        ? <p className="hint">Loading…</p>
+        : MODEL_GROUPS.map(tier => <details key={tier} className="goku-model-group">
+            <summary>{TIER_LABELS[tier]} <span className="goku-model-group-count">{grouped[tier].length}</span></summary>
+            <ul className="goku-admin-list">
+              {grouped[tier].map(e => <li key={e}>{e}</li>)}
+              {grouped[tier].length === 0 && <li className="hint">No one yet.</li>}
+            </ul>
+          </details>)}
+    </div>
   </section></div>
 }

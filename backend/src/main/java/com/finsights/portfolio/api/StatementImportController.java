@@ -17,8 +17,9 @@ public class StatementImportController {
 
     /**
      * Uploads one statement — a CAS PDF, a broker holding statement, or a broker transaction
-     * statement, as a PDF or a machine-readable text file (CSV/XML) — and extracts candidate
-     * holdings and/or transactions from it. This endpoint never writes anything — see {@link
+     * statement, as a PDF, a spreadsheet (XLSX/XLS), or a machine-readable text file (CSV/TSV/XML)
+     * — and extracts candidate holdings and/or transactions from it. This endpoint never writes
+     * anything — see {@link
      * StatementImportService}'s class comment. The caller takes each row back through the
      * ordinary {@code POST /api/holdings} or {@code POST /api/transactions} once the user has
      * reviewed and (optionally) edited it.

@@ -13,6 +13,7 @@ import com.finsights.portfolio.dto.StatementExtractionResponse;
 import com.finsights.portfolio.dto.StatementExtractionResponse.StatementType;
 import com.finsights.portfolio.dto.SymbolSuggestion;
 import com.finsights.portfolio.repository.HoldingRepository;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -37,6 +38,12 @@ import java.util.stream.Collectors;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,8 +61,11 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>A PDF is sent as a native document content block, same as the CAS pilot this generalizes —
  * decrypted locally first with PDFBox (see {@link #decryptIfNeeded}) since Claude's PDF support
  * rejects an encrypted document outright, and a CAS is almost always password-protected (typically
- * the holder's PAN). Anything else is treated as a plain-text statement (CSV, XML, or similar) and
- * sent inline as text — OCR'd/scanned image statements aren't supported yet.
+ * the holder's PAN). An XLSX/XLS upload is read locally with Apache POI and flattened to the same
+ * kind of plain text a CSV/TSV/XML upload already is (see {@link #spreadsheetToText}) — Claude has
+ * no native spreadsheet content block, so this is the only way to hand it a workbook at all.
+ * Everything else is treated as a plain-text statement (CSV, TSV, XML, or similar) and sent inline
+ * as text — OCR'd/scanned image statements aren't supported yet.
  *
  * <p><b>Nothing here writes to the database.</b> This is deliberate, not a missing feature: the
  * whole point of the product being "manual-first" is that an auto-populated row is never trusted
@@ -89,9 +99,21 @@ public class StatementImportService {
      *  before an API call is ever made. */
     static final int MAX_PDF_BYTES = 15 * 1024 * 1024;
     static final int MAX_TEXT_BYTES = 2 * 1024 * 1024;
+    // XLSX/XLS are zip/OLE2 containers, so the same byte count holds far less statement content
+    // than raw text does — a size between the two others is plenty of headroom for a real broker
+    // workbook while still catching an oversized/mistaken upload before it reaches POI.
+    static final int MAX_SPREADSHEET_BYTES = 10 * 1024 * 1024;
+    // Bounds the converted text's token cost regardless of how many sheets or rows a workbook
+    // has — a statement with more real data than this isn't something a broker export produces,
+    // so it's treated as a mistaken upload rather than silently truncated without a word.
+    static final int MAX_SPREADSHEET_ROWS = 10_000;
 
     private static final String TOOL_NAME = "extract_statement";
     private static final byte[] PDF_MAGIC = "%PDF".getBytes(StandardCharsets.US_ASCII);
+    // ZIP local-file-header signature — every OOXML file (.xlsx among them) is a zip archive.
+    private static final byte[] XLSX_MAGIC = { 0x50, 0x4B, 0x03, 0x04 };
+    // OLE2/Compound File Binary signature — every legacy .xls file is one of these.
+    private static final byte[] XLS_MAGIC = { (byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1 };
 
     // Scoped to equity/ETF lines for holdings (same pilot scope CAS shipped with) and to the
     // transaction types FinSights already tracks. CAS also lists mutual funds, bonds, and
@@ -100,8 +122,9 @@ public class StatementImportService {
     // has an explanation.
     private static final String SYSTEM_PROMPT = """
             You read uploaded financial statements — a CDSL/NSDL Consolidated Account Statement (CAS), a \
-            broker's own holding statement, or a broker's transaction statement, in PDF or plain text \
-            (CSV/XML) — and extract structured data from them using the extract_statement tool. Follow \
+            broker's own holding statement, or a broker's transaction statement, in PDF, a spreadsheet \
+            (XLSX/XLS, flattened to plain text with one "Sheet: <name>" line per sheet), or plain text \
+            (CSV/TSV/XML) — and extract structured data from them using the extract_statement tool. Follow \
             these rules exactly:
 
             1. First decide statementType: HOLDINGS if the document lists positions currently held, \
@@ -146,8 +169,12 @@ public class StatementImportService {
         if (file == null || file.length == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No file was uploaded");
         }
-        boolean isPdf = isPdf(file);
-        int maxBytes = isPdf ? MAX_PDF_BYTES : MAX_TEXT_BYTES;
+        UploadFormat format = detectFormat(file);
+        int maxBytes = switch (format) {
+            case PDF -> MAX_PDF_BYTES;
+            case SPREADSHEET -> MAX_SPREADSHEET_BYTES;
+            case TEXT -> MAX_TEXT_BYTES;
+        };
         if (file.length > maxBytes) {
             throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
                     "That file is larger than " + (maxBytes / (1024 * 1024)) + "MB — is it the right statement?");
@@ -155,8 +182,8 @@ public class StatementImportService {
 
         // Decrypt before touching the daily quota — a wrong/missing password costs nothing and
         // shouldn't burn a user's upload allowance for a request that was never going to reach
-        // the model. Non-PDF files have no password to check.
-        byte[] decrypted = isPdf ? decryptIfNeeded(file, password) : file;
+        // the model. Only a PDF can have a password.
+        byte[] decrypted = format == UploadFormat.PDF ? decryptIfNeeded(file, password) : file;
 
         String userId = currentUser.currentUser().getId();
         if (!rateLimiter.tryConsume(userId)) {
@@ -164,17 +191,29 @@ public class StatementImportService {
                     "You've hit today's statement-upload limit — try again tomorrow.");
         }
 
-        ObjectNode body = isPdf
-                ? buildPdfRequestBody(json, model, Base64.getEncoder().encodeToString(decrypted))
-                : buildTextRequestBody(json, model, decodeText(decrypted));
+        ObjectNode body = switch (format) {
+            case PDF -> buildPdfRequestBody(json, model, Base64.getEncoder().encodeToString(decrypted));
+            case SPREADSHEET -> buildTextRequestBody(json, model, spreadsheetToText(decrypted));
+            case TEXT -> buildTextRequestBody(json, model, decodeText(decrypted));
+        };
         JsonNode response = callClaude(body);
         StatementExtractionResponse extracted = parseExtraction(response);
         return matchAgainstExisting(enrichWithTickers(extracted), userId);
     }
 
-    private static boolean isPdf(byte[] file) {
-        if (file.length < PDF_MAGIC.length) return false;
-        for (int i = 0; i < PDF_MAGIC.length; i++) if (file[i] != PDF_MAGIC[i]) return false;
+    /** What an uploaded statement turns out to be, decided from its own bytes rather than a
+     *  filename or declared content type — a browser's guess at either is not to be trusted. */
+    private enum UploadFormat { PDF, SPREADSHEET, TEXT }
+
+    private static UploadFormat detectFormat(byte[] file) {
+        if (hasMagic(file, PDF_MAGIC)) return UploadFormat.PDF;
+        if (hasMagic(file, XLS_MAGIC) || hasMagic(file, XLSX_MAGIC)) return UploadFormat.SPREADSHEET;
+        return UploadFormat.TEXT;
+    }
+
+    private static boolean hasMagic(byte[] file, byte[] magic) {
+        if (file.length < magic.length) return false;
+        for (int i = 0; i < magic.length; i++) if (file[i] != magic[i]) return false;
         return true;
     }
 
@@ -184,8 +223,53 @@ public class StatementImportService {
             return decoder.decode(java.nio.ByteBuffer.wrap(file)).toString();
         } catch (java.nio.charset.CharacterCodingException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "That doesn't look like a PDF or a text (CSV/XML) statement — try a different file.");
+                    "That doesn't look like a PDF, spreadsheet (XLSX/XLS), or text (CSV/TSV/XML) statement — try a different file.");
         }
+    }
+
+    /**
+     * Flattens every non-empty sheet of an uploaded XLSX/XLS workbook into plain, comma-joined
+     * text — one {@code Sheet: <name>} header per sheet, one line per row — so it can go through
+     * the exact same text pipeline a CSV/TSV upload already does; Claude has no native spreadsheet
+     * content block. Capped at {@link #MAX_SPREADSHEET_ROWS} rows across all sheets combined: a
+     * broker statement never legitimately has more, so the rest is dropped with a note appended
+     * rather than silently included or blowing up the request's token cost.
+     */
+    static String spreadsheetToText(byte[] file) {
+        DataFormatter formatter = new DataFormatter();
+        StringBuilder text = new StringBuilder();
+        int rowsSoFar = 0;
+        boolean truncated = false;
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(file))) {
+            for (int s = 0; s < workbook.getNumberOfSheets() && !truncated; s++) {
+                Sheet sheet = workbook.getSheetAt(s);
+                if (sheet.getPhysicalNumberOfRows() == 0) continue;
+                text.append("Sheet: ").append(sheet.getSheetName()).append('\n');
+                for (Row row : sheet) {
+                    if (rowsSoFar >= MAX_SPREADSHEET_ROWS) { truncated = true; break; }
+                    text.append(rowText(row, formatter)).append('\n');
+                    rowsSoFar++;
+                }
+            }
+        } catch (IOException | org.apache.poi.EncryptedDocumentException | IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Couldn't open that file — make sure it's an unmodified XLSX/XLS and try again.");
+        }
+        if (truncated) {
+            text.append("[Statement truncated after ").append(MAX_SPREADSHEET_ROWS).append(" rows]\n");
+        }
+        return text.toString();
+    }
+
+    private static String rowText(Row row, DataFormatter formatter) {
+        StringBuilder line = new StringBuilder();
+        short lastCell = row.getLastCellNum();
+        for (int c = 0; c < lastCell; c++) {
+            if (c > 0) line.append(',');
+            Cell cell = row.getCell(c);
+            if (cell != null) line.append(formatter.formatCellValue(cell).replace(",", " "));
+        }
+        return line.toString();
     }
 
     /** Tags each row with (12-char) ISINs, same shape {@code ExtractedHolding.isin()} is already
@@ -370,7 +454,8 @@ public class StatementImportService {
         ObjectNode instruction = json.createObjectNode();
         instruction.put("type", "text");
         instruction.put("text", "Extract the holdings and/or transactions from this statement using the "
-                + "extract_statement tool. The statement (as uploaded, e.g. CSV or XML) follows:\n\n" + statementText);
+                + "extract_statement tool. The statement (as uploaded, e.g. CSV/TSV, XML, or a flattened "
+                + "spreadsheet) follows:\n\n" + statementText);
 
         ArrayNode content = json.createArrayNode();
         content.add(instruction);

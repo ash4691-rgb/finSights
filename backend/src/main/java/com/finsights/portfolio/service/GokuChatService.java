@@ -62,16 +62,18 @@ public class GokuChatService {
     private final GokuToolRegistry tools;
     private final GokuRateLimiter rateLimiter;
     private final CurrentUserService currentUser;
+    private final GokuAllowlistService allowlist;
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     @Value("${app.goku.anthropic-api-key:}") private String apiKey;
-    @Value("${app.goku.model:claude-haiku-4-5-20251001}") private String model;
 
-    public GokuChatService(GokuToolRegistry tools, GokuRateLimiter rateLimiter, CurrentUserService currentUser) {
+    public GokuChatService(GokuToolRegistry tools, GokuRateLimiter rateLimiter, CurrentUserService currentUser,
+            GokuAllowlistService allowlist) {
         this.tools = tools;
         this.rateLimiter = rateLimiter;
         this.currentUser = currentUser;
+        this.allowlist = allowlist;
     }
 
     public GokuChatResponse respond(GokuChatRequest request) {
@@ -93,13 +95,14 @@ public class GokuChatService {
             messages.add(node);
         }
 
-        String reply = converse(messages);
+        String model = allowlist.modelFor(currentUser.currentUser().getEmail());
+        String reply = converse(messages, model);
         return new GokuChatResponse(reply, rateLimiter.remainingToday(userId));
     }
 
-    private String converse(ArrayNode messages) {
+    private String converse(ArrayNode messages, String model) {
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
-            JsonNode response = callClaude(messages);
+            JsonNode response = callClaude(messages, model);
             JsonNode content = response.path("content");
             ObjectNode assistantMessage = json.createObjectNode();
             assistantMessage.put("role", "assistant");
@@ -160,7 +163,7 @@ public class GokuChatService {
         return text.isEmpty() ? "I don't have an answer for that." : text.toString();
     }
 
-    private JsonNode callClaude(ArrayNode messages) {
+    private JsonNode callClaude(ArrayNode messages, String model) {
         ObjectNode body = json.createObjectNode();
         body.put("model", model);
         body.put("max_tokens", MAX_TOKENS);

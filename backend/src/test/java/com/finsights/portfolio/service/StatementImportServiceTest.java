@@ -75,6 +75,26 @@ class StatementImportServiceTest {
     }
 
     @Test
+    void rejectsAnOversizedXlsxUploadWithTheSpreadsheetLimitNotTheTextOne() {
+        byte[] tooBig = new byte[StatementImportService.MAX_SPREADSHEET_BYTES + 1];
+        System.arraycopy(new byte[] { 0x50, 0x4B, 0x03, 0x04 }, 0, tooBig, 0, 4);
+        assertThatThrownBy(() -> service.extract(tooBig, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("larger than");
+        // Rejected before it ever reaches the user/rate-limit lookup, same as an oversized PDF.
+        org.mockito.Mockito.verifyNoInteractions(rateLimiter, currentUser);
+    }
+
+    @Test
+    void rejectsAnOversizedXlsUploadWithTheSpreadsheetLimitNotTheTextOne() {
+        byte[] tooBig = new byte[StatementImportService.MAX_SPREADSHEET_BYTES + 1];
+        System.arraycopy(new byte[] { (byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1 }, 0, tooBig, 0, 8);
+        assertThatThrownBy(() -> service.extract(tooBig, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("larger than");
+    }
+
+    @Test
     void rejectsAnEmptyUpload() {
         assertThatThrownBy(() -> service.extract(new byte[0], null))
                 .isInstanceOf(ResponseStatusException.class)
@@ -324,6 +344,96 @@ class StatementImportServiceTest {
         assertThat(content).hasSize(1);
         assertThat(content.path(0).path("type").asText()).isEqualTo("text");
         assertThat(content.path(0).path("text").asText()).contains("date,type\n2026-01-01,BUY");
+    }
+
+    @Test
+    void spreadsheetToTextFlattensASingleSheetToCommaJoinedRows() throws Exception {
+        byte[] xlsx = xlsxWorkbook(sheets -> {
+            var sheet = sheets.createSheet("Holdings");
+            writeRow(sheet, 0, "Name", "ISIN", "Quantity");
+            writeRow(sheet, 1, "Infosys", "INE009A01021", "10");
+        });
+
+        String text = StatementImportService.spreadsheetToText(xlsx);
+
+        assertThat(text).isEqualTo("Sheet: Holdings\nName,ISIN,Quantity\nInfosys,INE009A01021,10\n");
+    }
+
+    @Test
+    void spreadsheetToTextLabelsEachNonEmptySheetAndSkipsEmptyOnes() throws Exception {
+        byte[] xlsx = xlsxWorkbook(wb -> {
+            writeRow(wb.createSheet("Holdings"), 0, "Infosys");
+            wb.createSheet("Empty");
+            writeRow(wb.createSheet("Transactions"), 0, "BUY");
+        });
+
+        String text = StatementImportService.spreadsheetToText(xlsx);
+
+        assertThat(text).contains("Sheet: Holdings\nInfosys\n");
+        assertThat(text).contains("Sheet: Transactions\nBUY\n");
+        assertThat(text).doesNotContain("Sheet: Empty");
+    }
+
+    @Test
+    void spreadsheetToTextStripsCommasFromCellValuesSoRowsStayAligned() throws Exception {
+        byte[] xlsx = xlsxWorkbook(wb -> writeRow(wb.createSheet("Holdings"), 0, "Reliance, Industries", "10"));
+
+        String text = StatementImportService.spreadsheetToText(xlsx);
+
+        assertThat(text).isEqualTo("Sheet: Holdings\nReliance  Industries,10\n");
+    }
+
+    @Test
+    void spreadsheetToTextTruncatesAfterTheRowCapAndNotesIt() throws Exception {
+        byte[] xlsx = xlsxWorkbook(wb -> {
+            var sheet = wb.createSheet("Holdings");
+            for (int i = 0; i < StatementImportService.MAX_SPREADSHEET_ROWS + 5; i++) {
+                writeRow(sheet, i, "Row " + i);
+            }
+        });
+
+        String text = StatementImportService.spreadsheetToText(xlsx);
+
+        long rowLines = text.lines().filter(l -> l.startsWith("Row ")).count();
+        assertThat(rowLines).isEqualTo(StatementImportService.MAX_SPREADSHEET_ROWS);
+        assertThat(text).contains("[Statement truncated after " + StatementImportService.MAX_SPREADSHEET_ROWS + " rows]");
+    }
+
+    @Test
+    void spreadsheetToTextReadsALegacyXlsWorkbookToo() throws Exception {
+        byte[] xls;
+        try (org.apache.poi.hssf.usermodel.HSSFWorkbook wb = new org.apache.poi.hssf.usermodel.HSSFWorkbook()) {
+            writeRow(wb.createSheet("Holdings"), 0, "Infosys", "10");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            wb.write(out);
+            xls = out.toByteArray();
+        }
+
+        String text = StatementImportService.spreadsheetToText(xls);
+
+        assertThat(text).isEqualTo("Sheet: Holdings\nInfosys,10\n");
+    }
+
+    @Test
+    void spreadsheetToTextRejectsBytesThatLookLikeAZipButArentAWorkbook() {
+        byte[] notReallyXlsx = { 0x50, 0x4B, 0x03, 0x04, 1, 2, 3, 4 };
+        assertThatThrownBy(() -> StatementImportService.spreadsheetToText(notReallyXlsx))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Couldn't open");
+    }
+
+    private static byte[] xlsxWorkbook(java.util.function.Consumer<org.apache.poi.ss.usermodel.Workbook> build) throws IOException {
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            build.accept(wb);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            wb.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private static void writeRow(org.apache.poi.ss.usermodel.Sheet sheet, int rowIndex, String... cells) {
+        org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowIndex);
+        for (int c = 0; c < cells.length; c++) row.createCell(c).setCellValue(cells[c]);
     }
 
     @Test

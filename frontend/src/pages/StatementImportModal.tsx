@@ -8,7 +8,7 @@ import type { Category, ExtractedHolding, ExtractedTransaction, Holding, Stateme
 
 // ---------------------------------------------------------------------------
 // Statement import — one upload box for a CAS statement, a broker holding statement, or a broker
-// transaction statement (PDF, or a machine-readable CSV/XML). The model itself reports which kind
+// transaction statement (PDF, XLSX/XLS, or a machine-readable CSV/TSV/XML). The model itself reports which kind
 // of statement it found; each extracted row is then reviewed one at a time through the ordinary
 // Add Holding / Log Transaction form (pre-filled, not auto-saved), and saved (or skipped) exactly
 // like a manual entry. The upload step only ever extracts; nothing here writes anything on its
@@ -110,13 +110,13 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
 
   return <div className="modal-backdrop"><section className="modal" onClick={e => e.stopPropagation()}>
     <div className="modal-header"><div><p className="eyebrow">BULK IMPORT</p><h2>Upload a statement</h2></div><button className="close" onClick={onClose}>×</button></div>
-    <p className="hint">Upload a CAS statement, a broker holding statement, or a broker transaction statement — PDF, CSV, or XML. Nothing is saved or deleted automatically — review what's below, then click Done to apply it.</p>
+    <p className="hint">Upload a CAS statement, a broker holding statement, or a broker transaction statement — PDF, XLSX/XLS, CSV/TSV, or XML, up to 15MB for a PDF or 10MB (max 10,000 rows) for a spreadsheet. Nothing is saved or deleted automatically — review what's below, then click Done to apply it.</p>
 
     <Field label="Statement password"><input type="password" autoComplete="off" value={password} disabled={busy} onChange={e => setPassword(e.target.value)} placeholder="Only needed for a password-protected PDF (usually your PAN, e.g. ABCDE1234F)" /></Field>
 
-    <div className="import-upload">
+    <div className="import-upload statement-upload">
       <label className="outline file-label">{busy ? 'Reading…' : file ? 'Choose a different file' : '↑ Choose a statement'}
-        <input type="file" accept=".pdf,.csv,.xml,application/pdf,text/csv,text/xml,application/xml" hidden disabled={busy}
+        <input type="file" accept=".pdf,.csv,.tsv,.xml,.xlsx,.xls,application/pdf,text/csv,text/tab-separated-values,text/xml,application/xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden disabled={busy}
           onChange={e => { const f = e.target.files?.[0]; if (f) { void upload(f, password) } e.target.value = '' }} />
       </label>
       {file && <span className="hint">{file.name}</span>}

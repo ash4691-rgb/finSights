@@ -92,7 +92,13 @@ app:
     # right amount of friction for it.
     admin-allowlist: ${GOKU_ADMIN_ALLOWLIST:ash4691@gmail.com}
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
-    model: ${GOKU_MODEL:claude-haiku-4-5-20251001}
+    # The three fixed tiers an admin can assign a user to (see GokuModelTier, GokuAllowlistService)
+    # — each the latest available model for that tier. Anyone not explicitly assigned one (e.g. a
+    # seeded row) runs on model-haiku. Keep these in sync with whatever's actually available on the
+    # account behind ANTHROPIC_API_KEY.
+    model-haiku: ${GOKU_MODEL_HAIKU:claude-haiku-4-5-20251001}
+    model-sonnet: ${GOKU_MODEL_SONNET:claude-sonnet-5}
+    model-opus: ${GOKU_MODEL_OPUS:claude-opus-5-5}
     daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
   news:
     # Signals' Radar news feed (NewsService/NewsRefreshScheduler) — Google News RSS, no API key,
