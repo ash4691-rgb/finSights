@@ -37,7 +37,7 @@ class FxRateServiceTest {
     private HoldingResponse holding(String currency) {
         return new HoldingResponse("h-1", "hr-1", "c-1", "Growth Equity", "Reliance", HoldingKind.ASSET, ValuationMethod.MANUAL,
                 null, "Kite", currency, currency, new BigDecimal("100"), new BigDecimal("110"), BigDecimal.TEN, BigDecimal.TEN,
-                BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null, null, null, null, null, null,
+                BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null, null, null, null, null, null, null, null,
                 false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null);
     }
 

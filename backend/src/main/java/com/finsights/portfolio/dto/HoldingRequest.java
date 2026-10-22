@@ -1,5 +1,6 @@
 package com.finsights.portfolio.dto;
 
+import com.finsights.portfolio.domain.AreaUnit;
 import com.finsights.portfolio.domain.CompoundingFrequency;
 import com.finsights.portfolio.domain.RepaymentFrequency;
 import com.finsights.portfolio.domain.ValuationMethod;
@@ -20,6 +21,9 @@ public record HoldingRequest(
         @Size(min = 1, max = 96, message = "Broker must be 1–96 characters") String broker,
         String currency,
         BigDecimal quantity,
+        /** Real-estate categories only — ignored (and nulled) for every other category. */
+        BigDecimal area,
+        AreaUnit areaUnit,
         BigDecimal investedValue,
         BigDecimal currentValue,
         BigDecimal fixedAnnualRate,

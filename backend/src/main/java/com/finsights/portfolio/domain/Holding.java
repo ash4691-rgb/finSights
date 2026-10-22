@@ -36,6 +36,12 @@ public class Holding {
     private String tickerSymbol;
     @Column(precision = 24, scale = 8)
     private BigDecimal quantity;
+    /** Set only for a holding filed under a real-estate category; {@code quantity} is forced to 1
+     *  for those instead (see HoldingService.copy()). Null for every other holding. */
+    @Column(precision = 18, scale = 4)
+    private BigDecimal area;
+    @Enumerated(EnumType.STRING) @Column(length = 16)
+    private AreaUnit areaUnit;
     /** Remaining cost basis after average-cost SELLs; the ledger owns this (see HoldingService). */
     @Column(precision = 20, scale = 2)
     private BigDecimal investedValue = BigDecimal.ZERO;
@@ -118,6 +124,10 @@ public class Holding {
     public void setTickerSymbol(String tickerSymbol) { this.tickerSymbol = tickerSymbol; }
     public BigDecimal getQuantity() { return quantity; }
     public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
+    public BigDecimal getArea() { return area; }
+    public void setArea(BigDecimal area) { this.area = area; }
+    public AreaUnit getAreaUnit() { return areaUnit; }
+    public void setAreaUnit(AreaUnit areaUnit) { this.areaUnit = areaUnit; }
     public BigDecimal getInvestedValue() { return investedValue; }
     public void setInvestedValue(BigDecimal investedValue) { this.investedValue = investedValue; }
     public BigDecimal getRealisedProfitLoss() { return realisedProfitLoss; }

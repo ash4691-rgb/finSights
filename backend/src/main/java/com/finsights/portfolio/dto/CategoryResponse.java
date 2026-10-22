@@ -8,6 +8,7 @@ import java.util.Set;
 
 public record CategoryResponse(
         String id, String name, HoldingKind kind, String description, Set<ValuationMethod> allowedValuationMethods,
+        boolean realEstate,
         BigDecimal investedValue, BigDecimal currentValue, BigDecimal profitLoss, BigDecimal profitLossPercentage,
         BigDecimal weightagePercent, BigDecimal liquidAmount, BigDecimal liquidPercent,
         BigDecimal npaAmount, BigDecimal npaPercent, int holdingCount, Instant createdAt, Instant updatedAt
