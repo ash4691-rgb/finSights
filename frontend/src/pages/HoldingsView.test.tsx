@@ -131,6 +131,47 @@ describe('HoldingDrawer — delete holding', () => {
   })
 })
 
+// A real-estate holding shows its area + unit, not quantity, wherever a holding's quantity
+// is otherwise displayed — the Holdings table row and the holding drawer.
+describe('real-estate holdings show area, not quantity', () => {
+  afterEach(() => cleanup())
+
+  const realEstateHolding: Holding = {
+    ...holding, id: 'h-re', name: '2BHK Flat, Koramangala', categoryName: 'Real Estate',
+    quantity: undefined, area: 1200, areaUnit: 'SQ_FT',
+  }
+
+  test('Holdings table shows area + unit instead of quantity', () => {
+    render(<HoldingsView holdings={[realEstateHolding]} categories={[]} reload={vi.fn()} onEdit={vi.fn()} onAdd={vi.fn()} onOpen={vi.fn()} />)
+
+    expect(screen.getByText('1200')).toBeInTheDocument()
+    expect(screen.getByText('sq. ft')).toBeInTheDocument()
+  })
+
+  test('a non-real-estate holding still shows quantity in the table', () => {
+    render(<HoldingsView holdings={[holding]} categories={[]} reload={vi.fn()} onEdit={vi.fn()} onAdd={vi.fn()} onOpen={vi.fn()} />)
+
+    expect(screen.queryByText('sq. ft')).not.toBeInTheDocument()
+  })
+
+  test('the holding drawer shows Area, not Quantity, for a real-estate holding', () => {
+    render(<HoldingDrawer holding={realEstateHolding} displayCurrency="INR" fxRatesToBase={{}}
+      onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
+
+    expect(screen.getByText('Area')).toBeInTheDocument()
+    expect(screen.getByText('1200 sq. ft')).toBeInTheDocument()
+    expect(screen.queryByText('Quantity')).not.toBeInTheDocument()
+  })
+
+  test('the holding drawer still shows Quantity for a non-real-estate holding', () => {
+    render(<HoldingDrawer holding={{ ...holding, quantity: 5 }} displayCurrency="INR" fxRatesToBase={{}}
+      onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
+
+    expect(screen.getByText('Quantity')).toBeInTheDocument()
+    expect(screen.queryByText('Area')).not.toBeInTheDocument()
+  })
+})
+
 // Real estate is one holding per unit — quantity doesn't mean anything, so the Add/Edit Holding
 // form swaps it for an area + unit pair whenever the selected category is real estate.
 describe('HoldingModal — real estate area/unit', () => {

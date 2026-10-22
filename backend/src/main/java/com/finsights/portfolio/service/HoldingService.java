@@ -620,8 +620,8 @@ public class HoldingService {
         if (!liability && method == ValuationMethod.MANUAL && source.currentValue() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A manually-valued holding needs a current value");
         }
-        if (!liability && category.isRealEstate()
-                && (source.area() == null || source.area().signum() <= 0 || source.areaUnit() == null)) {
+        boolean realEstate = !liability && category.isRealEstate();
+        if (realEstate && (source.area() == null || source.area().signum() <= 0 || source.areaUnit() == null)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A real-estate holding needs an area and a unit");
         }
         if (liability) validateLiability(source);
@@ -632,9 +632,9 @@ public class HoldingService {
         target.setTickerSymbol(liability ? null : clean(source.tickerSymbol()));
         target.setBroker(clean(source.broker()));
         target.setCurrency(source.currency() == null || source.currency().isBlank() ? "INR" : source.currency().trim().toUpperCase());
-        target.setQuantity(liability ? null : category.isRealEstate() ? BigDecimal.ONE : source.quantity());
-        target.setArea(!liability && category.isRealEstate() ? source.area() : null);
-        target.setAreaUnit(!liability && category.isRealEstate() ? source.areaUnit() : null);
+        target.setQuantity(liability ? null : realEstate ? BigDecimal.ONE : source.quantity());
+        target.setArea(realEstate ? source.area() : null);
+        target.setAreaUnit(realEstate ? source.areaUnit() : null);
         target.setInvestedValue(zeroIfNull(source.investedValue()));
         target.setCurrentValue(zeroIfNull(source.currentValue()));
         target.setFixedAnnualRate(source.fixedAnnualRate()); // asset: compounding rate; liability: loan APR
