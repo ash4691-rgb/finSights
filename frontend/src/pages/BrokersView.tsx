@@ -151,12 +151,10 @@ export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNot
     </section>
     <section className="panel">
       <div className="panel-heading"><h3>Upload data manually</h3><span>One-off statements</span></div>
-      <p className="hint">Already have a statement on hand? Upload a CAS statement, a broker's holding statement, or a transaction statement (PDF, XLSX/XLS, CSV/TSV, or XML) — we'll work out what it is and pull out the holdings and transactions for you to review, with any personal details left out.</p>
+      <p className="hint">Already have a statement on hand? Upload a CAS statement, a broker's holding statement, or a transaction statement — PDF, XLSX/XLS, CSV/TSV, or XML, up to 15MB for a PDF or 10MB (max 10,000 rows) for a spreadsheet — we'll work out what it is and pull out the holdings and transactions for you to review, with any personal details left out.</p>
       <button type="button" className="upload-option upload-statement-card" onClick={onUploadStatement} disabled={!hasCategories} title={hasCategories ? '' : 'Add a category first'}>
         <span className="upload-option-icon">↑</span>
         <strong>Upload a statement</strong>
-        <span className="hint">CAS statement, broker holding statement, or transaction statement — PDF, XLSX/XLS, CSV/TSV, or XML.</span>
-        <span className="hint">Up to 15MB for a PDF, or 10MB (max 10,000 rows) for a spreadsheet.</span>
       </button>
     </section>
     <section className="panel">

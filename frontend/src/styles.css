@@ -607,14 +607,13 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .upload-option strong{font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px}
 .upload-option-icon{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
 .upload-option.coming-soon{cursor:default}
-/* A single standalone upload entry point (unlike the broker-tile-grid rows above it) reads
-   better as a centered dropzone than a left-aligned card — same visual language as .broker-tile,
-   just roomier since it's the only thing in its row. */
-.upload-option.upload-statement-card{align-items:center;gap:10px;max-width:400px;margin:0 auto;padding:28px 24px;border-style:dashed;text-align:center}
+/* A single standalone upload entry point (unlike the broker-tile-grid rows above it): the file
+   types and limits live once in the panel's own paragraph above, so this is just the action
+   itself — a short, full-width bar rather than a tall boxy dropzone repeating that text. */
+.upload-option.upload-statement-card{flex-direction:row;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px 24px;border-style:dashed}
 .upload-option.upload-statement-card:not(.coming-soon):hover{border-color:var(--accent)}
-.upload-option.upload-statement-card .upload-option-icon{width:44px;height:44px;font-size:18px}
-.upload-option.upload-statement-card strong{font-size:14px;flex-direction:column;gap:2px}
-.upload-option.upload-statement-card .hint{text-align:center}
+.upload-option.upload-statement-card .upload-option-icon{width:32px;height:32px;font-size:14px}
+.upload-option.upload-statement-card strong{font-size:14px}
 .broker-tile{display:flex;flex-direction:column;align-items:center;gap:10px;padding:22px 14px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:center}
 .broker-tile:hover{border-color:var(--border-strong)}
 .broker-tile.connected{border-color:var(--success-text)}
