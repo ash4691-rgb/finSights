@@ -41,6 +41,7 @@ public class HoldingService {
     // fit can't be persisted, so it's rejected on input and never re-saved once computed.
     private static final BigDecimal MAX_MONEY = new BigDecimal("999999999999999999.99");      // precision 20, scale 2
     private static final BigDecimal MAX_QUANTITY = new BigDecimal("9999999999999999.99999999"); // precision 24, scale 8
+    private static final BigDecimal MAX_AREA = new BigDecimal("99999999999999.9999"); // precision 18, scale 4
 
     private final HoldingRepository holdings;
     private final CategoryRepository categories;
@@ -542,7 +543,7 @@ public class HoldingService {
                     holding.getValuationMethod(), holding.getTickerSymbol(), holding.getBroker(),
                     holding.getCurrency(), holding.getCurrency(), invested, current, pnl, pnlPct, zeroIfNull(holding.getRealisedProfitLoss()),
                     zeroIfNull(holding.getAccruedIncome()),
-                    holding.getQuantity(), holding.getFixedAnnualRate(),
+                    holding.getQuantity(), holding.getArea(), holding.getAreaUnit(), holding.getFixedAnnualRate(),
                     holding.getCompoundingFrequency(), holding.getFixedRateStartDate(), holding.getFixedRateEndDate(),
                     holding.getRepaymentFrequency(), holding.getEmiAmount(), holding.getEmiDayOfMonth(),
                     holding.getLoanTermMonths(), holding.getRepaymentDueDate(), holding.getLiquidWithinSevenDays(),
@@ -570,7 +571,7 @@ public class HoldingService {
                 holding.getCurrency() == null ? "INR" : holding.getCurrency(),
                 holding.getCurrency() == null ? "INR" : holding.getCurrency(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                holding.getQuantity(), holding.getFixedAnnualRate(), holding.getCompoundingFrequency(),
+                holding.getQuantity(), holding.getArea(), holding.getAreaUnit(), holding.getFixedAnnualRate(), holding.getCompoundingFrequency(),
                 holding.getFixedRateStartDate(), holding.getFixedRateEndDate(), holding.getRepaymentFrequency(),
                 holding.getEmiAmount(), holding.getEmiDayOfMonth(), holding.getLoanTermMonths(), holding.getRepaymentDueDate(),
                 holding.getLiquidWithinSevenDays(), holding.getBlocked(), holding.getDescription(), holding.getNotes(),
@@ -585,6 +586,7 @@ public class HoldingService {
 
     private void copy(HoldingRequest source, Holding target) {
         requireWithinRange(source.quantity(), MAX_QUANTITY, "Quantity");
+        requireWithinRange(source.area(), MAX_AREA, "Area");
         requireWithinRange(source.investedValue(), MAX_MONEY, "Invested value");
         requireWithinRange(source.currentValue(), MAX_MONEY, "Current value");
 
@@ -618,6 +620,10 @@ public class HoldingService {
         if (!liability && method == ValuationMethod.MANUAL && source.currentValue() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A manually-valued holding needs a current value");
         }
+        boolean realEstate = !liability && category.isRealEstate();
+        if (realEstate && (source.area() == null || source.area().signum() <= 0 || source.areaUnit() == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A real-estate holding needs an area and a unit");
+        }
         if (liability) validateLiability(source);
 
         target.setCategory(category);
@@ -626,7 +632,9 @@ public class HoldingService {
         target.setTickerSymbol(liability ? null : clean(source.tickerSymbol()));
         target.setBroker(clean(source.broker()));
         target.setCurrency(source.currency() == null || source.currency().isBlank() ? "INR" : source.currency().trim().toUpperCase());
-        target.setQuantity(liability ? null : source.quantity());
+        target.setQuantity(liability ? null : realEstate ? BigDecimal.ONE : source.quantity());
+        target.setArea(realEstate ? source.area() : null);
+        target.setAreaUnit(realEstate ? source.areaUnit() : null);
         target.setInvestedValue(zeroIfNull(source.investedValue()));
         target.setCurrentValue(zeroIfNull(source.currentValue()));
         target.setFixedAnnualRate(source.fixedAnnualRate()); // asset: compounding rate; liability: loan APR

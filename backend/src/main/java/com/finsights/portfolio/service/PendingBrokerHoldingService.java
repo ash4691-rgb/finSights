@@ -79,7 +79,7 @@ public class PendingBrokerHoldingService {
         }
         HoldingRequest request = new HoldingRequest(
                 categoryId, row.getSuggestedName(), ValuationMethod.BROKER_SYNC, null,
-                brokerDisplayName(row.getBrokerKey()), "INR", row.getQuantity(), BigDecimal.ZERO, row.getCurrentValue(),
+                brokerDisplayName(row.getBrokerKey()), "INR", row.getQuantity(), null, null, BigDecimal.ZERO, row.getCurrentValue(),
                 null, null, null, null, null, null, null, null, null, false, false, null, null, Set.of());
         HoldingResponse created = holdingService.create(request);
         Holding holding = holdings.findByIdAndUser_Id(created.id(), user.getId())

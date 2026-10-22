@@ -4,6 +4,7 @@ export type ValuationMethod = 'MANUAL' | 'MARKET_PRICE' | 'BROKER_SYNC' | 'FIXED
 export type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'ANNUALLY' | 'AT_MATURITY'
 export type RepaymentFrequency = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'ONE_TIME'
 export type TransactionType = 'BUY' | 'SELL' | 'SPLIT' | 'INTEREST' | 'ADJUSTMENT' | 'REPAY'
+export type AreaUnit = 'ACRE' | 'HECTARE' | 'SQ_M' | 'SQ_FT'
 export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
 
 // A user-defined bucket (Name + Asset/Liability type). Invested/current/P&L, weightage, and
@@ -13,6 +14,8 @@ export type Category = {
   // Valuation methods holdings filed under this category may use. Empty/absent means no
   // restriction — every method is allowed (the default for categories that predate this field).
   allowedValuationMethods?: ValuationMethod[]
+  // True for a real-estate category — its holdings ask for area + unit instead of quantity.
+  realEstate?: boolean
   investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number
   weightagePercent: number; liquidAmount: number; liquidPercent: number; npaAmount: number; npaPercent: number
   holdingCount: number; createdAt?: string; updatedAt?: string
@@ -27,7 +30,7 @@ export type Holding = {
   // becomes the selected view currency on a display-currency-converted holdings list.
   defaultCurrency: string
   investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; realisedProfitLoss: number; accruedIncome: number
-  quantity?: number; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string; fixedRateEndDate?: string
+  quantity?: number; area?: number; areaUnit?: AreaUnit; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string; fixedRateEndDate?: string
   repaymentFrequency?: RepaymentFrequency; emiAmount?: number; emiDayOfMonth?: number; loanTermMonths?: number; repaymentDueDate?: string
   liquidWithinSevenDays: boolean; blocked: boolean; description?: string; notes?: string; tags: string[]
   createdAt?: string; updatedAt?: string; priceUpdatedAt?: string

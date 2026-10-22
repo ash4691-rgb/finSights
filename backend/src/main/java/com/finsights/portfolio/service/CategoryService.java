@@ -72,6 +72,7 @@ public class CategoryService {
         category.setKind(request.kind());
         category.setDescription(clean(request.description()));
         category.setAllowedValuationMethods(cleanAllowedMethods(request));
+        category.setRealEstate(request.realEstate());
         category.setSortOrder((int) categories.countByUser_Id(currentUser.currentUser().getId()));
         Category saved = categories.save(category);
         return toResponse(saved, List.of(), BigDecimal.ZERO, BigDecimal.ZERO);
@@ -114,6 +115,7 @@ public class CategoryService {
         category.setKind(request.kind());
         category.setDescription(clean(request.description()));
         category.setAllowedValuationMethods(nextAllowed);
+        category.setRealEstate(request.realEstate());
         categories.save(category);
         return get(id, null);
     }
@@ -154,6 +156,7 @@ public class CategoryService {
         BigDecimal liquidAmount = sum(holdings, h -> Boolean.TRUE.equals(h.liquidWithinSevenDays()), HoldingResponse::currentValue);
         BigDecimal npaAmount = sum(holdings, h -> Boolean.TRUE.equals(h.blocked()), HoldingResponse::currentValue);
         return new CategoryResponse(c.getId(), c.getName(), c.getKind(), c.getDescription(), c.getAllowedValuationMethods(),
+                c.isRealEstate(),
                 invested, current, pnl, pnlPct, weightage,
                 liquidAmount, pctOf(liquidAmount, current), npaAmount, pctOf(npaAmount, current),
                 holdings.size(), c.getCreatedAt(), c.getUpdatedAt());

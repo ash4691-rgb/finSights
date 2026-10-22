@@ -76,8 +76,8 @@ class HoldingServiceTest {
 
     private HoldingRequest editRequest(BigDecimal investedValue, BigDecimal currentValue) {
         return new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
-                null, investedValue, currentValue, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, investedValue, currentValue, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null);
     }
 
     @Test
@@ -335,7 +335,7 @@ class HoldingServiceTest {
                 txn(TransactionType.BUY, "500000", null)));
 
         HoldingRequest request = new HoldingRequest("cat-1", "HDFC Home Loan", null, null, "HDFC Bank", "INR",
-                null, new BigDecimal("999999.00"), new BigDecimal("400000.00"), null, null, null, null,
+                null, null, null, new BigDecimal("999999.00"), new BigDecimal("400000.00"), null, null, null, null,
                 com.finsights.portfolio.domain.RepaymentFrequency.MONTHLY, new BigDecimal("10000"), 5, null, null,
                 null, null, null, null, null);
 
@@ -359,7 +359,7 @@ class HoldingServiceTest {
                 txn(TransactionType.BUY, "10000", null)));
 
         HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "USD",
-                null, new BigDecimal("10000.00"), new BigDecimal("12000.00"), null, null, null, null, null, null,
+                null, null, null, new BigDecimal("10000.00"), new BigDecimal("12000.00"), null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null);
 
         service.update("h-1", request);
@@ -390,7 +390,7 @@ class HoldingServiceTest {
 
         HoldingRequest request = new HoldingRequest("cat-1", "Amazon", ValuationMethod.MARKET_PRICE, "AMZN", "Zerodha", "INR",
                 new BigDecimal("5"), null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null, null);
 
         var response = service.create(request);
 
@@ -412,7 +412,7 @@ class HoldingServiceTest {
 
         HoldingRequest request = new HoldingRequest("cat-1", "Amazon", ValuationMethod.MARKET_PRICE, "AMZN", "Zerodha", "USD",
                 new BigDecimal("5"), null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null, null);
 
         service.create(request);
 
@@ -470,7 +470,7 @@ class HoldingServiceTest {
         HoldingResponse converted = org.mockito.Mockito.mock(HoldingResponse.class);
         when(fx.convert(any(HoldingResponse.class), eq("USD"))).thenReturn(converted);
         HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
-                null, new BigDecimal("10000"), new BigDecimal("12000"), null, null, null, null, null, null,
+                null, null, null, new BigDecimal("10000"), new BigDecimal("12000"), null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null);
 
         HoldingResponse result = service.create(request, "usd");
@@ -494,5 +494,66 @@ class HoldingServiceTest {
         HoldingResponse result = service.update("h-1", editRequest(new BigDecimal("10000.00"), new BigDecimal("12000.00")), "usd");
 
         assertThat(result).isSameAs(converted);
+    }
+
+    // Real estate is one holding per unit — quantity doesn't mean anything, so it's forced to 1
+    // (ignoring whatever the request sends) and the holding takes an area + unit instead.
+    @Test
+    void createRealEstateHoldingForcesQuantityToOneAndStoresArea() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        category.setRealEstate(true);
+        stubForCreate(category);
+        // The ledger the just-booked opening BUY (quantity forced to 1 by copy()) would resolve to —
+        // syncFromTransactions() re-derives quantity from this, same as it would against a real DB.
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
+                txn(TransactionType.BUY, "5000000", "1")));
+        HoldingRequest request = new HoldingRequest("cat-1", "2BHK Flat", ValuationMethod.MANUAL, null, "Self", "INR",
+                new BigDecimal("99"), new BigDecimal("1200"), com.finsights.portfolio.domain.AreaUnit.SQ_FT,
+                new BigDecimal("5000000"), new BigDecimal("6000000"), null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null);
+
+        HoldingResponse response = service.create(request);
+
+        assertThat(response.quantity()).isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(response.area()).isEqualByComparingTo("1200");
+        assertThat(response.areaUnit()).isEqualTo(com.finsights.portfolio.domain.AreaUnit.SQ_FT);
+    }
+
+    @Test
+    void createRealEstateHoldingWithoutAreaIsRejected() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        category.setRealEstate(true);
+        UserAccount user = new UserAccount("demo@finsights.local", "Demo");
+        when(currentUser.currentUser()).thenReturn(user);
+        when(categories.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(category));
+        when(holdings.findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(any(), any(), any())).thenReturn(Optional.empty());
+        when(fx.supports(any())).thenReturn(true);
+        HoldingRequest request = new HoldingRequest("cat-1", "2BHK Flat", ValuationMethod.MANUAL, null, "Self", "INR",
+                null, null, null, new BigDecimal("5000000"), new BigDecimal("6000000"), null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("area");
+    }
+
+    @Test
+    void createNonRealEstateHoldingNeverPersistsArea() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForCreate(category);
+        HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
+                null, new BigDecimal("1200"), com.finsights.portfolio.domain.AreaUnit.SQ_FT,
+                new BigDecimal("10000"), new BigDecimal("12000"), null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null);
+
+        service.create(request);
+
+        ArgumentCaptor<Holding> captor = ArgumentCaptor.forClass(Holding.class);
+        verify(holdings, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(0).getArea()).isNull();
+        assertThat(captor.getAllValues().get(0).getAreaUnit()).isNull();
     }
 }

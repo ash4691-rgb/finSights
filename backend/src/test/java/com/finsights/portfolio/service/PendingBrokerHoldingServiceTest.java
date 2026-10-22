@@ -201,7 +201,7 @@ class PendingBrokerHoldingServiceTest {
         return new HoldingResponse(id, "ref", "cat-1", "Category", "INFY", HoldingKind.ASSET,
                 ValuationMethod.BROKER_SYNC, null, "Zerodha Kite", "INR", "INR",
                 BigDecimal.ZERO, new BigDecimal("1500.00"), new BigDecimal("1500.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.TEN, null, null, null, null, null, null, null, null, null, false, false, null, null, Set.of(),
+                BigDecimal.TEN, null, null, null, null, null, null, null, null, null, null, null, false, false, null, null, Set.of(),
                 Instant.now(), Instant.now(), null, false, null);
     }
 }

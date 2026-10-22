@@ -55,7 +55,7 @@ class CategoryServiceTest {
         loan.setName("Home Loan");
         loan.setKind(HoldingKind.LIABILITY);
 
-        when(categoryRepository.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u-1")).thenReturn(List.of(equity, loan));
+        org.mockito.Mockito.lenient().when(categoryRepository.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u-1")).thenReturn(List.of(equity, loan));
     }
 
     private static void setId(Object entity, String id) throws Exception {
@@ -68,7 +68,7 @@ class CategoryServiceTest {
         return new HoldingResponse(id, "ref-" + id, categoryId, "n/a", "Holding " + id, kind, ValuationMethod.MANUAL,
                 null, "Broker", "INR", "INR", new BigDecimal(invested), new BigDecimal(current),
                 new BigDecimal(current).subtract(new BigDecimal(invested)), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
                 liquid, npa, null, null, java.util.Set.of(), null, null, null, false, null);
     }
 
@@ -133,5 +133,39 @@ class CategoryServiceTest {
             assertThat(c.holdingCount()).isZero();
             assertThat(c.liquidPercent()).isEqualByComparingTo("0");
         });
+    }
+
+    @Test
+    void createPersistsRealEstateFlag() {
+        when(categoryRepository.countByUser_Id("u-1")).thenReturn(0L);
+        when(categoryRepository.save(org.mockito.ArgumentMatchers.any(Category.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CategoryResponse response = service.create(new com.finsights.portfolio.dto.CategoryRequest(
+                "Real Estate", HoldingKind.ASSET, null, java.util.Set.of(ValuationMethod.MANUAL), true));
+
+        assertThat(response.realEstate()).isTrue();
+    }
+
+    @Test
+    void createDefaultsRealEstateFlagToFalse() {
+        when(categoryRepository.countByUser_Id("u-1")).thenReturn(0L);
+        when(categoryRepository.save(org.mockito.ArgumentMatchers.any(Category.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CategoryResponse response = service.create(new com.finsights.portfolio.dto.CategoryRequest(
+                "Growth Equity", HoldingKind.ASSET, null, java.util.Set.of(), false));
+
+        assertThat(response.realEstate()).isFalse();
+    }
+
+    @Test
+    void updatePersistsRealEstateFlagChange() {
+        when(categoryRepository.findByIdAndUser_Id("c-1", "u-1")).thenReturn(java.util.Optional.of(equity));
+        when(holdingService.list((String) null)).thenReturn(List.of());
+
+        CategoryResponse response = service.update("c-1", new com.finsights.portfolio.dto.CategoryRequest(
+                "Growth Equity", HoldingKind.ASSET, null, java.util.Set.of(), true));
+
+        assertThat(equity.isRealEstate()).isTrue();
+        assertThat(response.realEstate()).isTrue();
     }
 }

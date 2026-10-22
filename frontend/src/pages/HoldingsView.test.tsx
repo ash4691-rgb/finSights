@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
-import { HoldingsView, HoldingDrawer } from './HoldingsView'
-import type { Holding } from '../types'
+import { HoldingsView, HoldingDrawer, HoldingModal } from './HoldingsView'
+import type { Category, Holding } from '../types'
 
 const holding: Holding = {
   id: 'h1', holdingId: 'HLD-1', categoryId: 'c1', categoryName: 'Equity', name: 'Reliance Industries',
@@ -9,6 +9,13 @@ const holding: Holding = {
   investedValue: 1000, currentValue: 1200, profitLoss: 200, profitLossPercentage: 20, realisedProfitLoss: 0,
   accruedIncome: 0, liquidWithinSevenDays: false, blocked: false, tags: [],
 }
+
+const baseCategory = {
+  investedValue: 0, currentValue: 0, profitLoss: 0, profitLossPercentage: 0,
+  weightagePercent: 0, liquidAmount: 0, liquidPercent: 0, npaAmount: 0, npaPercent: 0, holdingCount: 0,
+}
+const realEstateCategory: Category = { id: 'c-re', name: 'Real Estate', kind: 'ASSET', realEstate: true, ...baseCategory }
+const equityCategory: Category = { id: 'c-eq', name: 'Growth Equity', kind: 'ASSET', realEstate: false, ...baseCategory }
 
 const okResponse = (body: unknown = {}, status = 200) =>
   Promise.resolve({ ok: true, status, json: () => Promise.resolve(body) } as Response)
@@ -121,5 +128,102 @@ describe('HoldingDrawer — delete holding', () => {
     await waitFor(() => expect(screen.getByText('Could not delete holding')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Delete holding' })).toBeEnabled()
     expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+// A real-estate holding shows its area + unit, not quantity, wherever a holding's quantity
+// is otherwise displayed — the Holdings table row and the holding drawer.
+describe('real-estate holdings show area, not quantity', () => {
+  afterEach(() => cleanup())
+
+  const realEstateHolding: Holding = {
+    ...holding, id: 'h-re', name: '2BHK Flat, Koramangala', categoryName: 'Real Estate',
+    quantity: undefined, area: 1200, areaUnit: 'SQ_FT',
+  }
+
+  test('Holdings table shows area + unit instead of quantity', () => {
+    render(<HoldingsView holdings={[realEstateHolding]} categories={[]} reload={vi.fn()} onEdit={vi.fn()} onAdd={vi.fn()} onOpen={vi.fn()} />)
+
+    expect(screen.getByText('1200')).toBeInTheDocument()
+    expect(screen.getByText('sq. ft')).toBeInTheDocument()
+  })
+
+  test('a non-real-estate holding still shows quantity in the table', () => {
+    render(<HoldingsView holdings={[holding]} categories={[]} reload={vi.fn()} onEdit={vi.fn()} onAdd={vi.fn()} onOpen={vi.fn()} />)
+
+    expect(screen.queryByText('sq. ft')).not.toBeInTheDocument()
+  })
+
+  test('the holding drawer shows Area, not Quantity, for a real-estate holding', () => {
+    render(<HoldingDrawer holding={realEstateHolding} displayCurrency="INR" fxRatesToBase={{}}
+      onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
+
+    expect(screen.getByText('Area')).toBeInTheDocument()
+    expect(screen.getByText('1200 sq. ft')).toBeInTheDocument()
+    expect(screen.queryByText('Quantity')).not.toBeInTheDocument()
+  })
+
+  test('the holding drawer still shows Quantity for a non-real-estate holding', () => {
+    render(<HoldingDrawer holding={{ ...holding, quantity: 5 }} displayCurrency="INR" fxRatesToBase={{}}
+      onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
+
+    expect(screen.getByText('Quantity')).toBeInTheDocument()
+    expect(screen.queryByText('Area')).not.toBeInTheDocument()
+  })
+})
+
+// Real estate is one holding per unit — quantity doesn't mean anything, so the Add/Edit Holding
+// form swaps it for an area + unit pair whenever the selected category is real estate.
+describe('HoldingModal — real estate area/unit', () => {
+  const tagSuggestionsOk = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) } as Response)
+
+  afterEach(() => { vi.unstubAllGlobals(); cleanup() })
+
+  test('shows Area + Unit instead of Quantity for a real-estate category', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(tagSuggestionsOk()))
+
+    render(<HoldingModal holding={null} category={realEstateCategory} categories={[realEstateCategory]} holdings={[]}
+      displayCurrency="INR" onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    expect(await screen.findByLabelText(/^Area/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Unit/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Quantity')).not.toBeInTheDocument()
+  })
+
+  test('shows Quantity, not Area/Unit, for a non-real-estate category', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(tagSuggestionsOk()))
+
+    render(<HoldingModal holding={null} category={equityCategory} categories={[equityCategory]} holdings={[]}
+      displayCurrency="INR" onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    expect(await screen.findByLabelText('Quantity')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Area')).not.toBeInTheDocument()
+  })
+
+  test('submits area/unit and nulls quantity for a real-estate holding', async () => {
+    let posted: Record<string, unknown> | null = null
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if ((init?.method ?? 'GET').toUpperCase() === 'POST' && !url.includes('tag-suggestions')) {
+        posted = JSON.parse(init!.body as string)
+        return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve({ ...holding, id: 'h-re' }) } as Response)
+      }
+      return tagSuggestionsOk()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const onSaved = vi.fn()
+
+    render(<HoldingModal holding={null} category={realEstateCategory} categories={[realEstateCategory]} holdings={[]}
+      displayCurrency="INR" onClose={vi.fn()} onSaved={onSaved} />)
+
+    fireEvent.change(await screen.findByLabelText(/^Area/), { target: { value: '1200' } })
+    fireEvent.change(screen.getByLabelText(/^Unit/), { target: { value: 'ACRE' } })
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: '2BHK Flat' } })
+    fireEvent.change(screen.getByLabelText(/^Broker \/ platform/), { target: { value: 'Self' } })
+    fireEvent.change(screen.getByLabelText(/^Invested value/), { target: { value: '5000000' } })
+    fireEvent.change(screen.getByLabelText(/^Current value/), { target: { value: '6000000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add holding' }))
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
+    expect(posted).toMatchObject({ area: 1200, areaUnit: 'ACRE', quantity: null })
   })
 })
