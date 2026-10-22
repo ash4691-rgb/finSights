@@ -25,6 +25,8 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [sortKey, setSortKey] = useState<TransactionSortKey | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const brokers = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
 
   const load = async () => {
@@ -60,7 +62,13 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
   }
   const arrow = (key: TransactionSortKey) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
 
-  const remove = async (t: Transaction) => { if (confirm(`Delete this ${label(t.type)} transaction?`)) { await api(`/api/transactions/${t.id}`, { method: 'DELETE' }); await reload() } }
+  const remove = async (t: Transaction) => {
+    if (!confirm(`Delete this ${label(t.type)} transaction?`)) return
+    setDeletingId(t.id); setDeleteError('')
+    try { await api(`/api/transactions/${t.id}`, { method: 'DELETE' }); await reload() }
+    catch (err) { setDeleteError(err instanceof Error ? err.message : 'Could not delete transaction') }
+    finally { setDeletingId(null) }
+  }
 
   return <>
     <section className="holdings-toolbar">
@@ -74,6 +82,7 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
       <button className="primary compact push-end" onClick={() => setCreating(true)} disabled={!holdings.length} title={holdings.length ? '' : 'Add a holding first'}>+ Log transaction</button>
     </section>
     {error && <p className="hint">{error}</p>}
+    {deleteError && <p className="form-error">{deleteError}</p>}
     <section className="table-panel"><table>
       <thead><tr>
         <th className="sortable" onClick={() => toggleSort('date')}>Date{arrow('date')}</th>
@@ -93,7 +102,7 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
         <td><strong>{money(t.amount, t.currency)}</strong></td>
         <td>{t.quantity ?? '—'}</td>
         <td className="txn-notes">{t.notes || '—'}</td>
-        <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditing(t)}>Edit</button><button className="danger-link" onClick={() => void remove(t)}>Delete</button></td>
+        <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditing(t)} disabled={deletingId === t.id}>Edit</button><button className="danger-link" onClick={() => void remove(t)} disabled={deletingId === t.id}>{deletingId === t.id ? 'Deleting…' : 'Delete'}</button></td>
       </tr>) : <tr><td colSpan={8} className="empty"><strong>No transactions match</strong><span>Log a buy, sell, split, interest, or adjustment against a holding.</span>{holdings.length > 0 && <button className="primary" onClick={() => setCreating(true)}>Log transaction</button>}</td></tr>}</tbody>
     </table></section>
     {(creating || editing) && <TransactionModal transaction={editing} holdings={holdings} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => { setCreating(false); setEditing(null) }} onSaved={() => { setCreating(false); setEditing(null); void reload() }} />}

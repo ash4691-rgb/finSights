@@ -22,6 +22,8 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const filtered = useMemo(() => holdings.filter(h =>
     `${h.name} ${h.broker ?? ''} ${h.categoryName} ${h.currency} ${h.tags.join(' ')}`.toLowerCase().includes(filter.toLowerCase())
     && (!categoryId || h.categoryId === categoryId)), [holdings, filter, categoryId])
@@ -54,7 +56,13 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
     await reload()
   }
 
-  const remove = async (holding: Holding) => { if (confirm(`Delete ${holding.name}?`)) { await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload() } }
+  const remove = async (holding: Holding) => {
+    if (!confirm(`Delete ${holding.name}?`)) return
+    setDeletingId(holding.id); setDeleteError('')
+    try { await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload() }
+    catch (err) { setDeleteError(err instanceof Error ? err.message : 'Could not delete holding') }
+    finally { setDeletingId(null) }
+  }
 
   return <>
     <section className="holdings-toolbar">
@@ -63,6 +71,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
       {sortKey && <button className="outline compact" onClick={() => setSortKey(null)}>Clear sort</button>}
       <button className="primary push-end" onClick={onAdd} disabled={!categories.length} title={categories.length ? '' : 'Add a category first'}>+ Add holding</button>
     </section>
+    {deleteError && <p className="form-error">{deleteError}</p>}
     <section className="table-panel"><table>
       <thead><tr>
         <th className="drag-col" title={sortKey ? 'Clear the column sort to drag-reorder rows' : 'Drag rows to reorder'} />
@@ -104,7 +113,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
               {holding.tags.length > 5 && <em className="tag-more" title={holding.tags.slice(5).join(', ')}>+{holding.tags.length - 5}</em>}
             </div>
           : <span className="owner">—</span>}</td>
-        <td className="actions actions-vertical"><button className="primary-link" onClick={() => onEdit(holding)}>Edit</button><button className="danger-link" onClick={() => void remove(holding)}>Delete</button></td>
+        <td className="actions actions-vertical"><button className="primary-link" onClick={() => onEdit(holding)} disabled={deletingId === holding.id}>Edit</button><button className="danger-link" onClick={() => void remove(holding)} disabled={deletingId === holding.id}>{deletingId === holding.id ? 'Deleting…' : 'Delete'}</button></td>
       </tr>) : <tr><td colSpan={10} className="empty"><strong>No holdings match</strong><span>Every holding maps to a category and a broker. {categories.length ? 'Add one below.' : 'Add a category first.'}</span><button className="primary" onClick={onAdd} disabled={!categories.length}>Add holding</button></td></tr>}</tbody>
     </table></section>
   </>
@@ -355,6 +364,8 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
   const [visibleTxns, setVisibleTxns] = useState(10)
   const [calcOpen, setCalcOpen] = useState(false)
   const [addingTxn, setAddingTxn] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   // Suppressed while the transaction modal is open on top — otherwise one Esc closes both.
   useEscToClose(() => { if (!addingTxn) onClose() })
   const loadDetail = () => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }
@@ -378,7 +389,9 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
   const repaid = Math.max(0, holding.investedValue - holding.currentValue)
   const removeHolding = async () => {
     if (!confirm(`Delete ${holding.name}?`)) return
-    await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload(); onClose()
+    setDeleting(true); setDeleteError('')
+    try { await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload(); onClose() }
+    catch (err) { setDeleteError(err instanceof Error ? err.message : 'Could not delete holding'); setDeleting(false) }
   }
   return <div className="modal-backdrop" onClick={onClose}><section className="modal drawer" onClick={e => e.stopPropagation()}>
     <div className="modal-header">
@@ -435,10 +448,11 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
           {t.notes && <span className="drawer-txn-notes">{t.notes}</span>}
         </div>)}{visibleTxns < txns.length && <p className="hint drawer-txns-more">Scroll for {txns.length - visibleTxns} more</p>}</div>}
 
+    {deleteError && <p className="form-error">{deleteError}</p>}
     <div className="modal-actions">
-      <button type="button" className="outline compact push-start" onClick={() => setAddingTxn(true)}>+ Log transaction</button>
-      <button className="primary" onClick={() => onEdit(holding)}>Edit holding</button>
-      <button className="danger-btn" onClick={() => void removeHolding()}>Delete holding</button>
+      <button type="button" className="outline compact push-start" onClick={() => setAddingTxn(true)} disabled={deleting}>+ Log transaction</button>
+      <button className="primary" onClick={() => onEdit(holding)} disabled={deleting}>Edit holding</button>
+      <button className="danger-btn" onClick={() => void removeHolding()} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete holding'}</button>
     </div>
     {addingTxn && <TransactionModal transaction={null} holdings={[holding]} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); loadDetail(); refreshHolding(); void reload() }} />}
   </section></div>
