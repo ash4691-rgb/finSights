@@ -607,6 +607,13 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .upload-option strong{font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px}
 .upload-option-icon{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
 .upload-option.coming-soon{cursor:default}
+/* A single standalone upload entry point (unlike the broker-tile-grid rows above it): the file
+   types and limits live once in the panel's own paragraph above, so this is just the action
+   itself — a short, full-width bar rather than a tall boxy dropzone repeating that text. */
+.upload-option.upload-statement-card{flex-direction:row;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px 24px;border-style:dashed}
+.upload-option.upload-statement-card:not(.coming-soon):hover{border-color:var(--accent)}
+.upload-option.upload-statement-card .upload-option-icon{width:32px;height:32px;font-size:14px}
+.upload-option.upload-statement-card strong{font-size:14px}
 .broker-tile{display:flex;flex-direction:column;align-items:center;gap:10px;padding:22px 14px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:center}
 .broker-tile:hover{border-color:var(--border-strong)}
 .broker-tile.connected{border-color:var(--success-text)}
@@ -708,6 +715,11 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .switch input:checked+.switch-track .switch-thumb{transform:translateX(16px);background:#fff}
 .switch-text{font-size:13px;color:var(--text);display:inline-flex;align-items:center;gap:5px}
 .import-upload{display:flex;align-items:center;gap:12px;margin:16px 0;padding:14px;border:1px dashed var(--border-strong);border-radius:10px;background:var(--surface-2)}
+/* The statement-import modal's dropzone is the one thing a user comes to this modal to do, so
+   it reads better centered and roomier than the plain inline bar TransactionsView's CSV import
+   uses — a modifier class rather than changing .import-upload itself, which TransactionsView
+   still relies on unchanged. */
+.import-upload.statement-upload{flex-direction:column;justify-content:center;max-width:380px;margin:16px auto;padding:26px 20px}
 .date-filter{padding:0 10px;color:var(--text-2)}
 .txn-notes{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge.txn-buy,.badge.txn-interest{background:var(--success-bg);border-color:var(--success-bg);color:var(--success-text)}
