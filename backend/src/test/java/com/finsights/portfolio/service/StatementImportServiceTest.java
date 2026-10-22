@@ -415,11 +415,142 @@ class StatementImportServiceTest {
     }
 
     @Test
+    void aGrowwStyleOrderHistoryWithThousandsOfRowsIsSplitIntoManyExtractableChunks() throws Exception {
+        // Mirrors the real-world shape that used to produce "Nothing we could extract": a few
+        // preamble rows (name/account), a blank separator, a header row, then thousands of
+        // one-line-per-order rows — all synthetic/anonymized here, never real statement data.
+        byte[] xlsx = xlsxWorkbook(wb -> {
+            var sheet = wb.createSheet("Sheet1");
+            writeRow(sheet, 0, "Name", "Demo User");
+            writeRow(sheet, 1, "Unique Client Code", "0000000000");
+            writeRow(sheet, 2);
+            writeRow(sheet, 3, "Order history for stocks from 01-01-2020 to 01-01-2026");
+            writeRow(sheet, 4);
+            writeRow(sheet, 5, "Stock name", "Symbol", "ISIN", "Type", "Quantity", "Value", "Exchange",
+                    "Exchange Order Id", "Execution date and time", "Order status");
+            for (int i = 0; i < 2199; i++) {
+                writeRow(sheet, 6 + i, "Demo Company " + i, "SYM" + i, "INE000A0" + String.format("%04d", i),
+                        i % 2 == 0 ? "BUY" : "SELL", "10", "1000", "NSE", "ORD" + i,
+                        "13-09-2021 02:13 PM", "Executed");
+            }
+        });
+
+        String flattened = StatementImportService.spreadsheetToText(xlsx);
+        List<String> chunks = StatementImportService.chunkFlattenedSpreadsheet(
+                flattened, StatementImportService.MAX_SPREADSHEET_ROWS_PER_CALL);
+
+        // 2205 total rows (6 preamble/header + 2199 data rows) split at 150 rows per chunk, so no
+        // single extraction call is ever asked to list thousands of rows in one response.
+        assertThat(chunks.size()).isGreaterThan(1);
+        for (String chunk : chunks) {
+            assertThat(chunk).startsWith("Sheet: Sheet1\n");
+            long dataRows = chunk.lines().filter(l -> l.startsWith("Demo Company")).count();
+            assertThat(dataRows).isLessThanOrEqualTo(StatementImportService.MAX_SPREADSHEET_ROWS_PER_CALL);
+        }
+        // Rejoining every chunk's data rows accounts for every order exactly once — chunking never
+        // drops or duplicates a row.
+        long totalDataRows = chunks.stream().flatMap(String::lines).filter(l -> l.startsWith("Demo Company")).count();
+        assertThat(totalDataRows).isEqualTo(2199);
+    }
+
+    @Test
     void spreadsheetToTextRejectsBytesThatLookLikeAZipButArentAWorkbook() {
         byte[] notReallyXlsx = { 0x50, 0x4B, 0x03, 0x04, 1, 2, 3, 4 };
         assertThatThrownBy(() -> StatementImportService.spreadsheetToText(notReallyXlsx))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Couldn't open");
+    }
+
+    @Test
+    void chunkFlattenedSpreadsheetLeavesAShortStatementAsOneChunk() {
+        String text = "Sheet: Holdings\nInfosys,INE009A01021,10\nTCS,INE467B01029,5\n";
+
+        List<String> chunks = StatementImportService.chunkFlattenedSpreadsheet(text, 150);
+
+        assertThat(chunks).hasSize(1);
+        assertThat(chunks.get(0)).isEqualTo(text);
+    }
+
+    @Test
+    void chunkFlattenedSpreadsheetSplitsALongSheetAtTheRowCapAndRepeatsTheSheetHeader() {
+        StringBuilder text = new StringBuilder("Sheet: Orders\n");
+        for (int i = 0; i < 5; i++) text.append("Row ").append(i).append('\n');
+
+        List<String> chunks = StatementImportService.chunkFlattenedSpreadsheet(text.toString(), 2);
+
+        assertThat(chunks).hasSize(3);
+        assertThat(chunks.get(0)).isEqualTo("Sheet: Orders\nRow 0\nRow 1\n");
+        assertThat(chunks.get(1)).isEqualTo("Sheet: Orders\nRow 2\nRow 3\n");
+        assertThat(chunks.get(2)).isEqualTo("Sheet: Orders\nRow 4\n");
+    }
+
+    @Test
+    void chunkFlattenedSpreadsheetKeepsEachSheetsOwnRowCountIndependent() {
+        String text = "Sheet: Holdings\nRow 0\nRow 1\nRow 2\nSheet: Transactions\nRow A\nRow B\n";
+
+        List<String> chunks = StatementImportService.chunkFlattenedSpreadsheet(text, 2);
+
+        assertThat(chunks).containsExactly(
+                "Sheet: Holdings\nRow 0\nRow 1\n",
+                "Sheet: Holdings\nRow 2\n",
+                "Sheet: Transactions\nRow A\nRow B\n");
+    }
+
+    @Test
+    void chunkFlattenedSpreadsheetKeepsATruncationNoticeAttachedToTheLastChunkRatherThanStartingANewOne() {
+        String text = "Sheet: Orders\nRow 0\nRow 1\n[Statement truncated after 2 rows]\n";
+
+        List<String> chunks = StatementImportService.chunkFlattenedSpreadsheet(text, 2);
+
+        assertThat(chunks).hasSize(1);
+        assertThat(chunks.get(0)).isEqualTo(text);
+    }
+
+    @Test
+    void mergeExtractionsReturnsTheSingleResponseUnchangedWhenThereIsOnlyOneChunk() {
+        ExtractedHolding row = new ExtractedHolding("Infosys", "INE009A01021", BigDecimal.TEN, null, null, null, null);
+        StatementExtractionResponse only = new StatementExtractionResponse(
+                StatementType.HOLDINGS, List.of(row), List.of(), List.of(), "2026-09-30", List.of("a warning"));
+
+        StatementExtractionResponse merged = StatementImportService.mergeExtractions(List.of(only));
+
+        assertThat(merged).isSameAs(only);
+    }
+
+    @Test
+    void mergeExtractionsCombinesTransactionsAndWarningsAcrossChunksAndDedupesHoldingsByIsin() {
+        ExtractedHolding infosysFirstSighting = new ExtractedHolding("Infosys", "INE009A01021", BigDecimal.TEN, null, null, null, null);
+        ExtractedHolding infosysSecondSighting = new ExtractedHolding("Infosys", "INE009A01021", BigDecimal.ONE, null, null, null, null);
+        ExtractedTransaction txn1 = new ExtractedTransaction("2026-01-01", TransactionType.BUY, "Infosys", "INE009A01021", BigDecimal.TEN, BigDecimal.TEN, null, null);
+        ExtractedTransaction txn2 = new ExtractedTransaction("2026-01-02", TransactionType.SELL, "TCS", "INE467B01029", BigDecimal.ONE, BigDecimal.ONE, null, null);
+
+        StatementExtractionResponse chunk1 = new StatementExtractionResponse(
+                StatementType.TRANSACTIONS, List.of(infosysFirstSighting), List.of(), List.of(txn1), null, List.of("warning 1"));
+        StatementExtractionResponse chunk2 = new StatementExtractionResponse(
+                StatementType.TRANSACTIONS, List.of(infosysSecondSighting), List.of(), List.of(txn2), "2026-02-01", List.of("warning 2"));
+
+        StatementExtractionResponse merged = StatementImportService.mergeExtractions(List.of(chunk1, chunk2));
+
+        assertThat(merged.statementType()).isEqualTo(StatementType.TRANSACTIONS);
+        // Same ISIN seen in two chunks — kept once, from whichever chunk reported it first.
+        assertThat(merged.holdings()).hasSize(1);
+        assertThat(merged.holdings().get(0).quantity()).isEqualByComparingTo(BigDecimal.TEN);
+        assertThat(merged.transactions()).containsExactly(txn1, txn2);
+        assertThat(merged.warnings()).containsExactly("warning 1", "warning 2");
+        // The first chunk had no statement date — the second chunk's isn't lost because of that.
+        assertThat(merged.statementDate()).isEqualTo("2026-02-01");
+    }
+
+    @Test
+    void mergeExtractionsFallsBackToMixedWhenChunksDisagreeOnStatementType() {
+        StatementExtractionResponse holdingsChunk = new StatementExtractionResponse(
+                StatementType.HOLDINGS, List.of(), List.of(), List.of(), null, List.of());
+        StatementExtractionResponse txnChunk = new StatementExtractionResponse(
+                StatementType.TRANSACTIONS, List.of(), List.of(), List.of(), null, List.of());
+
+        StatementExtractionResponse merged = StatementImportService.mergeExtractions(List.of(holdingsChunk, txnChunk));
+
+        assertThat(merged.statementType()).isEqualTo(StatementType.MIXED);
     }
 
     private static byte[] xlsxWorkbook(java.util.function.Consumer<org.apache.poi.ss.usermodel.Workbook> build) throws IOException {
