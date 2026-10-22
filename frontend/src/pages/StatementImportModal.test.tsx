@@ -59,6 +59,27 @@ describe('StatementImportModal', () => {
     expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
   })
 
+  test('the file picker accepts PDF, XLSX/XLS, CSV/TSV, and XML, and the hint names them', () => {
+    renderModal()
+    const input = document.querySelector('input[type=file]') as HTMLInputElement
+    expect(input.accept).toContain('.pdf')
+    expect(input.accept).toContain('.xlsx')
+    expect(input.accept).toContain('.xls')
+    expect(input.accept).toContain('.csv')
+    expect(input.accept).toContain('.tsv')
+    expect(input.accept).toContain('.xml')
+    expect(screen.getByText(/PDF, XLSX\/XLS, CSV\/TSV, or XML/)).toBeInTheDocument()
+  })
+
+  test('accepts an XLSX upload the same way as a CSV one', async () => {
+    fetchMock.mockReturnValueOnce(jsonResponse({ statementType: 'HOLDINGS', holdings: [], toRemove: [], transactions: [], warnings: [] }))
+    renderModal()
+    await pickFile('holdings.xlsx', 'binary-xlsx-content')
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/statements/import'), expect.objectContaining({ method: 'POST' })))
+    expect(screen.getByText('holdings.xlsx')).toBeInTheDocument()
+  })
+
   test('closing the modal calls onClose', () => {
     const { onClose } = renderModal()
     fireEvent.click(screen.getByRole('button', { name: '×' }))
