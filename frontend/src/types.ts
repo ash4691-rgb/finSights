@@ -134,4 +134,4 @@ export type GokuConfig = { available: boolean; admin: boolean; reason?: string }
 export type GokuRole = 'user' | 'assistant'
 export type GokuMessage = { id: string; role: GokuRole; content: string }
 export type GokuChatReply = { reply: string; queriesRemainingToday: number }
-export type GokuAllowedUser = { email: string; addedAt: string; addedBy?: string }
+export type GokuAllowedUser = { email: string; addedAt: string; addedBy?: string; model: string }

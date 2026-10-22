@@ -92,7 +92,12 @@ app:
     # right amount of friction for it.
     admin-allowlist: ${GOKU_ADMIN_ALLOWLIST:ash4691@gmail.com}
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
+    # Default model for anyone an admin hasn't explicitly assigned one to (see available-models
+    # and GokuAllowlistService#modelFor) — chat requests fall back to this one.
     model: ${GOKU_MODEL:claude-haiku-4-5-20251001}
+    # The model ids an admin may assign to a user from the allowlist panel. Keep this in sync with
+    # whatever models are actually available on the account behind ANTHROPIC_API_KEY.
+    available-models: ${GOKU_AVAILABLE_MODELS:claude-opus-5-5,claude-sonnet-5,claude-haiku-4-5-20251001}
     daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
   news:
     # Signals' Radar news feed (NewsService/NewsRefreshScheduler) — Google News RSS, no API key,

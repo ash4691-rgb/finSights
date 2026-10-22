@@ -2,6 +2,7 @@ package com.finsights.portfolio.api;
 
 import com.finsights.portfolio.dto.GokuAllowedUserResponse;
 import com.finsights.portfolio.dto.GokuAllowlistAddRequest;
+import com.finsights.portfolio.dto.GokuModelAssignRequest;
 import com.finsights.portfolio.service.CurrentUserService;
 import com.finsights.portfolio.service.GokuAccessService;
 import com.finsights.portfolio.service.GokuAllowlistService;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -49,5 +51,18 @@ public class GokuAdminController {
     void remove(@RequestParam String email) {
         access.requireAdmin();
         allowlist.remove(email);
+    }
+
+    /** The model ids an admin may assign to a user — what the allowlist panel's dropdown offers. */
+    @GetMapping("/models")
+    List<String> models() {
+        access.requireAdmin();
+        return allowlist.availableModels();
+    }
+
+    @PutMapping("/model")
+    GokuAllowedUserResponse setModel(@RequestParam String email, @Valid @RequestBody GokuModelAssignRequest request) {
+        access.requireAdmin();
+        return allowlist.setModel(email, request.model());
     }
 }
