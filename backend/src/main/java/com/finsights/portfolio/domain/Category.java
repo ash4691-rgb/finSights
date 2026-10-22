@@ -1,6 +1,7 @@
 package com.finsights.portfolio.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -36,6 +37,7 @@ public class Category {
     /** True for a real-estate category: its holdings take an area + unit instead of a quantity
      *  (one holding = one unit, so quantity is forced to 1 — see HoldingService). */
     @Column(nullable = false)
+    @ColumnDefault("false")
     private boolean realEstate = false;
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
