@@ -94,7 +94,12 @@ public class StatementImportService {
     private static final Logger log = LoggerFactory.getLogger(StatementImportService.class);
     private static final String ANTHROPIC_VERSION = "2023-06-01";
     private static final URI MESSAGES_URI = URI.create("https://api.anthropic.com/v1/messages");
-    private static final int MAX_TOKENS = 4096;
+    // A multi-year order-history export can run into the thousands of rows, and each extracted
+    // holding/transaction costs several dozen output tokens of JSON — 4096 was only ever enough
+    // for a short CAS-style statement. Raised well past that, and large spreadsheets are additionally
+    // split into row-chunked calls (see MAX_SPREADSHEET_ROWS_PER_CALL) so neither a single call's
+    // output budget nor its input size has to hold an entire multi-thousand-row statement at once.
+    private static final int MAX_TOKENS = 8192;
     /** Generous ceilings against an oversized or mistaken upload, not real-world limits — rejected
      *  before an API call is ever made. */
     static final int MAX_PDF_BYTES = 15 * 1024 * 1024;
@@ -107,6 +112,11 @@ public class StatementImportService {
     // has — a statement with more real data than this isn't something a broker export produces,
     // so it's treated as a mistaken upload rather than silently truncated without a word.
     static final int MAX_SPREADSHEET_ROWS = 10_000;
+    // A single extraction call's output has to list every holding/transaction it finds as JSON, so
+    // a chunk this size comfortably fits MAX_TOKENS even in the worst case (every row a distinct
+    // transaction with notes) while still being large enough that a typical statement needs only
+    // one or two calls.
+    static final int MAX_SPREADSHEET_ROWS_PER_CALL = 150;
 
     private static final String TOOL_NAME = "extract_statement";
     private static final byte[] PDF_MAGIC = "%PDF".getBytes(StandardCharsets.US_ASCII);
@@ -137,7 +147,9 @@ public class StatementImportService {
             3. For transactions: report each dated buy, sell, split, interest/dividend, adjustment, or loan \
             repayment line, with its date as YYYY-MM-DD and its type as one of BUY, SELL, SPLIT, INTEREST, \
             ADJUSTMENT, REPAY — picking the closest fit when a broker uses different wording. Omit amount \
-            or quantity when the line doesn't state one (e.g. a SPLIT has no amount).
+            or quantity when the line doesn't state one (e.g. a SPLIT has no amount). If a line shows its \
+            own order/execution status, only report it when that status is executed/completed — skip a \
+            cancelled, rejected, pending, or open order entirely (no warning needed; it never happened).
             4. Only ever return the fields the extract_statement tool defines. Never include PAN, bank \
             account numbers, demat/folio account numbers, address, phone number, email, or any other \
             personal information, even if it appears in the document — the schema has no field for it on \
@@ -191,14 +203,24 @@ public class StatementImportService {
                     "You've hit today's statement-upload limit — try again tomorrow.");
         }
 
-        ObjectNode body = switch (format) {
-            case PDF -> buildPdfRequestBody(json, model, Base64.getEncoder().encodeToString(decrypted));
-            case SPREADSHEET -> buildTextRequestBody(json, model, spreadsheetToText(decrypted));
-            case TEXT -> buildTextRequestBody(json, model, decodeText(decrypted));
+        StatementExtractionResponse extracted = switch (format) {
+            case PDF -> parseExtraction(callClaude(
+                    buildPdfRequestBody(json, model, Base64.getEncoder().encodeToString(decrypted))));
+            case SPREADSHEET -> extractFromChunks(
+                    chunkFlattenedSpreadsheet(spreadsheetToText(decrypted), MAX_SPREADSHEET_ROWS_PER_CALL));
+            case TEXT -> parseExtraction(callClaude(buildTextRequestBody(json, model, decodeText(decrypted))));
         };
-        JsonNode response = callClaude(body);
-        StatementExtractionResponse extracted = parseExtraction(response);
         return matchAgainstExisting(enrichWithTickers(extracted), userId);
+    }
+
+    /** One extraction call per chunk — see {@link #chunkFlattenedSpreadsheet} for why a large
+     *  spreadsheet is split at all — merged into a single result via {@link #mergeExtractions}. */
+    private StatementExtractionResponse extractFromChunks(List<String> chunks) {
+        List<StatementExtractionResponse> parsed = new ArrayList<>();
+        for (String chunk : chunks) {
+            parsed.add(parseExtraction(callClaude(buildTextRequestBody(json, model, chunk))));
+        }
+        return mergeExtractions(parsed);
     }
 
     /** What an uploaded statement turns out to be, decided from its own bytes rather than a
@@ -259,6 +281,75 @@ public class StatementImportService {
             text.append("[Statement truncated after ").append(MAX_SPREADSHEET_ROWS).append(" rows]\n");
         }
         return text.toString();
+    }
+
+    /**
+     * Splits an already-flattened spreadsheet (see {@link #spreadsheetToText}) into one or more
+     * self-contained chunks of at most {@code maxDataRowsPerChunk} data rows each, so a statement
+     * with thousands of rows (a multi-year order history, say) is sent to Claude as several smaller
+     * extraction calls instead of one whose output the model can't fit in a single response. Each
+     * chunk keeps its own {@code Sheet: <name>} header line so the model can still see which sheet
+     * it's reading; a truncation notice is kept attached to whichever chunk it falls in rather than
+     * starting a near-empty chunk of its own.
+     */
+    static List<String> chunkFlattenedSpreadsheet(String text, int maxDataRowsPerChunk) {
+        List<String> chunks = new ArrayList<>();
+        StringBuilder chunk = new StringBuilder();
+        String sheetHeader = null;
+        int rowsInChunk = 0;
+        for (String line : text.lines().toList()) {
+            boolean isSheetHeader = line.startsWith("Sheet: ");
+            boolean isMarkerLine = line.startsWith("[");
+            if (isSheetHeader) {
+                if (!chunk.isEmpty()) chunks.add(chunk.toString());
+                chunk = new StringBuilder();
+                rowsInChunk = 0;
+                sheetHeader = line;
+                chunk.append(line).append('\n');
+                continue;
+            }
+            if (!isMarkerLine && rowsInChunk >= maxDataRowsPerChunk) {
+                chunks.add(chunk.toString());
+                chunk = new StringBuilder();
+                rowsInChunk = 0;
+                if (sheetHeader != null) chunk.append(sheetHeader).append('\n');
+            }
+            chunk.append(line).append('\n');
+            if (!isMarkerLine) rowsInChunk++;
+        }
+        if (!chunk.isEmpty()) chunks.add(chunk.toString());
+        return chunks.isEmpty() ? List.of(text) : chunks;
+    }
+
+    /**
+     * Combines the per-chunk results of {@link #extractFromChunks} into one response: holdings are
+     * deduplicated by ISIN (keeping the first sighting — the same holding can legitimately appear in
+     * more than one chunk of the same statement), transactions and warnings are simply concatenated,
+     * the first non-null statement date wins, and the statement type is whatever every chunk agreed
+     * on, or MIXED if they didn't. Package-private and pure so it's unit-testable without a network
+     * call.
+     */
+    static StatementExtractionResponse mergeExtractions(List<StatementExtractionResponse> parts) {
+        if (parts.isEmpty()) {
+            return new StatementExtractionResponse(StatementType.HOLDINGS, List.of(), List.of(), List.of(), null, List.of());
+        }
+        if (parts.size() == 1) return parts.get(0);
+
+        Set<StatementType> types = parts.stream().map(StatementExtractionResponse::statementType).collect(Collectors.toSet());
+        StatementType mergedType = types.size() == 1 ? types.iterator().next() : StatementType.MIXED;
+
+        Map<String, ExtractedHolding> holdingsByIsin = new LinkedHashMap<>();
+        List<ExtractedTransaction> transactions = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        String statementDate = null;
+        for (StatementExtractionResponse part : parts) {
+            for (ExtractedHolding holding : part.holdings()) holdingsByIsin.putIfAbsent(holding.isin(), holding);
+            transactions.addAll(part.transactions());
+            warnings.addAll(part.warnings());
+            if (statementDate == null) statementDate = part.statementDate();
+        }
+        return new StatementExtractionResponse(mergedType, List.copyOf(holdingsByIsin.values()), List.of(),
+                transactions, statementDate, warnings);
     }
 
     private static String rowText(Row row, DataFormatter formatter) {
