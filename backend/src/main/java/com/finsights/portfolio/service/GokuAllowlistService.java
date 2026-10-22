@@ -1,11 +1,17 @@
 package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.domain.GokuAllowedUser;
-import com.finsights.portfolio.dto.GokuAllowedUserResponse;
+import com.finsights.portfolio.domain.UserAccount;
+import com.finsights.portfolio.dto.GokuAccessResult;
+import com.finsights.portfolio.dto.GokuModelTier;
+import com.finsights.portfolio.dto.GokuUserSearchResult;
 import com.finsights.portfolio.repository.GokuAllowedUserRepository;
+import com.finsights.portfolio.repository.UserAccountRepository;
 import jakarta.annotation.PostConstruct;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,19 +24,27 @@ import org.springframework.web.server.ResponseStatusException;
  * table on first boot, so the app isn't invisible out of the box; every change after that goes
  * through this service.
  *
- * <p>Which model a given user's chats run on is admin-assignable the same way — see
- * {@link #modelFor(String)} and {@link #setModel(String, String)} — with {@code app.goku.model}
- * as the fallback for anyone an admin hasn't explicitly assigned one to.
+ * <p>Access is one of three fixed tiers — {@link GokuModelTier#HAIKU}, {@link GokuModelTier#SONNET},
+ * or {@link GokuModelTier#OPUS} — each pinned to one admin-configured model id (the latest
+ * available for that tier), plus {@link GokuModelTier#NO_ACCESS} to remove someone. There's no
+ * free-form model list: {@link #setAccess} is the one entry point that both grants/revokes
+ * allowlist membership and assigns the model, and {@link #modelFor} is what a chat request
+ * actually resolves to run on.
  */
 @Service
 public class GokuAllowlistService {
     @Value("${app.goku.seed-allowlist:ash4691@gmail.com,demo@finsights.local}") private String seedAllowlist;
-    @Value("${app.goku.model:claude-haiku-4-5-20251001}") private String defaultModel;
-    @Value("${app.goku.available-models:claude-opus-5-5,claude-sonnet-5,claude-haiku-4-5-20251001}") private String availableModelsRaw;
+    @Value("${app.goku.model-haiku:claude-haiku-4-5-20251001}") private String modelHaiku;
+    @Value("${app.goku.model-sonnet:claude-sonnet-5}") private String modelSonnet;
+    @Value("${app.goku.model-opus:claude-opus-5-5}") private String modelOpus;
 
     private final GokuAllowedUserRepository allowed;
+    private final UserAccountRepository users;
 
-    public GokuAllowlistService(GokuAllowedUserRepository allowed) { this.allowed = allowed; }
+    public GokuAllowlistService(GokuAllowedUserRepository allowed, UserAccountRepository users) {
+        this.allowed = allowed;
+        this.users = users;
+    }
 
     @PostConstruct
     void seedIfEmpty() {
@@ -45,44 +59,75 @@ public class GokuAllowlistService {
         return email != null && !email.isBlank() && allowed.existsByEmailIgnoreCase(email.trim());
     }
 
-    public List<GokuAllowedUserResponse> list() {
-        return allowed.findAllByOrderByCreatedAtAsc().stream().map(this::toResponse).toList();
-    }
-
-    /** Idempotent — adding an email that's already allowed just returns the existing entry. */
-    public GokuAllowedUserResponse add(String email, String addedBy) {
-        String normalized = normalize(email);
-        return allowed.findByEmailIgnoreCase(normalized)
-                .map(this::toResponse)
-                .orElseGet(() -> toResponse(allowed.save(new GokuAllowedUser(normalized, addedBy))));
-    }
-
-    /** Idempotent — removing an email that isn't there is a no-op. */
-    public void remove(String email) {
-        allowed.deleteByEmailIgnoreCase(normalize(email));
-    }
-
-    /** The model ids an admin may assign — what {@code GokuAdminModal}'s dropdown offers. */
-    public List<String> availableModels() {
-        return Arrays.stream(availableModelsRaw.split(","))
-                .map(String::trim).filter(s -> !s.isBlank()).toList();
-    }
-
-    /** The model a chat turn for this user should run on — their own assignment, or the default. */
+    /** The model a chat turn for this user should run on — their tier's model, or the Haiku default. */
     public String modelFor(String email) {
-        if (email == null || email.isBlank()) return defaultModel;
+        if (email == null || email.isBlank()) return modelHaiku;
         return allowed.findByEmailIgnoreCase(email.trim().toLowerCase())
                 .map(GokuAllowedUser::getModel)
                 .filter(m -> m != null && !m.isBlank())
-                .orElse(defaultModel);
+                .orElse(modelHaiku);
     }
 
-    /** Assigns a specific model to an already-allowed user. Rejects anything not in {@link #availableModels()}. */
-    public GokuAllowedUserResponse setModel(String email, String model) {
-        GokuAllowedUser user = allowed.findByEmailIgnoreCase(normalize(email))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "That email isn't on the allowlist"));
-        user.setModel(normalizeModel(model));
-        return toResponse(allowed.save(user));
+    /** Up to 10 registered users whose email contains {@code q}, each tagged with their current tier. */
+    public List<GokuUserSearchResult> searchUsers(String q) {
+        if (q == null || q.trim().length() < 2) return List.of();
+        return users.findTop10ByEmailContainingIgnoreCaseOrderByEmailAsc(q.trim()).stream()
+                .map(u -> new GokuUserSearchResult(u.getEmail(), u.getDisplayName(), currentTier(u.getEmail())))
+                .toList();
+    }
+
+    public GokuModelTier currentTier(String email) {
+        return allowed.findByEmailIgnoreCase(normalize(email))
+                .map(u -> tierFor(u.getModel()))
+                .orElse(GokuModelTier.NO_ACCESS);
+    }
+
+    /** Every allowed user, bucketed by their current tier — always has all three keys, even if empty. */
+    public Map<GokuModelTier, List<String>> groupedByTier() {
+        Map<GokuModelTier, List<String>> grouped = new EnumMap<>(GokuModelTier.class);
+        grouped.put(GokuModelTier.HAIKU, new ArrayList<>());
+        grouped.put(GokuModelTier.SONNET, new ArrayList<>());
+        grouped.put(GokuModelTier.OPUS, new ArrayList<>());
+        for (GokuAllowedUser user : allowed.findAllByOrderByEmailAsc()) {
+            grouped.get(tierFor(user.getModel())).add(user.getEmail());
+        }
+        return grouped;
+    }
+
+    /**
+     * Grants, changes, or revokes a user's access in one action. {@code NO_ACCESS} removes them
+     * (idempotent if they weren't allowed); any other tier adds them if they're new, then assigns
+     * that tier's model.
+     */
+    public GokuAccessResult setAccess(String email, GokuModelTier tier, String adminEmail) {
+        String normalized = normalize(email);
+        if (tier == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A tier is required");
+        if (tier == GokuModelTier.NO_ACCESS) {
+            allowed.deleteByEmailIgnoreCase(normalized);
+            return new GokuAccessResult(normalized, GokuModelTier.NO_ACCESS);
+        }
+        GokuAllowedUser user = allowed.findByEmailIgnoreCase(normalized)
+                .orElseGet(() -> new GokuAllowedUser(normalized, adminEmail));
+        user.setModel(modelIdFor(tier));
+        allowed.save(user);
+        return new GokuAccessResult(normalized, tier);
+    }
+
+    private String modelIdFor(GokuModelTier tier) {
+        return switch (tier) {
+            case HAIKU -> modelHaiku;
+            case SONNET -> modelSonnet;
+            case OPUS -> modelOpus;
+            case NO_ACCESS -> throw new IllegalArgumentException("NO_ACCESS has no model");
+        };
+    }
+
+    /** Maps a stored (or default) model id back to its tier — unrecognized/blank falls back to Haiku. */
+    private GokuModelTier tierFor(String modelId) {
+        String effective = modelId == null || modelId.isBlank() ? modelHaiku : modelId;
+        if (effective.equals(modelOpus)) return GokuModelTier.OPUS;
+        if (effective.equals(modelSonnet)) return GokuModelTier.SONNET;
+        return GokuModelTier.HAIKU;
     }
 
     private String normalize(String email) {
@@ -90,19 +135,5 @@ public class GokuAllowlistService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is required");
         }
         return email.trim().toLowerCase();
-    }
-
-    private String normalizeModel(String model) {
-        String trimmed = model == null ? "" : model.trim();
-        if (trimmed.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model is required");
-        if (!availableModels().contains(trimmed)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported model: " + trimmed);
-        }
-        return trimmed;
-    }
-
-    private GokuAllowedUserResponse toResponse(GokuAllowedUser user) {
-        String effectiveModel = user.getModel() != null && !user.getModel().isBlank() ? user.getModel() : defaultModel;
-        return new GokuAllowedUserResponse(user.getEmail(), user.getCreatedAt(), user.getAddedBy(), effectiveModel);
     }
 }
