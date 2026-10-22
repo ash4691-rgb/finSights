@@ -35,18 +35,20 @@ class NewsServiceTest {
     @Mock HoldingService holdings;
     @Mock WatchlistService watchlist;
     @Mock TickerPreferenceService preferences;
+    @Mock NewsDismissalService dismissals;
 
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     private NewsService service;
 
     @BeforeEach
     void setUp() {
-        service = new NewsService(cache, holdings, watchlist, preferences, json);
-        // Most forUser() tests don't care about star/exclude — an empty pair of sets is the
-        // "no preferences set" baseline, overridden explicitly by the tests that do care. lenient()
-        // because plenty of tests here (parse()/refreshAll()) never call forUser() at all.
+        service = new NewsService(cache, holdings, watchlist, preferences, dismissals, json);
+        // Most forUser() tests don't care about star/exclude/dismiss — empty is the "nothing set"
+        // baseline, overridden explicitly by the tests that do care. lenient() because plenty of
+        // tests here (parse()/refreshAll()) never call forUser() at all.
         lenient().when(preferences.starredSymbols()).thenReturn(Set.of());
         lenient().when(preferences.excludedSymbols()).thenReturn(Set.of());
+        lenient().when(dismissals.dismissedLinks()).thenReturn(Set.of());
     }
 
     // --- parse() ------------------------------------------------------------------------------
@@ -253,6 +255,51 @@ class NewsServiceTest {
         verify(cache, never()).findBySymbol("RELIANCE");
     }
 
+    @Test
+    void forUserShowsASymbolsNewsOnceEvenWhenTwoHoldingsShareTheSameTicker() throws Exception {
+        // Same stock held through two different brokers, say — a real, common setup.
+        HoldingResponse viaKite = holding("h-1", "RELIANCE", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
+        HoldingResponse viaZerodha = holding("h-2", "RELIANCE", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
+        when(holdings.list()).thenReturn(List.of(viaKite, viaZerodha));
+        when(watchlist.list()).thenReturn(List.of());
+        stubCache("RELIANCE", headline("Reliance news", Instant.now().minus(1, ChronoUnit.HOURS)));
+
+        List<NewsItemResponse> result = service.forUser();
+
+        assertThat(result).hasSize(1);
+    }
+
+    @Test
+    void forUserShowsASymbolsNewsOnceEvenWhenItIsBothHeldAndWatchlisted() throws Exception {
+        HoldingResponse holding = holding("h-1", "RELIANCE", ValuationMethod.MARKET_PRICE, HoldingKind.ASSET);
+        WatchlistResponse watch = watchlistItem("w-1", "RELIANCE", "Reliance (watch)");
+        when(holdings.list()).thenReturn(List.of(holding));
+        when(watchlist.list()).thenReturn(List.of(watch));
+        stubCache("RELIANCE", headline("Reliance news", Instant.now().minus(1, ChronoUnit.HOURS)));
+
+        List<NewsItemResponse> result = service.forUser();
+
+        assertThat(result).hasSize(1);
+        // The holding is the more concrete relationship — it wins over the watchlist entry.
+        assertThat(result.get(0).subjectType()).isEqualTo("HOLDING");
+        assertThat(result.get(0).id()).isEqualTo("h-1");
+    }
+
+    @Test
+    void forUserHidesAnArticleTheUserHasDismissed() throws Exception {
+        WatchlistResponse watch = watchlistItem("w-1", "NIFTY", "Nifty 50");
+        when(holdings.list()).thenReturn(List.of());
+        when(watchlist.list()).thenReturn(List.of(watch));
+        NewsService.Headline keep = headline("Still here", Instant.now().minus(1, ChronoUnit.HOURS));
+        NewsService.Headline dismissed = headline("Dismissed one", Instant.now().minus(2, ChronoUnit.HOURS));
+        stubCache("NIFTY", keep, dismissed);
+        when(dismissals.dismissedLinks()).thenReturn(Set.of(dismissed.link()));
+
+        List<NewsItemResponse> result = service.forUser();
+
+        assertThat(result).extracting(NewsItemResponse::title).containsExactly("Still here");
+    }
+
     private void stubCache(String symbol, NewsService.Headline... headlines) throws Exception {
         NewsCache row = new NewsCache();
         row.setSymbol(symbol);
@@ -261,8 +308,11 @@ class NewsServiceTest {
         when(cache.findBySymbol(symbol)).thenReturn(Optional.of(row));
     }
 
+    // A distinct link per title (not a shared "https://a" for every call) — real articles never
+    // share a URL, and forUser()'s cross-symbol dedup-by-link would otherwise wrongly collapse two
+    // genuinely different headlines that happen to share this fixture's placeholder link.
     private static NewsService.Headline headline(String title, Instant publishedAt) {
-        return new NewsService.Headline(title, "https://a", "ET", publishedAt);
+        return new NewsService.Headline(title, "https://a/" + title.replace(" ", "-"), "ET", publishedAt);
     }
 
     private HoldingResponse holding(String id, String ticker, ValuationMethod method, HoldingKind kind) {

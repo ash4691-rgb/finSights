@@ -22,6 +22,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,8 +59,10 @@ public class NewsService {
     private static final int MAX_FOR_USER = 8;     // shown in Radar
     private static final String MF_PREFIX = "MF:"; // mirrors MarketDataService — a scheme code has no usable search text
     /** "News older than 14 days are not required" — applied at read time in headlinesFor() so it
-     * self-heals any already-cached row too, not just newly-fetched ones. */
-    private static final Duration MAX_AGE = Duration.ofDays(14);
+     * self-heals any already-cached row too, not just newly-fetched ones. Package-private (not
+     * private) so NewsRefreshScheduler can prune NewsDismissalService's rows against the same
+     * cutoff — an article older than this can never resurface anyway. */
+    static final Duration MAX_AGE = Duration.ofDays(14);
     /** Bounded, same reasoning as MarketDataService.QUOTE_CONCURRENCY — Google News is a free,
      * unauthenticated feed more sensitive to bursts than Yahoo, hence the smaller cap. */
     private static final int FETCH_CONCURRENCY = 5;
@@ -68,14 +72,16 @@ public class NewsService {
     private final HoldingService holdings;
     private final WatchlistService watchlist;
     private final TickerPreferenceService preferences;
+    private final NewsDismissalService dismissals;
     private final ObjectMapper sharedJson;
 
     public NewsService(NewsCacheRepository cache, HoldingService holdings, WatchlistService watchlist,
-                        TickerPreferenceService preferences, ObjectMapper sharedJson) {
+                        TickerPreferenceService preferences, NewsDismissalService dismissals, ObjectMapper sharedJson) {
         this.cache = cache;
         this.holdings = holdings;
         this.watchlist = watchlist;
         this.preferences = preferences;
+        this.dismissals = dismissals;
         this.sharedJson = sharedJson;
     }
 
@@ -128,22 +134,43 @@ public class NewsService {
     }
 
     /** The current user's news feed: every cached headline (within {@link #MAX_AGE}) for their
-     * market-linked holdings and watchlist symbols, minus anything they've excluded, ranked
-     * starred-tickers-first and newest-first within each group, capped at {@link #MAX_FOR_USER}.
-     * Read-only — a symbol with no cache row yet (never refreshed) or a stale one (last refresh
-     * failed) just contributes whatever's there, including nothing. */
+     * market-linked holdings and watchlist symbols, minus anything they've excluded (by ticker) or
+     * dismissed (by article), ranked starred-tickers-first and newest-first within each group,
+     * capped at {@link #MAX_FOR_USER}. Read-only — a symbol with no cache row yet (never refreshed)
+     * or a stale one (last refresh failed) just contributes whatever's there, including nothing.
+     *
+     * Deduplicates by ticker symbol first: the same symbol can be reachable from more than one
+     * holding (e.g. the same stock via two brokers), or from both a holding and a watchlist entry,
+     * and each used to add its cached headlines again for every reference — the same article
+     * showing up two or three times in Radar. One subject per symbol now (a holding wins over a
+     * watchlist entry for the same symbol, since it's the more concrete relationship); a second,
+     * cheap pass drops any article whose link repeats even across different symbols, as a safety
+     * net rather than the primary fix. */
     public List<NewsItemResponse> forUser() {
         Set<String> starred = preferences.starredSymbols();
         Set<String> excluded = preferences.excludedSymbols();
-        List<NewsItemResponse> out = new ArrayList<>();
+        Set<String> dismissedLinks = dismissals.dismissedLinks();
+
+        Map<String, Subject> bySymbol = new LinkedHashMap<>();
         for (HoldingResponse h : holdings.list()) {
             if (h.kind() == HoldingKind.LIABILITY || !isMarketLinked(h.valuationMethod())) continue;
-            if (isExcluded(h.tickerSymbol(), excluded)) continue;
-            headlinesFor(h.tickerSymbol()).forEach(hl -> out.add(toResponse("HOLDING", h.id(), h.name(), h.tickerSymbol(), hl, starred)));
+            String key = normalizedSymbol(h.tickerSymbol());
+            if (key == null || excluded.contains(key)) continue;
+            bySymbol.put(key, new Subject("HOLDING", h.id(), h.name(), h.tickerSymbol()));
         }
         for (WatchlistResponse w : watchlist.list()) {
-            if (isExcluded(w.tickerSymbol(), excluded)) continue;
-            headlinesFor(w.tickerSymbol()).forEach(hl -> out.add(toResponse("WATCHLIST", w.id(), w.name(), w.tickerSymbol(), hl, starred)));
+            String key = normalizedSymbol(w.tickerSymbol());
+            if (key == null || excluded.contains(key)) continue;
+            bySymbol.putIfAbsent(key, new Subject("WATCHLIST", w.id(), w.name(), w.tickerSymbol()));
+        }
+
+        List<NewsItemResponse> out = new ArrayList<>();
+        Set<String> seenLinks = new HashSet<>();
+        for (Subject subject : bySymbol.values()) {
+            for (Headline hl : headlinesFor(subject.tickerSymbol())) {
+                if (dismissedLinks.contains(hl.link()) || !seenLinks.add(hl.link())) continue;
+                out.add(toResponse(subject.subjectType(), subject.id(), subject.name(), subject.tickerSymbol(), hl, starred));
+            }
         }
         return out.stream()
                 .sorted(Comparator.comparing(NewsItemResponse::starred).reversed()
@@ -156,9 +183,14 @@ public class NewsService {
         return method == ValuationMethod.MARKET_PRICE || method == ValuationMethod.BROKER_SYNC;
     }
 
-    private boolean isExcluded(String symbol, Set<String> excluded) {
-        return symbol != null && excluded.contains(symbol.trim().toUpperCase());
+    private String normalizedSymbol(String symbol) {
+        return symbol == null || symbol.isBlank() ? null : symbol.trim().toUpperCase();
     }
+
+    /** The holding or watchlist entry a symbol's news is attributed to in forUser()'s deduped feed
+     *  — tickerSymbol is kept in its original (non-normalized) form since that's what the cache is
+     *  actually keyed by. */
+    private record Subject(String subjectType, String id, String name, String tickerSymbol) { }
 
     private List<Headline> headlinesFor(String symbol) {
         if (symbol == null || symbol.isBlank() || symbol.startsWith(MF_PREFIX)) return List.of();
