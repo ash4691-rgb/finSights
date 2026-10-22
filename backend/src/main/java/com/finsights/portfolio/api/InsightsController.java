@@ -6,6 +6,7 @@ import com.finsights.portfolio.dto.DeferredActionResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
 import com.finsights.portfolio.dto.MovementThresholdRequest;
 import com.finsights.portfolio.dto.MovementThresholdResponse;
+import com.finsights.portfolio.dto.NewsDismissalRequest;
 import com.finsights.portfolio.dto.NewsItemResponse;
 import com.finsights.portfolio.dto.PortfolioTimelineResponse;
 import com.finsights.portfolio.dto.TopMoverResponse;
@@ -13,6 +14,7 @@ import com.finsights.portfolio.service.ActionCentreService;
 import com.finsights.portfolio.service.ActionDismissalService;
 import com.finsights.portfolio.service.HoldingService;
 import com.finsights.portfolio.service.MovementThresholdService;
+import com.finsights.portfolio.service.NewsDismissalService;
 import com.finsights.portfolio.service.NewsService;
 import com.finsights.portfolio.service.PortfolioSnapshotService;
 import com.finsights.portfolio.service.TickerPreferenceService;
@@ -52,10 +54,12 @@ public class InsightsController {
     private final MovementThresholdService movementThresholds;
     private final PortfolioSnapshotService portfolioSnapshots;
     private final TickerPreferenceService tickerPreferences;
+    private final NewsDismissalService newsDismissals;
 
     public InsightsController(HoldingService holdings, ActionCentreService actionCentre, ActionDismissalService actionDismissals,
                              NewsService news, TopMoversService topMovers, MovementThresholdService movementThresholds,
-                             PortfolioSnapshotService portfolioSnapshots, TickerPreferenceService tickerPreferences) {
+                             PortfolioSnapshotService portfolioSnapshots, TickerPreferenceService tickerPreferences,
+                             NewsDismissalService newsDismissals) {
         this.holdings = holdings;
         this.actionCentre = actionCentre;
         this.actionDismissals = actionDismissals;
@@ -64,6 +68,7 @@ public class InsightsController {
         this.movementThresholds = movementThresholds;
         this.portfolioSnapshots = portfolioSnapshots;
         this.tickerPreferences = tickerPreferences;
+        this.newsDismissals = newsDismissals;
     }
 
     /** Tasks (pending EMI/interest/broker-sync items) and Radar's "Worth a look" — the two filtered
@@ -153,5 +158,14 @@ public class InsightsController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void restoreTicker(@PathVariable String symbol) {
         tickerPreferences.restore(symbol);
+    }
+
+    /** Cross on a News card: dismisses that one article for this user — it won't resurface on
+     *  reload — without touching the ticker itself (see NewsDismissalService's doc comment). The
+     *  link is the article's identity, so it travels in the body rather than a path segment. */
+    @PostMapping("/news/dismiss")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void dismissNewsItem(@Valid @RequestBody NewsDismissalRequest request) {
+        newsDismissals.dismiss(request.link());
     }
 }

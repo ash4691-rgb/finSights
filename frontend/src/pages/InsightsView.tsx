@@ -111,19 +111,18 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     try { await api(`/api/insights/actions?key=${encodeURIComponent(key)}`, { method: 'DELETE' }); await Promise.all([loadActions(), loadDeferred()]) }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not restore that item') }
   }
-  // Star/cross act on the ticker, not the individual headline — starring boosts every headline for
-  // that symbol to the top (see NewsService#forUser's ranking); the cross hides the ticker's news
-  // from this user's Radar specifically, without touching the shared tracked-symbol pool. Both only
-  // ever change News, so just reload that section.
+  // Star acts on the ticker — boosts every headline for that symbol to the top (see
+  // NewsService#forUser's ranking). Cross acts on just this one article: it's dismissed for good
+  // (won't resurface on reload) but the ticker itself stays fully visible — no ticker-level
+  // blocking happens here. Both only ever change News, so just reload that section.
   const toggleStarTicker = async (n: NewsItem) => {
     if (!n.tickerSymbol) return
     try { await api(`/api/insights/news/${encodeURIComponent(n.tickerSymbol)}/star`, { method: n.starred ? 'DELETE' : 'POST' }); await loadNews() }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not update that ticker') }
   }
-  const excludeTicker = async (n: NewsItem) => {
-    if (!n.tickerSymbol) return
-    try { await api(`/api/insights/news/${encodeURIComponent(n.tickerSymbol)}/exclude`, { method: 'POST' }); await loadNews() }
-    catch (err) { setError(err instanceof Error ? err.message : 'Could not remove that ticker') }
+  const dismissNewsItem = async (n: NewsItem) => {
+    try { await api('/api/insights/news/dismiss', { method: 'POST', body: JSON.stringify({ link: n.link }) }); await loadNews() }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not dismiss that article') }
   }
 
   // Shared by Tasks (pendingActions) and Radar's lower-urgency items — same row, same tools
@@ -253,8 +252,8 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
                   <button className={`warning-tool star${n.starred ? ' active' : ''}`}
                     title={n.starred ? 'Unstar this ticker' : "Star this ticker — boosts its news to the top"}
                     aria-label={n.starred ? 'Unstar' : 'Star'} onClick={() => void toggleStarTicker(n)}>{n.starred ? '★' : '☆'}</button>
-                  <button className="warning-tool delete" title="Remove this ticker from Radar" aria-label="Remove"
-                    onClick={() => void excludeTicker(n)}>✕</button>
+                  <button className="warning-tool delete" title="Dismiss this article — won't come back" aria-label="Dismiss"
+                    onClick={() => void dismissNewsItem(n)}>✕</button>
                 </div>
               </div>)}</div>
             </div>}
