@@ -101,14 +101,15 @@ app:
     # rate-limited in production, set NEWS_ENABLED=false to stop the hourly scheduler without a
     # code change — forUser() keeps working either way, it just reads an unrefreshed/empty cache.
     enabled: ${NEWS_ENABLED:true}
-  # CAS (CDSL/NSDL Consolidated Account Statement) upload — extraction only, never writes a
-  # holding directly; see CasImportService. Shares the same Anthropic account as Goku but its own
-  # config block since the two features have nothing else to do with each other, and extraction
-  # accuracy matters more here than chat latency, hence a stronger default model.
-  cas-import:
+  # Statement upload (CAS, broker holding statement, or broker transaction statement) — extraction
+  # only, never writes a holding or transaction directly; see StatementImportService. Shares the
+  # same Anthropic account as Goku but its own config block since the two features have nothing
+  # else to do with each other, and extraction accuracy matters more here than chat latency, hence
+  # a stronger default model.
+  statement-import:
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
-    model: ${CAS_IMPORT_MODEL:claude-sonnet-5}
-    daily-upload-limit: ${CAS_IMPORT_DAILY_UPLOAD_LIMIT:10}
+    model: ${STATEMENT_IMPORT_MODEL:claude-sonnet-5}
+    daily-upload-limit: ${STATEMENT_IMPORT_DAILY_UPLOAD_LIMIT:10}
 
 ---
 # Google OAuth is only wired when the "google" profile is active, so the demo
