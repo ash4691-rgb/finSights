@@ -170,6 +170,11 @@ public class StatementImportService {
             its name and quantity (an ISIN is optional for those — omit the field if the statement has none). If you cannot \
             confidently determine those, or a transaction's date, type, or instrument, leave that row out \
             of the result entirely and explain why in `warnings` instead of guessing.
+            6. If the statement covers several accounts (a CAS lists every demat account and fund folio you \
+            hold), set each row's `account` to the institution that line is held through: the broker or \
+            depository participant's name for shares (e.g. "Zerodha Broking"), the fund house for a mutual \
+            fund. Use the institution's name only, never an account, client, DP or folio number. Leave \
+            `account` out when the statement is from a single broker and doesn't name one per line.
             """;
 
     @Value("${app.statement-import.anthropic-api-key:}") private String apiKey;
@@ -239,7 +244,7 @@ public class StatementImportService {
                     "Pick the broker this statement belongs to first.");
         }
         StatementType type = request.statementType() == null ? StatementType.HOLDINGS : request.statementType();
-        StatementExtractionResponse rows = new StatementExtractionResponse(type, request.holdings(), List.of(),
+        StatementExtractionResponse rows = new StatementExtractionResponse(type, StatementRows.consolidateAcrossAccounts(request.holdings()), List.of(),
                 request.transactions(), request.statementDate(), request.warnings(), request.broker().trim());
         StatementExtractionResponse matched = matchAgainstExisting(rows, currentUser.currentUser().getId(), request.broker());
         return withTickersForNewBuys(matched);
@@ -460,7 +465,7 @@ public class StatementImportService {
 
         List<HoldingToRemove> missing = extracted.statementType() == StatementType.TRANSACTIONS
                 ? List.of()
-                : missingFromStatement(brokerHoldings, matchedIds);
+                : missingFromStatement(brokerHoldings, matchedIds, extracted.holdings());
 
         List<String> warnings = new ArrayList<>(extracted.warnings());
         List<ExtractedTransaction> matchedTransactions = new ArrayList<>();
@@ -495,9 +500,11 @@ public class StatementImportService {
         return uniqueHoldingByName(brokerHoldings, instrumentName);
     }
 
-    private static List<HoldingToRemove> missingFromStatement(List<Holding> brokerHoldings, Set<String> matchedIds) {
+    private static List<HoldingToRemove> missingFromStatement(List<Holding> brokerHoldings, Set<String> matchedIds,
+                                                              List<ExtractedHolding> statementRows) {
         return brokerHoldings.stream()
                 .filter(StatementRows::listedOnBrokerStatements)
+                .filter(h -> StatementRows.couldBeListed(h, statementRows))
                 .filter(h -> !matchedIds.contains(h.getId()))
                 .map(h -> new HoldingToRemove(h.getId(), h.getName(), h.getBroker(), h.getQuantity()))
                 .toList();
@@ -747,6 +754,8 @@ public class StatementImportService {
     private static final String FIELD_CURRENT_VALUE = "currentValue";
     private static final String FIELD_BROKER = "broker";
     private static final String FIELD_SYMBOL = "symbol";
+    private static final String FIELD_ACCOUNT = "account";
+    private static final String ACCOUNT_DESCRIPTION = "Name of the broker, depository participant or fund house this line is held through, only when the statement names one per line — never an account, client or folio number";
     private static final String SYMBOL_DESCRIPTION = "The ticker/symbol printed for this line (e.g. BTC), only if the statement prints one";
     private static final String INSTRUMENT_NAME_DESCRIPTION = "Company or instrument name exactly as printed";
     private static final String ISIN_DESCRIPTION = "The 12-character ISIN for this instrument";
@@ -761,6 +770,7 @@ public class StatementImportService {
         kind.set("enum", kindEnum(json));
         holdingProps.set(FIELD_KIND, kind);
         holdingProps.set(FIELD_SYMBOL, textProp(json, SYMBOL_DESCRIPTION));
+        holdingProps.set(FIELD_ACCOUNT, textProp(json, ACCOUNT_DESCRIPTION));
         holdingProps.set(FIELD_QUANTITY, numberProp(json, "Units held"));
         holdingProps.set(FIELD_INVESTED_VALUE, numberProp(json, "Total amount invested in this line, if the statement shows it"));
         holdingProps.set(FIELD_CURRENT_VALUE, numberProp(json, "Current market value of this line, if the statement shows it"));
@@ -788,6 +798,7 @@ public class StatementImportService {
         txnKind.set("enum", kindEnum(json));
         txnProps.set(FIELD_KIND, txnKind);
         txnProps.set(FIELD_SYMBOL, textProp(json, SYMBOL_DESCRIPTION));
+        txnProps.set(FIELD_ACCOUNT, textProp(json, ACCOUNT_DESCRIPTION));
         txnProps.set(FIELD_QUANTITY, numberProp(json, "Omit if this line has no quantity (e.g. INTEREST)"));
         txnProps.set("amount", numberProp(json, "Omit if this line has no amount (e.g. SPLIT)"));
         txnProps.set("notes", textProp(json, "Any short free-text note from the statement line, if present"));
@@ -899,7 +910,8 @@ public class StatementImportService {
         String depository = blankToNull(row.path("depository").asText(null));
         String normalisedIsin = isin == null ? null : isin.toUpperCase(Locale.ROOT);
         holdingRows.add(new ExtractedHolding(name, normalisedIsin, quantity, avgCost, depository, null, null,
-                kind, invested, current, blankToNull(row.path(FIELD_SYMBOL).asText(null))));
+                kind, invested, current, blankToNull(row.path(FIELD_SYMBOL).asText(null)),
+                blankToNull(row.path(FIELD_ACCOUNT).asText(null))));
     }
 
     /** A row with no kind but an ISIN is a stock (what every row was before kinds existed); one with
@@ -929,7 +941,7 @@ public class StatementImportService {
         String notes = blankToNull(row.path("notes").asText(null));
         String normalisedIsin = isin == null ? null : isin.toUpperCase(Locale.ROOT);
         txnRows.add(new ExtractedTransaction(date, type, name, normalisedIsin, quantity, amount, notes, null,
-                kind, blankToNull(row.path(FIELD_SYMBOL).asText(null)), null));
+                kind, blankToNull(row.path(FIELD_SYMBOL).asText(null)), null, blankToNull(row.path(FIELD_ACCOUNT).asText(null))));
     }
 
     private static StatementType parseStatementType(String value) {

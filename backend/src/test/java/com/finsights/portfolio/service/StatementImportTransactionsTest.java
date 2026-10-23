@@ -346,4 +346,29 @@ class StatementImportTransactionsTest {
                 InstrumentKind.STOCK, InstrumentKind.ETF, InstrumentKind.MUTUAL_FUND, InstrumentKind.CRYPTO, InstrumentKind.COMMODITY);
         assertThat(parsed.warnings()).isEmpty();
     }
+
+    @Test
+    void theInstitutionPerLineIsKeptForHoldingsAndTransactionsAndOmittedWhenBlank() {
+        ObjectNode input = json.createObjectNode();
+        input.put("statementType", "MIXED");
+        ObjectNode holding = input.putArray("holdings").addObject();
+        holding.put("instrumentName", "Infosys").put("isin", "INE009A01021").put("kind", "STOCK").put("quantity", 10).put("account", "Zerodha Broking");
+        ObjectNode plain = input.withArray("holdings").addObject();
+        plain.put("instrumentName", "Alpha Fund").put("kind", "MUTUAL_FUND").put("quantity", 2).put("account", "  ");
+        ObjectNode txn = input.putArray("transactions").addObject();
+        txn.put("date", "2026-01-05").put("type", "BUY").put("instrumentName", "Alpha Fund").put("kind", "MUTUAL_FUND").put("account", "Alpha AMC");
+
+        StatementExtractionResponse parsed = parse(input);
+
+        assertThat(parsed.holdings()).extracting(ExtractedHolding::account).containsExactly("Zerodha Broking", null);
+        assertThat(parsed.transactions()).extracting(ExtractedTransaction::account).containsExactly("Alpha AMC");
+    }
+
+    @Test
+    void promptAndSchemaAskForTheInstitutionNeverTheAccountNumber() {
+        ObjectNode body = StatementImportService.buildTextRequestBody(json, "model", "x");
+
+        String text = body.toString();
+        assertThat(text).contains("\"account\"").contains("never an account, client or folio number");
+    }
 }

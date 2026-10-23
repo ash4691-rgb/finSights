@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 import { useEscToClose } from '../ui'
 import { ConfirmStep, UploadStep } from './StatementImportSteps'
 import { StatementReview } from './StatementReview'
-import { guessCategoryId, readStatement, reconcileStatement, statementKinds } from './statementImportLogic'
+import { accountKey, accountsMapped, accountsOf, guessBroker, hasUnaccountedRows, reconcileByBroker } from './statementAccounts'
+import type { BrokerResult } from './statementAccounts'
+import { guessCategoryId, readStatement, statementKinds } from './statementImportLogic'
 import type { Category, Holding, InstrumentKind, StatementExtractionResult, StatementType } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -41,7 +43,9 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
   const [statementType, setStatementType] = useState<StatementType>('HOLDINGS')
   const [broker, setBroker] = useState('')
   const [categoryByKind, setCategoryByKind] = useState<Partial<Record<InstrumentKind, string>>>({})
-  const [result, setResult] = useState<StatementExtractionResult | null>(null)
+  const [brokerByAccount, setBrokerByAccount] = useState<Record<string, string>>({})
+  const [results, setResults] = useState<BrokerResult[]>([])
+  const [activeTab, setActiveTab] = useState(0)
 
   const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort((a, b) => a.localeCompare(b)), [holdings])
 
@@ -50,10 +54,11 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
   // with it, and reusing the already-picked file this way means a wrong password doesn't force
   // the user back to their file browser to pick the same statement again.
   const upload = async (pickedFile: File, pdfPassword: string) => {
-    setBusy(true); setError(''); setResult(null); setExtracted(null); setStage('upload'); setFile(pickedFile)
+    setBusy(true); setError(''); setResults([]); setExtracted(null); setStage('upload'); setFile(pickedFile)
     try {
       const parsed = await readStatement(pickedFile, pdfPassword)
       setExtracted(parsed); setStatementType(parsed.statementType); setBroker(parsed.broker ?? '')
+      setBrokerByAccount(Object.fromEntries(accountsOf(parsed).map(account => [accountKey(account), guessBroker(account, brokerSuggestions)])))
       setCategoryByKind(Object.fromEntries(statementKinds(parsed).map(kind => [kind, guessCategoryId(kind, categories)])))
       setStage('confirm')
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not read that statement') }
@@ -64,11 +69,15 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
     if (!extracted) return
     setBusy(true); setError('')
     try {
-      setResult(await reconcileStatement(extracted, statementType, broker.trim()))
-      setStage('review')
+      setResults(await reconcileByBroker(extracted, statementType, brokerByAccount, broker))
+      setActiveTab(0); setStage('review')
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not match that statement') }
     finally { setBusy(false) }
   }
+
+  const accounts = extracted ? accountsOf(extracted) : []
+  const needsFallback = !!extracted && accounts.length > 0 && hasUnaccountedRows(extracted)
+  const canContinue = accountsMapped(accounts, brokerByAccount, broker, needsFallback) && (accounts.length > 0 || broker.trim() !== '')
 
   return <div className="modal-backdrop"><section className="modal" onClick={e => e.stopPropagation()}>
     <div className="modal-header"><div><p className="eyebrow">BULK IMPORT</p><h2>Upload a statement</h2></div><button className="close" onClick={onClose}>×</button></div>
@@ -76,14 +85,23 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
       onPick={f => void upload(f, password)} onRetry={() => file && void upload(file, password)} />
 
     {stage === 'confirm' && extracted && <ConfirmStep extracted={extracted} statementType={statementType} onStatementType={setStatementType}
-      broker={broker} onBroker={setBroker} brokerSuggestions={brokerSuggestions} kinds={statementKinds(extracted)} categories={categories}
+      broker={broker} onBroker={setBroker} brokerSuggestions={brokerSuggestions} accounts={accounts} needsFallback={needsFallback}
+      brokerByAccount={brokerByAccount} onAccountBroker={(account, value) => setBrokerByAccount(current => ({ ...current, [accountKey(account)]: value }))}
+      canContinue={canContinue} kinds={statementKinds(extracted)} categories={categories}
       categoryByKind={categoryByKind} onCategory={(kind, id) => setCategoryByKind(current => ({ ...current, [kind]: id }))}
       busy={busy} onContinue={() => void reconcile()} />}
 
-    {stage === 'review' && result
-      ? <StatementReview result={result} brokerName={broker.trim()} categoryByKind={categoryByKind} categories={categories} holdings={holdings}
-          displayCurrency={displayCurrency} onChangeBroker={() => { setResult(null); setStage('confirm') }}
-          onClose={onClose} onSaved={onSaved} onRemoved={onRemoved} onTransactionSaved={onTransactionSaved} />
+    {stage === 'review' && results.length > 0
+      ? <>
+        {results.length > 1 && <div className="import-tabs" role="tablist">{results.map(({ broker: name }, index) =>
+          <button key={name} type="button" role="tab" aria-selected={index === activeTab} className={index === activeTab ? 'primary' : 'outline'} onClick={() => setActiveTab(index)}>{name}</button>)}</div>}
+        {results.map(({ broker: name, result }, index) => <div key={name} hidden={index !== activeTab}>
+          <StatementReview result={result} brokerName={name} categoryByKind={categoryByKind} categories={categories} holdings={holdings}
+            displayCurrency={displayCurrency} onChangeBroker={() => { setResults([]); setStage('confirm') }}
+            onClose={index < results.length - 1 ? () => setActiveTab(index + 1) : onClose}
+            onSaved={onSaved} onRemoved={onRemoved} onTransactionSaved={onTransactionSaved} />
+        </div>)}
+      </>
       : <div className="modal-actions"><button type="button" className="outline" disabled={stage === 'confirm'} onClick={onClose}>Done</button></div>}
   </section></div>
 }

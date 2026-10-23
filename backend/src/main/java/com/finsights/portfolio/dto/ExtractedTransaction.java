@@ -29,19 +29,28 @@ public record ExtractedTransaction(
         String symbol,
         /** Best-effort ticker for an instrument the user doesn't hold yet at this broker, so a holding
          *  created from its first BUY can be market-valued; null for a matched row or when unsure. */
-        String tickerSymbol
+        String tickerSymbol,
+        /** The institution this line went through (broker or fund house) when the statement names one per line; see {@code ExtractedHolding}. */
+        String account
 ) {
+    /** The shape every row had before the account existed. */
+    public ExtractedTransaction(String date, TransactionType type, String instrumentName, String isin,
+                                BigDecimal quantity, BigDecimal amount, String notes, String matchedHoldingId,
+                                InstrumentKind kind, String symbol, String tickerSymbol) {
+        this(date, type, instrumentName, isin, quantity, amount, notes, matchedHoldingId, kind, symbol, tickerSymbol, null);
+    }
+
     /** The shape every row had before kind, symbol and ticker existed. */
     public ExtractedTransaction(String date, TransactionType type, String instrumentName, String isin,
                                 BigDecimal quantity, BigDecimal amount, String notes, String matchedHoldingId) {
-        this(date, type, instrumentName, isin, quantity, amount, notes, matchedHoldingId, null, null, null);
+        this(date, type, instrumentName, isin, quantity, amount, notes, matchedHoldingId, null, null, null, null);
     }
 
     public ExtractedTransaction withMatchedHolding(String holdingId) {
-        return new ExtractedTransaction(date, type, instrumentName, isin, quantity, amount, notes, holdingId, kind, symbol, tickerSymbol);
+        return new ExtractedTransaction(date, type, instrumentName, isin, quantity, amount, notes, holdingId, kind, symbol, tickerSymbol, account);
     }
 
     public ExtractedTransaction withTicker(String ticker) {
-        return new ExtractedTransaction(date, type, instrumentName, isin, quantity, amount, notes, matchedHoldingId, kind, symbol, ticker);
+        return new ExtractedTransaction(date, type, instrumentName, isin, quantity, amount, notes, matchedHoldingId, kind, symbol, ticker, account);
     }
 }

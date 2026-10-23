@@ -1,6 +1,7 @@
 import { Field, SuggestInput } from '../ui'
 import { HoldingModal } from './HoldingsView'
 import { TransactionModal } from './TransactionsView'
+import { accountKey } from './statementAccounts'
 import { draftFromExtractedHolding, draftFromExtractedTransaction, draftFromGroup, kindLabel, kindOf, sellDraft } from './statementImportLogic'
 import type { NewHoldingGroup } from './statementImportLogic'
 import type { Category, ExtractedHolding, ExtractedTransaction, Holding, HoldingToRemove, InstrumentKind, StatementExtractionResult, StatementType } from '../types'
@@ -11,9 +12,13 @@ import type { Category, ExtractedHolding, ExtractedTransaction, Holding, Holding
 const typeLabel: Record<StatementType, string> = { HOLDINGS: 'Holdings', TRANSACTIONS: 'Transactions', MIXED: 'Both holdings and transactions' }
 
 export function ConfirmStep({ extracted, statementType, onStatementType, broker, onBroker, brokerSuggestions,
+  accounts, needsFallback, brokerByAccount, onAccountBroker, canContinue,
   kinds, categories, categoryByKind, onCategory, busy, onContinue }: Readonly<{
   extracted: StatementExtractionResult; statementType: StatementType; onStatementType: (t: StatementType) => void
   broker: string; onBroker: (b: string) => void; brokerSuggestions: string[]
+  // The institutions a multi-account statement (a CAS) names, each mapped to one of the user's brokers.
+  accounts: string[]; needsFallback: boolean; brokerByAccount: Record<string, string>
+  onAccountBroker: (account: string, broker: string) => void; canContinue: boolean
   kinds: InstrumentKind[]; categories: Category[]; categoryByKind: Partial<Record<InstrumentKind, string>>
   onCategory: (kind: InstrumentKind, categoryId: string) => void; busy: boolean; onContinue: () => void
 }>) {
@@ -25,21 +30,38 @@ export function ConfirmStep({ extracted, statementType, onStatementType, broker,
       <Field label="Statement type" required><select value={statementType} onChange={e => onStatementType(e.target.value as StatementType)}>
         {(Object.keys(typeLabel) as StatementType[]).map(t => <option key={t} value={t}>{typeLabel[t]}{t === extracted.statementType ? ' (detected)' : ''}</option>)}
       </select></Field>
-      <Field label="Broker / platform" required>
+      {(accounts.length === 0 || needsFallback) && <Field label={accounts.length === 0 ? 'Broker / platform' : 'Broker for lines that name none'} required>
         <SuggestInput required maxLength={96} value={broker} suggestions={brokerSuggestions} onChange={onBroker} placeholder="Pick one of yours or type a new broker" />
-      </Field>
+      </Field>}
     </div>
-    <p className="hint">{extracted.broker
-      ? `Detected from the statement: ${extracted.broker}. Holdings are only matched against this one broker — the same fund can be held at several.`
-      : 'We couldn\'t tell which broker this statement is from — pick one of yours, or type a new one. Holdings are only matched against this one broker.'}</p>
+    {accounts.length === 0
+      ? <SingleBrokerHint detected={extracted.broker} />
+      : <AccountMapping accounts={accounts} brokerByAccount={brokerByAccount} brokerSuggestions={brokerSuggestions} onAccountBroker={onAccountBroker} />}
     {kinds.length > 0 && <div className="form-grid">{kinds.map(kind => <Field key={kind} label={`Category for ${kindLabel[kind].toLowerCase()}s`}>
       <select value={categoryByKind[kind] ?? ''} onChange={e => onCategory(kind, e.target.value)}>
         <option value="">Choose a category…</option>
         {assetCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
     </Field>)}</div>}
-    <div className="modal-actions"><button type="button" className="primary" disabled={busy || !broker.trim()} onClick={onContinue}>{busy ? 'Matching…' : 'Continue'}</button></div>
+    <div className="modal-actions"><button type="button" className="primary" disabled={busy || !canContinue} onClick={onContinue}>{busy ? 'Matching…' : 'Continue'}</button></div>
   </section>
+}
+
+function SingleBrokerHint({ detected }: Readonly<{ detected?: string | null }>) {
+  if (detected) return <p className="hint">Detected from the statement: {detected}. Holdings are only matched against this one broker — the same fund can be held at several.</p>
+  return <p className="hint">We couldn't tell which broker this statement is from — pick one of yours, or type a new one. Holdings are only matched against this one broker.</p>
+}
+
+function AccountMapping({ accounts, brokerByAccount, brokerSuggestions, onAccountBroker }: Readonly<{
+  accounts: string[]; brokerByAccount: Record<string, string>; brokerSuggestions: string[]; onAccountBroker: (account: string, broker: string) => void
+}>) {
+  return <>
+    <p className="hint">This statement covers {accounts.length} accounts. Pick which of your brokers each one is — pick or type a new broker. Each broker is matched only against its own holdings, and holdings at a broker this statement doesn't cover are never touched.</p>
+    <div className="form-grid">{accounts.map(account => <Field key={account} label={account} required>
+      <SuggestInput required maxLength={96} value={brokerByAccount[accountKey(account)] ?? ''} suggestions={brokerSuggestions}
+        onChange={value => onAccountBroker(account, value)} placeholder="Pick one of yours or type a new broker" />
+    </Field>)}</div>
+  </>
 }
 
 type HoldingRow = { row: ExtractedHolding; index: number }

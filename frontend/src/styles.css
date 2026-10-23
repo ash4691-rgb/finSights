@@ -895,3 +895,5 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .import-confirm .form-grid{margin-bottom:8px}
 .import-log-all{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:10px 12px;margin:14px 0}
 .import-log-all p{flex:1 1 220px;margin:0}
+
+.import-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }

@@ -113,6 +113,7 @@ export type ExtractedHolding = {
   kind?: InstrumentKind; investedValue?: number; currentValue?: number
   // The symbol the statement prints for this line (a coin's "BTC"), when it prints one.
   symbol?: string
+  account?: string | null
   // Best-effort guess, not a fact — the review form still shows it as an editable field.
   tickerSymbol?: string
   // Set when this ISIN matches a holding already created from a past statement import — it needs
@@ -126,7 +127,7 @@ export type ExtractedTransaction = {
   quantity?: number; amount?: number; notes?: string
   // Unset when no existing holding matched — the user picks one in the review form.
   matchedHoldingId?: string
-  kind?: InstrumentKind; symbol?: string
+  kind?: InstrumentKind; symbol?: string; account?: string | null
   // Best-effort ticker for an unmatched BUY, so a holding created from it can be market-valued.
   tickerSymbol?: string
 }
