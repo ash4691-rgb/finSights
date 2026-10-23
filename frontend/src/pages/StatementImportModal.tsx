@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useEscToClose } from '../ui'
 import { ConfirmStep, UploadStep } from './StatementImportSteps'
 import { StatementReview } from './StatementReview'
-import { guessCategoryId, kindsPresent, readStatement, reconcileStatement } from './statementImportLogic'
+import { guessCategoryId, readStatement, reconcileStatement, statementKinds } from './statementImportLogic'
 import type { Category, Holding, InstrumentKind, StatementExtractionResult, StatementType } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
     try {
       const parsed = await readStatement(pickedFile, pdfPassword)
       setExtracted(parsed); setStatementType(parsed.statementType); setBroker(parsed.broker ?? '')
-      setCategoryByKind(Object.fromEntries(kindsPresent(parsed.holdings).map(kind => [kind, guessCategoryId(kind, categories)])))
+      setCategoryByKind(Object.fromEntries(statementKinds(parsed).map(kind => [kind, guessCategoryId(kind, categories)])))
       setStage('confirm')
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not read that statement') }
     finally { setBusy(false) }
@@ -76,7 +76,7 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
       onPick={f => void upload(f, password)} onRetry={() => file && void upload(file, password)} />
 
     {stage === 'confirm' && extracted && <ConfirmStep extracted={extracted} statementType={statementType} onStatementType={setStatementType}
-      broker={broker} onBroker={setBroker} brokerSuggestions={brokerSuggestions} kinds={kindsPresent(extracted.holdings)} categories={categories}
+      broker={broker} onBroker={setBroker} brokerSuggestions={brokerSuggestions} kinds={statementKinds(extracted)} categories={categories}
       categoryByKind={categoryByKind} onCategory={(kind, id) => setCategoryByKind(current => ({ ...current, [kind]: id }))}
       busy={busy} onContinue={() => void reconcile()} />}
 

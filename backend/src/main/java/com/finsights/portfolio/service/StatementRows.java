@@ -4,6 +4,7 @@ import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.HoldingKind;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.ExtractedHolding;
+import com.finsights.portfolio.dto.ExtractedTransaction;
 import com.finsights.portfolio.dto.InstrumentKind;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -27,6 +28,12 @@ final class StatementRows {
         return row.instrumentName().trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
     }
 
+    /** Same identity rule as {@link #holdingKey} for a transaction line: ISIN, else normalised name. */
+    static String transactionKey(ExtractedTransaction row) {
+        if (row.isin() != null) return row.isin();
+        return row.instrumentName().trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+    }
+
     /**
      * Merges rows that are the same instrument into one: units, invested value and current value
      * are summed and the average cost is recomputed from the totals. A statement lists one row per
@@ -40,7 +47,7 @@ final class StatementRows {
             String key = holdingKey(row);
             ExtractedHolding seen = byKey.get(key);
             if (seen == null) { byKey.put(key, row); continue; }
-            if (row.kind() == InstrumentKind.MUTUAL_FUND) byKey.put(key, combine(seen, row));
+            if (row.kind() != null && row.kind().identifiedByName()) byKey.put(key, combine(seen, row));
         }
         return new ArrayList<>(byKey.values());
     }
@@ -50,7 +57,7 @@ final class StatementRows {
         BigDecimal invested = sumNullable(a.investedValue(), b.investedValue());
         BigDecimal current = sumNullable(a.currentValue(), b.currentValue());
         return new ExtractedHolding(a.instrumentName(), a.isin(), quantity, averageCost(invested, quantity),
-                a.depository(), a.tickerSymbol(), a.matchedHoldingId(), a.kind(), invested, current);
+                a.depository(), a.tickerSymbol(), a.matchedHoldingId(), a.kind(), invested, current, a.symbol());
     }
 
     /** A total is only known if every contributing row stated one; a gap makes it unknown, not smaller. */

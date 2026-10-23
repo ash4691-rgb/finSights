@@ -1,7 +1,8 @@
 import { Field, SuggestInput } from '../ui'
 import { HoldingModal } from './HoldingsView'
 import { TransactionModal } from './TransactionsView'
-import { draftFromExtractedHolding, draftFromExtractedTransaction, kindLabel, sellDraft } from './statementImportLogic'
+import { draftFromExtractedHolding, draftFromExtractedTransaction, draftFromGroup, kindLabel, kindOf, sellDraft } from './statementImportLogic'
+import type { NewHoldingGroup } from './statementImportLogic'
 import type { Category, ExtractedHolding, ExtractedTransaction, Holding, HoldingToRemove, InstrumentKind, StatementExtractionResult, StatementType } from '../types'
 
 // The two non-upload steps of the statement import: confirming what the first read found (type,
@@ -82,6 +83,30 @@ export function TransactionReviewList({ rows, conflicts, onOpen, onSkip }: Reado
   </>
 }
 
+export function NewHoldingGroupsList({ groups, rows, conflicts, onOpen, onSkip }: Readonly<{
+  groups: NewHoldingGroup[]; rows: ExtractedTransaction[]; conflicts: Record<string, string | null>
+  onOpen: (group: NewHoldingGroup) => void; onSkip: (group: NewHoldingGroup) => void
+}>) {
+  if (groups.length === 0) return null
+  return <>
+    <div className="panel-heading"><h3>New holdings from these transactions</h3><span>{groups.length}</span></div>
+    <p className="hint">You don't hold these at this broker yet. Each one is created from its first buy, and its other lines are then logged against it.</p>
+    <div className="mapped-holdings">{groups.map(group => {
+      const opening = rows[group.openingIndex]
+      return <div key={group.key} className="mapped-holding status-new">
+        <button type="button" className="mapped-holding-name" onClick={() => onOpen(group)}>
+          <strong title={group.name}>{group.name}</strong>
+          <small>{[kindLabel[group.kind], group.tickerSymbol, `${group.rowIndexes.length} transaction${group.rowIndexes.length === 1 ? '' : 's'}`, `first buy ${opening.date}`].filter(Boolean).join(' · ')}</small>
+          {conflicts[group.key] && <small className="conflict-note">Conflict: {conflicts[group.key]}</small>}
+        </button>
+        <div className="mapped-holding-value">{opening.amount != null && <span>{opening.amount}</span>}
+          <small><button type="button" className="text-link" onClick={() => onSkip(group)}>Skip</button></small>
+        </div>
+      </div>
+    })}</div>
+  </>
+}
+
 export function MissingHoldingsList({ rows, broker, onSell, onDelete, onKeep }: Readonly<{
   rows: HoldingToRemove[]; broker: string
   onSell: (row: HoldingToRemove) => void; onDelete: (row: HoldingToRemove) => void; onKeep: (row: HoldingToRemove) => void
@@ -100,9 +125,11 @@ export function MissingHoldingsList({ rows, broker, onSell, onDelete, onKeep }: 
   </>
 }
 
-export function ReviewStep({ result, brokerName, holdingConflicts, txnConflicts, loggableCount, skippedCount, pendingHoldingRows, pendingTxnRows, pendingMissing,
+export function ReviewStep({ result, brokerName, transactions, groups, groupConflicts, onOpenGroup, onSkipGroup, holdingConflicts, txnConflicts, loggableCount, skippedCount, pendingHoldingRows, pendingTxnRows, pendingMissing,
   confirmingLogAll, setConfirmingLogAll, loggingAll, logAllNote, deleteCount, onLogAll, onChangeBroker, onOpenHolding, onOpenTxn, onSell, onResolve, onDelete }: Readonly<{
-  result: StatementExtractionResult; brokerName: string
+  result: StatementExtractionResult; brokerName: string; transactions: ExtractedTransaction[]
+  groups: NewHoldingGroup[]; groupConflicts: Record<string, string | null>
+  onOpenGroup: (group: NewHoldingGroup) => void; onSkipGroup: (group: NewHoldingGroup) => void
   holdingConflicts: Record<number, string | null>; txnConflicts: Record<number, string | null>
   loggableCount: number; skippedCount: number
   pendingHoldingRows: HoldingRow[]; pendingTxnRows: TxnRow[]; pendingMissing: HoldingToRemove[]
@@ -123,6 +150,7 @@ export function ReviewStep({ result, brokerName, holdingConflicts, txnConflicts,
     {logAllNote && <p className="hint">{logAllNote}</p>}
 
     <HoldingReviewList rows={pendingHoldingRows} conflicts={holdingConflicts} onOpen={onOpenHolding} onSkip={index => onResolve(`h${index}`)} />
+    <NewHoldingGroupsList groups={groups} rows={transactions} conflicts={groupConflicts} onOpen={onOpenGroup} onSkip={onSkipGroup} />
     <TransactionReviewList rows={pendingTxnRows} conflicts={txnConflicts} onOpen={onOpenTxn} onSkip={index => onResolve(`t${index}`)} />
     <MissingHoldingsList rows={pendingMissing} broker={brokerName} onSell={onSell} onKeep={r => onResolve(`m${r.holdingId}`)} onDelete={onDelete} />
     {deleteCount > 0 && <p className="hint">{deleteCount} holding{deleteCount === 1 ? '' : 's'} will be deleted when you click Done.</p>}
@@ -200,20 +228,23 @@ export function UploadStep({ busy, reading, file, password, onPassword, error, o
 }
 
 // The pre-filled Add Holding / Log Transaction forms a row (or a SELL suggestion) opens into.
-export function ReviewDialogs({ result, brokerName, categories, holdings, displayCurrency, categoryFor, reviewingHolding, reviewingTxn, reviewingSell,
-  onCloseHolding, onCloseTxn, onCloseSell, onHoldingSaved, onTxnSaved, onSellSaved }: Readonly<{
-  result: StatementExtractionResult; brokerName: string; categories: Category[]; holdings: Holding[]; displayCurrency: string
-  categoryFor: (row: ExtractedHolding) => string
-  reviewingHolding: number | null; reviewingTxn: number | null; reviewingSell: HoldingToRemove | null
-  onCloseHolding: () => void; onCloseTxn: () => void; onCloseSell: () => void
-  onHoldingSaved: (saved: Holding) => void; onTxnSaved: () => void; onSellSaved: () => void
+export function ReviewDialogs({ result, brokerName, transactions, categories, holdings, displayCurrency, categoryFor, reviewingHolding, reviewingTxn, reviewingSell, reviewingGroup,
+  onCloseHolding, onCloseTxn, onCloseSell, onCloseGroup, onHoldingSaved, onTxnSaved, onSellSaved, onGroupSaved }: Readonly<{
+  result: StatementExtractionResult; brokerName: string; transactions: ExtractedTransaction[]; categories: Category[]; holdings: Holding[]; displayCurrency: string
+  categoryFor: (kind: InstrumentKind) => string
+  reviewingHolding: number | null; reviewingTxn: number | null; reviewingSell: HoldingToRemove | null; reviewingGroup: NewHoldingGroup | null
+  onCloseHolding: () => void; onCloseTxn: () => void; onCloseSell: () => void; onCloseGroup: () => void
+  onHoldingSaved: (saved: Holding) => void; onTxnSaved: () => void; onSellSaved: () => void; onGroupSaved: (saved: Holding) => void
 }>) {
   return <>
     {reviewingHolding != null && <HoldingModal holding={null} category={null} categories={categories} holdings={holdings} displayCurrency={displayCurrency}
-      draft={draftFromExtractedHolding(result.holdings[reviewingHolding], brokerName, categoryFor(result.holdings[reviewingHolding]))}
+      draft={draftFromExtractedHolding(result.holdings[reviewingHolding], brokerName, categoryFor(kindOf(result.holdings[reviewingHolding])))}
       onClose={onCloseHolding} onSaved={onHoldingSaved} />}
     {reviewingTxn != null && <TransactionModal transaction={null} holdings={holdings} displayCurrency={displayCurrency}
-      draft={draftFromExtractedTransaction(result.transactions[reviewingTxn])} onClose={onCloseTxn} onSaved={onTxnSaved} />}
+      draft={draftFromExtractedTransaction(transactions[reviewingTxn])} onClose={onCloseTxn} onSaved={onTxnSaved} />}
+    {reviewingGroup && <HoldingModal holding={null} category={null} categories={categories} holdings={holdings} displayCurrency={displayCurrency}
+      draft={draftFromGroup(reviewingGroup, transactions[reviewingGroup.openingIndex], brokerName, categoryFor(reviewingGroup.kind))}
+      openingDate={transactions[reviewingGroup.openingIndex].date} onClose={onCloseGroup} onSaved={onGroupSaved} />}
     {reviewingSell && <TransactionModal transaction={null} holdings={holdings} displayCurrency={displayCurrency}
       draft={sellDraft(reviewingSell, result.statementDate, brokerName)} onClose={onCloseSell} onSaved={onSellSaved} />}
   </>

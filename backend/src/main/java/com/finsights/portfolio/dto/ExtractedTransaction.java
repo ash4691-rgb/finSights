@@ -22,5 +22,26 @@ public record ExtractedTransaction(
         BigDecimal amount,
         String notes,
         /** The existing holding this row matched, or null if none did; see the class comment. */
-        String matchedHoldingId
-) { }
+        String matchedHoldingId,
+        /** What kind of instrument this line is; null on rows built before kinds existed (treated as a stock). */
+        InstrumentKind kind,
+        /** The symbol the statement prints for this line (a coin's "BTC"), if it prints one. */
+        String symbol,
+        /** Best-effort ticker for an instrument the user doesn't hold yet at this broker, so a holding
+         *  created from its first BUY can be market-valued; null for a matched row or when unsure. */
+        String tickerSymbol
+) {
+    /** The shape every row had before kind, symbol and ticker existed. */
+    public ExtractedTransaction(String date, TransactionType type, String instrumentName, String isin,
+                                BigDecimal quantity, BigDecimal amount, String notes, String matchedHoldingId) {
+        this(date, type, instrumentName, isin, quantity, amount, notes, matchedHoldingId, null, null, null);
+    }
+
+    public ExtractedTransaction withMatchedHolding(String holdingId) {
+        return new ExtractedTransaction(date, type, instrumentName, isin, quantity, amount, notes, holdingId, kind, symbol, tickerSymbol);
+    }
+
+    public ExtractedTransaction withTicker(String ticker) {
+        return new ExtractedTransaction(date, type, instrumentName, isin, quantity, amount, notes, matchedHoldingId, kind, symbol, ticker);
+    }
+}

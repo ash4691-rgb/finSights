@@ -120,6 +120,7 @@ public class StatementImportService {
     // one or two calls.
     static final int MAX_SPREADSHEET_ROWS_PER_CALL = 150;
     private static final int UNMATCHED_NAMES_IN_WARNING = 5;
+    private static final int MAX_TICKER_LOOKUPS = 30;
 
     private static final String TOOL_NAME = "extract_statement";
     private static final byte[] PDF_MAGIC = "%PDF".getBytes(StandardCharsets.US_ASCII);
@@ -143,26 +144,30 @@ public class StatementImportService {
             the `holdings` and/or `transactions` arrays that actually apply. Also report `broker`: the name \
             of the broker or investing platform the statement comes from, only if the document names it — \
             never guess one.
-            2. For holdings: report listed equities, ETFs and mutual fund folios that have units held, and \
-            set each row's `kind` to STOCK, ETF or MUTUAL_FUND. For a mutual fund use the scheme name as \
-            the instrumentName and the units held as the quantity; report one row per folio line as printed \
-            (the same scheme may appear on several lines). Report investedValue and currentValue as the \
-            statement's own totals for that line, when it states them. Skip bonds, insurance, crypto, \
-            commodities and anything else — instead add one line to `warnings` naming what you skipped and \
-            why, so nothing is silently lost. Report the average cost per unit only if the statement \
-            states one; omit the field rather than estimating it.
+            2. For holdings: report listed equities, ETFs, mutual fund folios, crypto assets and commodities \
+            (gold, silver and the like) that have a quantity held, and set each row's `kind` to STOCK, ETF, \
+            MUTUAL_FUND, CRYPTO or COMMODITY. For a mutual fund use the scheme name as the instrumentName \
+            and the units held as the quantity; for a crypto asset use the coin's name and put its ticker \
+            (BTC, ETH…) in `symbol` when printed; report one row per line as printed (the same scheme or \
+            coin may appear on several lines). Report investedValue and currentValue as the statement's own \
+            totals for that line, when it states them. Skip bonds, insurance and anything else that isn't \
+            one of those five kinds — instead add one line to `warnings` naming what you skipped and why, \
+            so nothing is silently lost. Report the average cost per unit only if the statement states one; \
+            omit the field rather than estimating it.
             3. For transactions: report each dated buy, sell, split, interest/dividend, adjustment, or loan \
             repayment line, with its date as YYYY-MM-DD and its type as one of BUY, SELL, SPLIT, INTEREST, \
             ADJUSTMENT, REPAY — picking the closest fit when a broker uses different wording. Omit amount \
-            or quantity when the line doesn't state one (e.g. a SPLIT has no amount). If a line shows its \
+            or quantity when the line doesn't state one (e.g. a SPLIT has no amount); when a line gives units \
+            and a price or NAV per unit but no total, the amount is units × price. Set each line's `kind` \
+            as for holdings (a mutual fund SIP instalment or lump sum is a BUY, a redemption is a SELL). If a line shows its \
             own order/execution status, only report it when that status is executed/completed — skip a \
             cancelled, rejected, pending, or open order entirely (no warning needed; it never happened).
             4. Only ever return the fields the extract_statement tool defines. Never include PAN, bank \
             account numbers, demat/folio account numbers, the holder's name, address, phone number, email, \
             or any other personal information, even if it appears in the document — the schema has no \
             field for it on purpose.
-            5. A stock or ETF needs its ISIN and quantity; a mutual fund needs its scheme name and units \
-            (an ISIN is optional for it — omit the field if the statement has none). If you cannot \
+            5. A stock or ETF needs its ISIN and quantity; a mutual fund, crypto asset or commodity needs \
+            its name and quantity (an ISIN is optional for those — omit the field if the statement has none). If you cannot \
             confidently determine those, or a transaction's date, type, or instrument, leave that row out \
             of the result entirely and explain why in `warnings` instead of guessing.
             """;
@@ -236,7 +241,31 @@ public class StatementImportService {
         StatementType type = request.statementType() == null ? StatementType.HOLDINGS : request.statementType();
         StatementExtractionResponse rows = new StatementExtractionResponse(type, request.holdings(), List.of(),
                 request.transactions(), request.statementDate(), request.warnings(), request.broker().trim());
-        return matchAgainstExisting(rows, currentUser.currentUser().getId(), request.broker());
+        StatementExtractionResponse matched = matchAgainstExisting(rows, currentUser.currentUser().getId(), request.broker());
+        return withTickersForNewBuys(matched);
+    }
+
+    /**
+     * An unmatched BUY is the opening of a holding the user doesn't have yet, so each distinct such
+     * instrument gets a ticker guess (once, not per row) for the holding to be market-valued. Capped:
+     * a multi-year order history can name hundreds of instruments, and each guess is a live search —
+     * the rest are simply left for the user to set in the form.
+     */
+    StatementExtractionResponse withTickersForNewBuys(StatementExtractionResponse matched) {
+        Map<String, String> tickers = new LinkedHashMap<>();
+        List<ExtractedTransaction> rows = new ArrayList<>();
+        for (ExtractedTransaction row : matched.transactions()) {
+            boolean opensNewHolding = row.matchedHoldingId() == null && row.type() == TransactionType.BUY;
+            if (!opensNewHolding) { rows.add(row); continue; }
+            String key = StatementRows.transactionKey(row);
+            if (!tickers.containsKey(key) && tickers.size() < MAX_TICKER_LOOKUPS) {
+                InstrumentKind kind = row.kind() == null ? InstrumentKind.STOCK : row.kind();
+                tickers.put(key, resolveTicker(row.instrumentName(), row.symbol(), kind));
+            }
+            rows.add(row.withTicker(tickers.get(key)));
+        }
+        return new StatementExtractionResponse(matched.statementType(), matched.holdings(), matched.toRemove(), rows,
+                matched.statementDate(), matched.warnings(), matched.broker());
     }
 
     /** One extraction call per chunk — see {@link #chunkFlattenedSpreadsheet} for why a large
@@ -438,12 +467,12 @@ public class StatementImportService {
         Map<String, Integer> unmatchedCounts = new LinkedHashMap<>();
         for (ExtractedTransaction row : extracted.transactions()) {
             Holding existing = findExisting(row.isin(), row.instrumentName(), byIsin, brokerHoldings);
-            if (existing == null) unmatchedCounts.merge(row.instrumentName(), 1, Integer::sum);
+            if (existing == null && row.type() != TransactionType.SELL) unmatchedCounts.merge(row.instrumentName(), 1, Integer::sum);
             String holdingId = existing == null ? null : existing.getId();
-            matchedTransactions.add(new ExtractedTransaction(row.date(), row.type(), row.instrumentName(), row.isin(),
-                    row.quantity(), row.amount(), row.notes(), holdingId));
+            matchedTransactions.add(row.withMatchedHolding(holdingId));
         }
         unmatchedTransactionWarning(unmatchedCounts).ifPresent(warnings::add);
+        unknownSellWarning(matchedTransactions, broker).ifPresent(warnings::add);
 
         return new StatementExtractionResponse(extracted.statementType(), matchedHoldings, missing,
                 matchedTransactions, extracted.statementDate(), warnings, extracted.broker());
@@ -494,7 +523,30 @@ public class StatementImportService {
         return java.util.Optional.of(total + " transaction" + (total == 1 ? "" : "s") + " across "
                 + unmatchedCounts.size() + " instrument" + (unmatchedCounts.size() == 1 ? "" : "s")
                 + " (" + names + suffix + ") don't match any holding in your portfolio yet — pick the holding "
-                + "when you review each one, or add the holding first.");
+                + "when you review each one, or create the holding from its first buy.");
+    }
+
+    /** One note for SELLs of an instrument the user doesn't hold at this broker and whose BUY isn't in
+     *  the statement either — there is nothing to sell from, so they can't be logged as they stand. */
+    static java.util.Optional<String> unknownSellWarning(List<ExtractedTransaction> rows, String broker) {
+        Set<String> boughtKeys = rows.stream()
+                .filter(t -> t.matchedHoldingId() == null && t.type() == TransactionType.BUY)
+                .map(StatementRows::transactionKey)
+                .collect(Collectors.toSet());
+        Map<String, Integer> sellCounts = new LinkedHashMap<>();
+        for (ExtractedTransaction row : rows) {
+            boolean orphanSell = row.matchedHoldingId() == null && row.type() == TransactionType.SELL
+                    && !boughtKeys.contains(StatementRows.transactionKey(row));
+            if (orphanSell) sellCounts.merge(row.instrumentName(), 1, Integer::sum);
+        }
+        if (sellCounts.isEmpty()) return java.util.Optional.empty();
+        int total = sellCounts.values().stream().mapToInt(Integer::intValue).sum();
+        String names = sellCounts.keySet().stream().limit(UNMATCHED_NAMES_IN_WARNING).collect(Collectors.joining(", "));
+        int more = sellCounts.size() - UNMATCHED_NAMES_IN_WARNING;
+        String suffix = more > 0 ? " and " + more + " more" : "";
+        return java.util.Optional.of(total + " SELL transaction" + (total == 1 ? "" : "s") + " across " + sellCounts.size()
+                + " instrument" + (sellCounts.size() == 1 ? "" : "s") + " (" + names + suffix + ") are for holdings you don't have at "
+                + broker.trim() + ", and their buys aren't in this statement — add the holding first, or pick a different one when you review each.");
     }
 
     /**
@@ -507,30 +559,55 @@ public class StatementImportService {
      */
     StatementExtractionResponse enrichWithTickers(StatementExtractionResponse extracted) {
         List<ExtractedHolding> enriched = extracted.holdings().stream()
-                .map(h -> h.withTicker(resolveTicker(h.instrumentName(), h.kind())))
+                .map(h -> h.withTicker(resolveTicker(h.instrumentName(), h.symbol(), h.kind())))
                 .toList();
         return new StatementExtractionResponse(extracted.statementType(), enriched, extracted.toRemove(),
                 extracted.transactions(), extracted.statementDate(), extracted.warnings(), extracted.broker());
     }
 
-    String resolveTicker(String instrumentName) { return resolveTicker(instrumentName, InstrumentKind.STOCK); }
+    String resolveTicker(String instrumentName) { return resolveTicker(instrumentName, null, InstrumentKind.STOCK); }
+
+    String resolveTicker(String instrumentName, InstrumentKind kind) { return resolveTicker(instrumentName, null, kind); }
 
     /** Package-private (not private) purely so it can be unit-tested directly against a mocked
      *  {@link MarketDataService} without going through the full, network-calling {@link #extract}. */
-    String resolveTicker(String instrumentName, InstrumentKind kind) {
+    String resolveTicker(String instrumentName, String symbol, InstrumentKind kind) {
+        // A commodity statement line (digital gold, a bullion balance…) has no listing that is priced
+        // in the statement's own currency, so it's left unguessed — the user picks a valuation.
+        if (kind == InstrumentKind.COMMODITY) return null;
         try {
-            List<SymbolSuggestion> suggestions = marketData.search(instrumentName);
+            String query = symbol != null ? symbol : instrumentName;
+            List<SymbolSuggestion> suggestions = marketData.search(query);
             if (kind == InstrumentKind.MUTUAL_FUND) return resolveFundSchemeCode(instrumentName, suggestions);
-            for (SymbolSuggestion suggestion : suggestions) {
-                String symbol = suggestion.symbol();
-                // Statement holdings are Indian equities/ETFs — a Yahoo hit on a foreign exchange
-                // is never the right instrument here, whatever its name similarity score.
-                boolean isIndianListing = symbol != null
-                        && (symbol.toUpperCase(Locale.ROOT).endsWith(".NS") || symbol.toUpperCase(Locale.ROOT).endsWith(".BO"));
-                if (isIndianListing && namesLikelyMatch(instrumentName, suggestion.name())) return symbol;
-            }
+            if (kind == InstrumentKind.CRYPTO) return resolveCryptoPair(instrumentName, symbol, suggestions);
+            return resolveIndianListing(instrumentName, suggestions);
         } catch (RuntimeException e) {
             log.debug("Ticker guess failed for '{}': {}", instrumentName, e.toString());
+            return null;
+        }
+    }
+
+    private static String resolveIndianListing(String instrumentName, List<SymbolSuggestion> suggestions) {
+        for (SymbolSuggestion suggestion : suggestions) {
+            String symbol = suggestion.symbol();
+            // Statement holdings are Indian equities/ETFs — a Yahoo hit on a foreign exchange
+            // is never the right instrument here, whatever its name similarity score.
+            boolean isIndianListing = symbol != null
+                    && (symbol.toUpperCase(Locale.ROOT).endsWith(".NS") || symbol.toUpperCase(Locale.ROOT).endsWith(".BO"));
+            if (isIndianListing && namesLikelyMatch(instrumentName, suggestion.name())) return symbol;
+        }
+        return null;
+    }
+
+    /** An INR pair ({@code BTC-INR}) only: a USD pair would value an INR statement's holding in the
+     *  wrong currency. Matches on the printed symbol when there is one, else on the coin's name. */
+    private static String resolveCryptoPair(String instrumentName, String symbol, List<SymbolSuggestion> suggestions) {
+        for (SymbolSuggestion suggestion : suggestions) {
+            String pair = suggestion.symbol();
+            if (pair == null || !pair.toUpperCase(Locale.ROOT).endsWith("-INR")) continue;
+            String base = pair.substring(0, pair.length() - "-INR".length());
+            boolean symbolMatches = symbol != null && base.equalsIgnoreCase(symbol.trim());
+            if (symbolMatches || namesLikelyMatch(instrumentName, suggestion.name())) return pair;
         }
         return null;
     }
@@ -669,6 +746,8 @@ public class StatementImportService {
     private static final String FIELD_INVESTED_VALUE = "investedValue";
     private static final String FIELD_CURRENT_VALUE = "currentValue";
     private static final String FIELD_BROKER = "broker";
+    private static final String FIELD_SYMBOL = "symbol";
+    private static final String SYMBOL_DESCRIPTION = "The ticker/symbol printed for this line (e.g. BTC), only if the statement prints one";
     private static final String INSTRUMENT_NAME_DESCRIPTION = "Company or instrument name exactly as printed";
     private static final String ISIN_DESCRIPTION = "The 12-character ISIN for this instrument";
 
@@ -679,8 +758,9 @@ public class StatementImportService {
         holdingProps.set(FIELD_INSTRUMENT_NAME, textProp(json, INSTRUMENT_NAME_DESCRIPTION));
         holdingProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION + " — required for a stock or ETF, omit for a mutual fund that shows none"));
         ObjectNode kind = textProp(json, "What kind of instrument this line is");
-        kind.set("enum", json.createArrayNode().add("STOCK").add("ETF").add("MUTUAL_FUND"));
+        kind.set("enum", kindEnum(json));
         holdingProps.set(FIELD_KIND, kind);
+        holdingProps.set(FIELD_SYMBOL, textProp(json, SYMBOL_DESCRIPTION));
         holdingProps.set(FIELD_QUANTITY, numberProp(json, "Units held"));
         holdingProps.set(FIELD_INVESTED_VALUE, numberProp(json, "Total amount invested in this line, if the statement shows it"));
         holdingProps.set(FIELD_CURRENT_VALUE, numberProp(json, "Current market value of this line, if the statement shows it"));
@@ -703,12 +783,16 @@ public class StatementImportService {
         txnType.set("enum", json.createArrayNode().add("BUY").add("SELL").add("SPLIT").add("INTEREST").add("ADJUSTMENT").add("REPAY"));
         txnProps.set(SCHEMA_TYPE, txnType);
         txnProps.set(FIELD_INSTRUMENT_NAME, textProp(json, INSTRUMENT_NAME_DESCRIPTION));
-        txnProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION));
+        txnProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION + " — omit for a mutual fund, crypto asset or commodity that shows none"));
+        ObjectNode txnKind = textProp(json, "What kind of instrument this line is");
+        txnKind.set("enum", kindEnum(json));
+        txnProps.set(FIELD_KIND, txnKind);
+        txnProps.set(FIELD_SYMBOL, textProp(json, SYMBOL_DESCRIPTION));
         txnProps.set(FIELD_QUANTITY, numberProp(json, "Omit if this line has no quantity (e.g. INTEREST)"));
         txnProps.set("amount", numberProp(json, "Omit if this line has no amount (e.g. SPLIT)"));
         txnProps.set("notes", textProp(json, "Any short free-text note from the statement line, if present"));
         txnSchema.set(SCHEMA_PROPERTIES, txnProps);
-        txnSchema.set(SCHEMA_REQUIRED, json.createArrayNode().add("date").add(SCHEMA_TYPE).add(FIELD_INSTRUMENT_NAME).add(FIELD_ISIN));
+        txnSchema.set(SCHEMA_REQUIRED, json.createArrayNode().add("date").add(SCHEMA_TYPE).add(FIELD_INSTRUMENT_NAME).add(FIELD_KIND));
 
         ObjectNode transactionsArray = json.createObjectNode();
         transactionsArray.put(SCHEMA_TYPE, SCHEMA_ARRAY);
@@ -740,6 +824,12 @@ public class StatementImportService {
         tool.put(SCHEMA_DESCRIPTION, "Report the holdings and/or transactions found in this statement.");
         tool.set("input_schema", inputSchema);
         return tool;
+    }
+
+    private static ArrayNode kindEnum(ObjectMapper json) {
+        ArrayNode values = json.createArrayNode();
+        for (InstrumentKind kind : InstrumentKind.values()) values.add(kind.name());
+        return values;
     }
 
     private static ObjectNode textProp(ObjectMapper json, String description) {
@@ -796,7 +886,7 @@ public class StatementImportService {
         String isin = blankToNull(row.path(FIELD_ISIN).asText(null));
         InstrumentKind kind = parseKind(row.path(FIELD_KIND).asText(null), isin);
         JsonNode quantityNode = row.path(FIELD_QUANTITY);
-        boolean identified = name != null && (isin != null || kind == InstrumentKind.MUTUAL_FUND);
+        boolean identified = name != null && (isin != null || (kind != null && kind.identifiedByName()));
         if (!identified || !quantityNode.isNumber() || quantityNode.decimalValue().signum() <= 0) {
             warnings.add("Skipped a holding row with an incomplete name, ISIN, or quantity" + (name != null ? " (" + name + ")" : ""));
             return;
@@ -809,7 +899,7 @@ public class StatementImportService {
         String depository = blankToNull(row.path("depository").asText(null));
         String normalisedIsin = isin == null ? null : isin.toUpperCase(Locale.ROOT);
         holdingRows.add(new ExtractedHolding(name, normalisedIsin, quantity, avgCost, depository, null, null,
-                kind, invested, current));
+                kind, invested, current, blankToNull(row.path(FIELD_SYMBOL).asText(null))));
     }
 
     /** A row with no kind but an ISIN is a stock (what every row was before kinds existed); one with
@@ -827,17 +917,19 @@ public class StatementImportService {
         String date = blankToNull(row.path("date").asText(null));
         String name = blankToNull(row.path(FIELD_INSTRUMENT_NAME).asText(null));
         String isin = blankToNull(row.path(FIELD_ISIN).asText(null));
+        InstrumentKind kind = parseKind(row.path(FIELD_KIND).asText(null), isin);
         TransactionType type = parseTransactionType(row.path(SCHEMA_TYPE).asText(null));
-        if (date == null || name == null || isin == null || type == null) {
+        boolean identified = name != null && (isin != null || (kind != null && kind.identifiedByName()));
+        if (date == null || !identified || type == null) {
             warnings.add("Skipped a transaction row with an incomplete date, type, name, or ISIN" + (name != null ? " (" + name + ")" : ""));
             return;
         }
-        JsonNode quantityNode = row.path(FIELD_QUANTITY);
-        JsonNode amountNode = row.path("amount");
-        BigDecimal quantity = quantityNode.isNumber() ? quantityNode.decimalValue() : null;
-        BigDecimal amount = amountNode.isNumber() ? amountNode.decimalValue() : null;
+        BigDecimal quantity = decimalOrNull(row.path(FIELD_QUANTITY));
+        BigDecimal amount = decimalOrNull(row.path("amount"));
         String notes = blankToNull(row.path("notes").asText(null));
-        txnRows.add(new ExtractedTransaction(date, type, name, isin.trim().toUpperCase(Locale.ROOT), quantity, amount, notes, null));
+        String normalisedIsin = isin == null ? null : isin.toUpperCase(Locale.ROOT);
+        txnRows.add(new ExtractedTransaction(date, type, name, normalisedIsin, quantity, amount, notes, null,
+                kind, blankToNull(row.path(FIELD_SYMBOL).asText(null)), null));
     }
 
     private static StatementType parseStatementType(String value) {

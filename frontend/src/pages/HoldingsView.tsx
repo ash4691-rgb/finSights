@@ -121,7 +121,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
-export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft }: {
+export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft, openingDate }: {
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
   // Carries the just-saved holding back to the caller so it can be spliced into local state
   // immediately — instant feedback instead of waiting on the reload that follows.
@@ -131,6 +131,8 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
   // Holding object for `holding` above: that would flip isEdit and lock fields (broker, quantity)
   // a draft still needs the user to confirm. Ignored once `holding` is set; editing always wins.
   draft?: Partial<ReturnType<typeof blankHoldingForm>>
+  // Dates a brand-new market holding's opening position (a transaction statement's first BUY) instead of today.
+  openingDate?: string
 }) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
@@ -238,7 +240,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
       investedValue: numeric(form.investedValue), currentValue: isFixedRate ? null : numeric(form.currentValue),
       fixedAnnualRate: (isFixedRate || isLiability) && form.fixedAnnualRate ? numeric(form.fixedAnnualRate) / 100 : null,
       compoundingFrequency: isFixedRate ? form.compoundingFrequency : null,
-      fixedRateStartDate: isFixedRate ? form.fixedRateStartDate : null,
+      fixedRateStartDate: isFixedRate ? form.fixedRateStartDate : (openingDate ?? null),
       fixedRateEndDate: isFixedRate && form.fixedRateEndDate ? form.fixedRateEndDate : null,
       repaymentFrequency: isLiability ? form.repaymentFrequency : null,
       repaymentDueDate: isOneTime && form.repaymentDueDate ? form.repaymentDueDate : null,

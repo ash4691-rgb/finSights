@@ -410,7 +410,9 @@ class StatementImportServiceTest {
         // A first-time import: no holdings exist yet. Rows must still reach the user.
         StatementExtractionResponse matched = matchTransactions(List.of(), parsed.transactions());
         assertThat(matched.transactions()).hasSize(2);
-        assertThat(matched.warnings()).hasSize(1);
+        // One note for the unmatched BUY, and a separate one for the SELL whose buy isn't in the file.
+        assertThat(matched.warnings()).hasSize(2);
+        assertThat(matched.warnings().get(1)).contains("1 SELL transaction").contains("EXAMPLE ETF");
     }
 
     @Test
