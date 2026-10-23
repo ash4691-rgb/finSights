@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { ReviewDialogs, ReviewStep } from './StatementImportSteps'
-import { derivePending, kindOf, logAllRows } from './statementImportLogic'
+import { derivePending, kindOf, logAllRows, sequentially } from './statementImportLogic'
 import type { Category, ExtractedHolding, Holding, HoldingToRemove, InstrumentKind, StatementExtractionResult } from '../types'
 
 // The review step of a statement import: owns everything that happens after the rows are matched —
 // what's been saved or skipped, "Log all", the per-row forms, and applying deletions on Done.
-export function StatementReview({ result, brokerName, categoryByKind, categories, holdings, displayCurrency, onChangeBroker, onClose, onSaved, onRemoved, onTransactionSaved }: {
+export function StatementReview({ result, brokerName, categoryByKind, categories, holdings, displayCurrency, onChangeBroker, onClose, onSaved, onRemoved, onTransactionSaved }: Readonly<{
   result: StatementExtractionResult; brokerName: string; categoryByKind: Partial<Record<InstrumentKind, string>>
   categories: Category[]; holdings: Holding[]; displayCurrency: string
   onChangeBroker: () => void; onClose: () => void
   onSaved: (saved: Holding) => void; onRemoved: (holdingIds: string[]) => void; onTransactionSaved: () => void
-}) {
+}>) {
   // Keys (prefixed `h` holdings, `t` transactions, `m` missing holdings by id) that have been
   // saved, skipped, or otherwise dealt with — once every row is in here, Done unlocks. A matched
   // holding row needs no review (it's already in the portfolio) so it's never in this set at all.
@@ -45,7 +45,7 @@ export function StatementReview({ result, brokerName, categoryByKind, categories
     setFinishing(true); setError('')
     try {
       const ids = [...deleteIds]
-      for (const id of ids) await api(`/api/holdings/${id}`, { method: 'DELETE' })
+      await sequentially(ids, async id => { await api(`/api/holdings/${id}`, { method: 'DELETE' }) })
       onRemoved(ids)
       onClose()
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not finish removing the holdings flagged above') }
@@ -75,6 +75,12 @@ export function StatementReview({ result, brokerName, categoryByKind, categories
       onCloseHolding={() => setReviewingHolding(null)} onCloseTxn={() => setReviewingTxn(null)} onCloseSell={() => setReviewingSell(null)}
       onHoldingSaved={saved => { onSaved(saved); resolve(`h${reviewingHolding}`); setReviewingHolding(null) }}
       onTxnSaved={() => { onTransactionSaved(); resolve(`t${reviewingTxn}`); setReviewingTxn(null) }}
-      onSellSaved={() => { onTransactionSaved(); if (reviewingSell) resolve(`m${reviewingSell.holdingId}`); setReviewingSell(null) }} />
+      onSellSaved={() => {
+        onTransactionSaved()
+        if (reviewingSell) {
+          resolve(`m${reviewingSell.holdingId}`)
+        }
+        setReviewingSell(null)
+      }} />
   </>
 }

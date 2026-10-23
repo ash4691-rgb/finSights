@@ -10,12 +10,12 @@ import type { Category, ExtractedHolding, ExtractedTransaction, Holding, Holding
 const typeLabel: Record<StatementType, string> = { HOLDINGS: 'Holdings', TRANSACTIONS: 'Transactions', MIXED: 'Both holdings and transactions' }
 
 export function ConfirmStep({ extracted, statementType, onStatementType, broker, onBroker, brokerSuggestions,
-  kinds, categories, categoryByKind, onCategory, busy, onContinue }: {
+  kinds, categories, categoryByKind, onCategory, busy, onContinue }: Readonly<{
   extracted: StatementExtractionResult; statementType: StatementType; onStatementType: (t: StatementType) => void
   broker: string; onBroker: (b: string) => void; brokerSuggestions: string[]
   kinds: InstrumentKind[]; categories: Category[]; categoryByKind: Partial<Record<InstrumentKind, string>>
   onCategory: (kind: InstrumentKind, categoryId: string) => void; busy: boolean; onContinue: () => void
-}) {
+}>) {
   const assetCategories = categories.filter(c => c.kind === 'ASSET' && !c.realEstate)
   return <section className="import-confirm">
     <div className="panel-heading"><h3>Check what we found</h3></div>
@@ -44,9 +44,9 @@ export function ConfirmStep({ extracted, statementType, onStatementType, broker,
 type HoldingRow = { row: ExtractedHolding; index: number }
 type TxnRow = { row: ExtractedTransaction; index: number }
 
-export function HoldingReviewList({ rows, conflicts, onOpen, onSkip }: {
+export function HoldingReviewList({ rows, conflicts, onOpen, onSkip }: Readonly<{
   rows: HoldingRow[]; conflicts: Record<number, string | null>; onOpen: (index: number) => void; onSkip: (index: number) => void
-}) {
+}>) {
   if (rows.length === 0) return null
   return <>
     <div className="panel-heading"><h3>Holdings to review</h3><span>{rows.length}</span></div>
@@ -63,9 +63,9 @@ export function HoldingReviewList({ rows, conflicts, onOpen, onSkip }: {
   </>
 }
 
-export function TransactionReviewList({ rows, conflicts, onOpen, onSkip }: {
+export function TransactionReviewList({ rows, conflicts, onOpen, onSkip }: Readonly<{
   rows: TxnRow[]; conflicts: Record<number, string | null>; onOpen: (index: number) => void; onSkip: (index: number) => void
-}) {
+}>) {
   if (rows.length === 0) return null
   return <>
     <div className="panel-heading"><h3>Transactions to review</h3><span>{rows.length}</span></div>
@@ -82,10 +82,10 @@ export function TransactionReviewList({ rows, conflicts, onOpen, onSkip }: {
   </>
 }
 
-export function MissingHoldingsList({ rows, broker, onSell, onDelete, onKeep }: {
+export function MissingHoldingsList({ rows, broker, onSell, onDelete, onKeep }: Readonly<{
   rows: HoldingToRemove[]; broker: string
   onSell: (row: HoldingToRemove) => void; onDelete: (row: HoldingToRemove) => void; onKeep: (row: HoldingToRemove) => void
-}) {
+}>) {
   if (rows.length === 0) return null
   return <>
     <div className="panel-heading"><h3>Missing from this statement</h3><span>{rows.length}</span></div>
@@ -101,7 +101,7 @@ export function MissingHoldingsList({ rows, broker, onSell, onDelete, onKeep }: 
 }
 
 export function ReviewStep({ result, brokerName, holdingConflicts, txnConflicts, loggableCount, skippedCount, pendingHoldingRows, pendingTxnRows, pendingMissing,
-  confirmingLogAll, setConfirmingLogAll, loggingAll, logAllNote, deleteCount, onLogAll, onChangeBroker, onOpenHolding, onOpenTxn, onSell, onResolve, onDelete }: {
+  confirmingLogAll, setConfirmingLogAll, loggingAll, logAllNote, deleteCount, onLogAll, onChangeBroker, onOpenHolding, onOpenTxn, onSell, onResolve, onDelete }: Readonly<{
   result: StatementExtractionResult; brokerName: string
   holdingConflicts: Record<number, string | null>; txnConflicts: Record<number, string | null>
   loggableCount: number; skippedCount: number
@@ -109,7 +109,7 @@ export function ReviewStep({ result, brokerName, holdingConflicts, txnConflicts,
   confirmingLogAll: boolean; setConfirmingLogAll: (confirming: boolean) => void; loggingAll: boolean; logAllNote: string; deleteCount: number
   onLogAll: () => void; onChangeBroker: () => void; onOpenHolding: (index: number) => void; onOpenTxn: (index: number) => void
   onSell: (row: HoldingToRemove) => void; onResolve: (key: string) => void; onDelete: (row: HoldingToRemove) => void
-}) {
+}>) {
   const matchedHoldingRows = result.holdings.filter(row => row.matchedHoldingId)
   const nothingExtracted = result.holdings.length === 0 && result.toRemove.length === 0 && result.transactions.length === 0
   return <>
@@ -144,12 +144,13 @@ export function ReviewStep({ result, brokerName, holdingConflicts, txnConflicts,
 
 // "Log all" saves every row that has no conflict. Clicking it first asks for confirmation, naming
 // how many conflicted rows will be skipped, so nothing is silently left behind.
-function LogAllBar({ loggableCount, skippedCount, confirming, setConfirming, running, onConfirm }: {
+function LogAllBar({ loggableCount, skippedCount, confirming, setConfirming, running, onConfirm }: Readonly<{
   loggableCount: number; skippedCount: number; confirming: boolean; setConfirming: (confirming: boolean) => void; running: boolean; onConfirm: () => void
-}) {
+}>) {
   const plural = (n: number) => n === 1 ? '' : 's'
   if (confirming) {
-    const skipNote = skippedCount === 0 ? '' : ` ${skippedCount} row${plural(skippedCount)} with conflicts will be skipped — review ${skippedCount === 1 ? 'it' : 'them'} by hand.`
+    const pronoun = skippedCount === 1 ? 'it' : 'them'
+    const skipNote = skippedCount === 0 ? '' : ` ${skippedCount} row${plural(skippedCount)} with conflicts will be skipped — review ${pronoun} by hand.`
     return <div className="import-log-all">
       <p className="hint">Log {loggableCount} row{plural(loggableCount)} now?{skipNote}</p>
       <button type="button" className="primary" onClick={onConfirm}>Yes, log {loggableCount}</button>
@@ -163,19 +164,31 @@ function LogAllBar({ loggableCount, skippedCount, confirming, setConfirming, run
   </div>
 }
 
-export function UploadStep({ busy, reading, file, password, onPassword, error, onPick, onRetry }: {
+function pickLabel(reading: boolean, file: File | null): string {
+  if (reading) return 'Reading…'
+  if (file) return 'Choose a different file'
+  return '↑ Choose a statement'
+}
+
+export function UploadStep({ busy, reading, file, password, onPassword, error, onPick, onRetry }: Readonly<{
   busy: boolean; reading: boolean; file: File | null; password: string; onPassword: (password: string) => void
   error: string; onPick: (file: File) => void; onRetry: () => void
-}) {
+}>) {
   return <>
     <p className="hint">Upload a CAS statement, or a holding or transaction statement from any broker or investing platform — PDF, XLSX/XLS, CSV/TSV, or XML, up to 15MB for a PDF or 10MB (max 10,000 rows) for a spreadsheet. Nothing is saved or deleted automatically — review what's below, then click Done to apply it.</p>
 
     <Field label="Statement password"><input type="password" autoComplete="off" value={password} disabled={busy} onChange={e => onPassword(e.target.value)} placeholder="Only needed for a password-protected PDF (usually your PAN, e.g. ABCDE1234F)" /></Field>
 
     <div className="import-upload statement-upload">
-      <label className="outline file-label">{reading ? 'Reading…' : file ? 'Choose a different file' : '↑ Choose a statement'}
+      <label className="outline file-label">{pickLabel(reading, file)}
         <input type="file" accept=".pdf,.csv,.tsv,.xml,.xlsx,.xls,application/pdf,text/csv,text/tab-separated-values,text/xml,application/xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden disabled={busy}
-          onChange={e => { const f = e.target.files?.[0]; if (f) onPick(f); e.target.value = '' }} />
+          onChange={e => {
+            const picked = e.target.files?.[0]
+            if (picked) {
+              onPick(picked)
+            }
+            e.target.value = ''
+          }} />
       </label>
       {file && <span className="hint">{file.name}</span>}
     </div>
@@ -188,13 +201,13 @@ export function UploadStep({ busy, reading, file, password, onPassword, error, o
 
 // The pre-filled Add Holding / Log Transaction forms a row (or a SELL suggestion) opens into.
 export function ReviewDialogs({ result, brokerName, categories, holdings, displayCurrency, categoryFor, reviewingHolding, reviewingTxn, reviewingSell,
-  onCloseHolding, onCloseTxn, onCloseSell, onHoldingSaved, onTxnSaved, onSellSaved }: {
+  onCloseHolding, onCloseTxn, onCloseSell, onHoldingSaved, onTxnSaved, onSellSaved }: Readonly<{
   result: StatementExtractionResult; brokerName: string; categories: Category[]; holdings: Holding[]; displayCurrency: string
   categoryFor: (row: ExtractedHolding) => string
   reviewingHolding: number | null; reviewingTxn: number | null; reviewingSell: HoldingToRemove | null
   onCloseHolding: () => void; onCloseTxn: () => void; onCloseSell: () => void
   onHoldingSaved: (saved: Holding) => void; onTxnSaved: () => void; onSellSaved: () => void
-}) {
+}>) {
   return <>
     {reviewingHolding != null && <HoldingModal holding={null} category={null} categories={categories} holdings={holdings} displayCurrency={displayCurrency}
       draft={draftFromExtractedHolding(result.holdings[reviewingHolding], brokerName, categoryFor(result.holdings[reviewingHolding]))}

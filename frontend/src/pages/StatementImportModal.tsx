@@ -21,7 +21,7 @@ import type { Category, Holding, InstrumentKind, StatementExtractionResult, Stat
 
 type Stage = 'upload' | 'confirm' | 'review'
 
-export function StatementImportModal({ categories, holdings, displayCurrency, onClose, onSaved, onRemoved, onTransactionSaved }: {
+export function StatementImportModal({ categories, holdings, displayCurrency, onClose, onSaved, onRemoved, onTransactionSaved }: Readonly<{
   categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
   onSaved: (saved: Holding) => void
   // Called once, with every holding id actually deleted, right before the modal closes itself —
@@ -30,7 +30,7 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
   // Called after a transaction is logged — unlike a saved holding, a transaction isn't spliced
   // into any list this modal holds, so the caller just needs to know to reload.
   onTransactionSaved: () => void
-}) {
+}>) {
   useEscToClose(onClose)
   const [stage, setStage] = useState<Stage>('upload')
   const [busy, setBusy] = useState(false)
@@ -43,7 +43,7 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
   const [categoryByKind, setCategoryByKind] = useState<Partial<Record<InstrumentKind, string>>>({})
   const [result, setResult] = useState<StatementExtractionResult | null>(null)
 
-  const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
+  const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort((a, b) => a.localeCompare(b)), [holdings])
 
   // Takes the password as an argument rather than closing over state — a "retry with this
   // password" click needs to send what was *just* typed, before React has necessarily re-rendered

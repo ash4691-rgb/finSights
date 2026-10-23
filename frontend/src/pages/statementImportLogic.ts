@@ -41,7 +41,7 @@ const investedOf = (row: ExtractedHolding): number | undefined => {
 
 export const holdingConflict = (row: ExtractedHolding, categoryId: string, broker: string, holdings: Holding[]): string | null => {
   if (!categoryId) return `No category chosen for ${kindLabel[kindOf(row)].toLowerCase()}s`
-  if (!(row.quantity > 0)) return 'No units found'
+  if (row.quantity <= 0) return 'No units found'
   if (investedOf(row) == null) return 'No invested amount in the statement'
   const taken = holdings.some(h => h.name.trim().toLowerCase() === row.instrumentName.trim().toLowerCase()
     && (h.broker ?? '').trim().toLowerCase() === broker.trim().toLowerCase())
@@ -134,25 +134,31 @@ export const derivePending = (result: StatementExtractionResult | null, resolved
   }
 }
 
+/** Runs one async task per item strictly one after another — saves are kept in statement order and
+ *  never fired in parallel at the server. */
+export const sequentially = async <T,>(items: T[], task: (item: T) => Promise<void>) => {
+  await items.reduce((chain, item) => chain.then(() => task(item)), Promise.resolve())
+}
+
 /** Saves every conflict-free row, one at a time; a row the server rejects is counted, not fatal,
  *  and stays in the review list. Resolves with the keys that were saved and a summary line. */
 export const logAllRows = async (loggable: Loggable, broker: string, categoryFor: (row: ExtractedHolding) => string,
     displayCurrency: string, onHoldingSaved: (saved: Holding) => void) => {
   const savedKeys: string[] = []
   let failed = 0
-  for (const { row, index } of loggable.holdings) {
+  await sequentially(loggable.holdings, async ({ row, index }) => {
     try {
       const url = `/api/holdings?currency=${encodeURIComponent(displayCurrency)}`
       onHoldingSaved(await api<Holding>(url, { method: 'POST', body: JSON.stringify(holdingPayload(row, broker, categoryFor(row))) }))
       savedKeys.push(`h${index}`)
     } catch { failed++ }
-  }
-  for (const { row, index } of loggable.transactions) {
+  })
+  await sequentially(loggable.transactions, async ({ row, index }) => {
     try {
       await api('/api/transactions', { method: 'POST', body: JSON.stringify(transactionPayload(row)) })
       savedKeys.push(`t${index}`)
     } catch { failed++ }
-  }
+  })
   const notes = [`Logged ${savedKeys.length} row${savedKeys.length === 1 ? '' : 's'}.`]
   if (failed > 0) notes.push(`${failed} could not be saved — review ${failed === 1 ? 'it' : 'them'} below.`)
   return { savedKeys, note: notes.join(' ') }
