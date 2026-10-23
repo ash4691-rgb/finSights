@@ -3,7 +3,7 @@ import { api } from '../api'
 import { ReviewDialogs, ReviewStep } from './StatementImportSteps'
 import { derivePending, logAllRows, sequentially } from './statementImportLogic'
 import type { NewHoldingGroup } from './statementImportLogic'
-import type { Category, ExtractedHolding, Holding, HoldingToRemove, InstrumentKind, StatementExtractionResult } from '../types'
+import type { Category, Holding, HoldingToRemove, InstrumentKind, StatementExtractionResult } from '../types'
 
 // The review step of a statement import: owns everything that happens after the rows are matched —
 // what's been saved or skipped, "Log all", the per-row forms, and applying deletions on Done.
