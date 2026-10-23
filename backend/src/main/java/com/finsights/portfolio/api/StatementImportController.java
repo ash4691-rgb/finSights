@@ -1,6 +1,7 @@
 package com.finsights.portfolio.api;
 
 import com.finsights.portfolio.dto.StatementExtractionResponse;
+import com.finsights.portfolio.dto.StatementReconcileRequest;
 import com.finsights.portfolio.service.StatementImportService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,5 +34,14 @@ public class StatementImportController {
     StatementExtractionResponse importStatement(@RequestBody byte[] file,
             @RequestHeader(value = "X-Document-Password", required = false) String password) {
         return statementImport.extract(file, password);
+    }
+
+    /**
+     * Second step of an import: matches the rows {@link #importStatement} returned against the
+     * holdings of the broker the user confirmed. Needs no file and no model call, and writes nothing.
+     */
+    @PostMapping("/reconcile")
+    StatementExtractionResponse reconcile(@RequestBody StatementReconcileRequest request) {
+        return statementImport.reconcile(request);
     }
 }

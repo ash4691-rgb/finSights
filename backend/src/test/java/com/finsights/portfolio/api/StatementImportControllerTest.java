@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.dto.StatementExtractionResponse;
 import com.finsights.portfolio.dto.StatementExtractionResponse.StatementType;
+import com.finsights.portfolio.dto.StatementReconcileRequest;
 import com.finsights.portfolio.service.StatementImportService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -30,5 +31,27 @@ class StatementImportControllerTest {
 
         assertThat(actual).isSameAs(expected);
         verify(statementImport).extract(file, "ABCDE1234F");
+    }
+
+    @Test
+    void delegatesTheConfirmedRowsToTheServiceForReconciliation() {
+        StatementReconcileRequest request = new StatementReconcileRequest(
+                StatementType.HOLDINGS, "Groww", "2026-10-23", List.of(), List.of(), List.of());
+        StatementExtractionResponse expected = new StatementExtractionResponse(
+                StatementType.HOLDINGS, List.of(), List.of(), List.of(), "2026-10-23", List.of(), "Groww");
+        when(statementImport.reconcile(request)).thenReturn(expected);
+
+        StatementImportController controller = new StatementImportController(statementImport);
+
+        assertThat(controller.reconcile(request)).isSameAs(expected);
+    }
+
+    @Test
+    void reconcileRequestTreatsMissingListsAsEmpty() {
+        StatementReconcileRequest request = new StatementReconcileRequest(null, "Groww", null, null, null, null);
+
+        assertThat(request.holdings()).isEmpty();
+        assertThat(request.transactions()).isEmpty();
+        assertThat(request.warnings()).isEmpty();
     }
 }

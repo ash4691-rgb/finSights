@@ -106,8 +106,11 @@ export type ImportResult = { created: number; updated: number; skipped: number; 
 // One equity/ETF position found in an uploaded statement — a draft, not a saved holding. The
 // Holdings page pre-fills the ordinary Add Holding form with this and the user reviews/edits/saves
 // it like any manual entry; nothing here is written to the database on its own.
+export type InstrumentKind = 'STOCK' | 'ETF' | 'MUTUAL_FUND'
 export type ExtractedHolding = {
-  instrumentName: string; isin: string; quantity: number; averageCostPerUnit?: number; depository?: string
+  // isin is absent for most mutual fund rows — a fund is identified by its scheme name instead.
+  instrumentName: string; isin?: string; quantity: number; averageCostPerUnit?: number; depository?: string
+  kind?: InstrumentKind; investedValue?: number; currentValue?: number
   // Best-effort guess, not a fact — the review form still shows it as an editable field.
   tickerSymbol?: string
   // Set when this ISIN matches a holding already created from a past statement import — it needs
@@ -122,14 +125,16 @@ export type ExtractedTransaction = {
   // Unset when no existing holding matched — the user picks one in the review form.
   matchedHoldingId?: string
 }
-// An existing statement-tagged holding whose ISIN didn't turn up in the latest holdings statement
-// — a candidate to delete, applied only when the user clicks Done.
-export type HoldingToRemove = { holdingId: string; name: string; broker?: string }
+// An existing holding at the statement's broker that the latest holdings statement no longer lists —
+// the user logs a SELL for it, deletes it (applied only on Done), or keeps it.
+export type HoldingToRemove = { holdingId: string; name: string; broker?: string; quantity?: number }
 export type StatementType = 'HOLDINGS' | 'TRANSACTIONS' | 'MIXED'
 export type StatementExtractionResult = {
   statementType: StatementType
   holdings: ExtractedHolding[]; toRemove: HoldingToRemove[]; transactions: ExtractedTransaction[]
   statementDate?: string; warnings: string[]
+  // The broker the statement names, if it names one — a suggestion the user confirms before matching.
+  broker?: string
 }
 export type FxRates = { base: string; asOf: string; ratesToBase: Record<string, number>; note: string }
 export type Theme = 'light' | 'dark'
