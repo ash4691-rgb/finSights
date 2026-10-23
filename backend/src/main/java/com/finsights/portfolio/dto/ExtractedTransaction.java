@@ -5,10 +5,8 @@ import java.math.BigDecimal;
 
 /**
  * One transaction a statement-extraction model found in an uploaded broker transaction statement.
- * Only ever surfaced to the user when {@code matchedHoldingId} is set — logging a transaction
- * against a holding that doesn't already exist isn't possible through the ordinary Log Transaction
- * form, so an unmatched row is dropped into the extraction's {@code warnings} instead (see
- * {@code StatementImportService.matchTransactions}). The Transactions page pre-fills the ordinary
+ * {@code matchedHoldingId} is null when no existing holding matched; the user then picks the
+ * holding in the review form (see {@code StatementImportService.matchAgainstExisting}). The Transactions page pre-fills the ordinary
  * Log Transaction form with one of these and the user reviews and saves it through the exact same
  * path as typing it in by hand — nothing here is written to the database directly.
  */
@@ -23,7 +21,6 @@ public record ExtractedTransaction(
         /** Null when the statement line doesn't carry an amount (e.g. SPLIT). */
         BigDecimal amount,
         String notes,
-        /** The existing holding this row's ISIN matched — always set on a row that reaches the
-         *  caller; see the class comment. */
+        /** The existing holding this row matched, or null if none did; see the class comment. */
         String matchedHoldingId
 ) { }

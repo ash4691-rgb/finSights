@@ -202,7 +202,7 @@ describe('StatementImportModal', () => {
     fetchMock.mockReturnValueOnce(jsonResponse({ statementType: 'HOLDINGS', holdings: [], toRemove: [], transactions: [], warnings: [] }))
     renderModal()
     await pickFile()
-    await waitFor(() => expect(screen.getByText('Nothing we could extract from this statement.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Nothing we could extract from this statement\./)).toBeInTheDocument())
   })
 
   test('opening a holding row shows the Add Holding review form pre-filled from the extracted row', async () => {
@@ -240,6 +240,33 @@ describe('StatementImportModal', () => {
     fireEvent.click(screen.getByText('Infosys'))
 
     expect(await screen.findByDisplayValue('6000')).toBeInTheDocument()
+  })
+
+  test('a transaction with no matching holding is still listed and opens the form with no holding selected', async () => {
+    const result: StatementExtractionResult = {
+      statementType: 'TRANSACTIONS',
+      holdings: [],
+      transactions: [{ date: '2025-04-03', type: 'BUY', instrumentName: 'Example Corp', isin: 'INE000A01010', amount: 4882.32, quantity: 6 }],
+      toRemove: [],
+      warnings: ["1 transaction across 1 instrument (Example Corp) don't match any holding in your portfolio yet"],
+    }
+    fetchMock.mockReturnValueOnce(jsonResponse(result))
+    renderModal()
+    await pickFile()
+    await waitFor(() => expect(screen.getByText('Transactions to review')).toBeInTheDocument())
+    expect(screen.queryByText(/couldn't turn any of it/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Example Corp'))
+
+    expect(await screen.findByDisplayValue('4882.32')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Log transaction' })).toBeDisabled()
+  })
+
+  test('explains why nothing was listed when only warnings came back', async () => {
+    fetchMock.mockReturnValueOnce(jsonResponse({ statementType: 'TRANSACTIONS', holdings: [], toRemove: [], transactions: [], warnings: ['Skipped a row'] }))
+    renderModal()
+    await pickFile()
+    await waitFor(() => expect(screen.getByText(/couldn't turn any of it into holdings or transactions/)).toBeInTheDocument())
   })
 
   test('sends the password header only when one was entered', async () => {

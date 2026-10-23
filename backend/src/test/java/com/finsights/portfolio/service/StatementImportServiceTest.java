@@ -309,18 +309,104 @@ class StatementImportServiceTest {
         assertThat(result.warnings()).isEmpty();
     }
 
+    private static ExtractedTransaction txn(String name, String isin) {
+        return new ExtractedTransaction("2025-04-03", TransactionType.BUY, name, isin, BigDecimal.TEN,
+                new BigDecimal("1500"), null, null);
+    }
+
+    private static Holding holdingNamed(String id, String name) {
+        Holding h = new Holding();
+        h.setName(name);
+        org.springframework.test.util.ReflectionTestUtils.setField(h, "id", id);
+        return h;
+    }
+
+    private StatementExtractionResponse matchTransactions(List<Holding> existing, List<ExtractedTransaction> rows) {
+        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(existing);
+        return service.matchAgainstExisting(
+                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), rows, null, List.of()), "u1");
+    }
+
     @Test
-    void matchAgainstExistingDropsAnUnmatchedTransactionIntoWarningsInsteadOfSurfacingIt() {
-        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of());
+    void matchAgainstExistingKeepsAnUnmatchedTransactionForManualHoldingPickAndSummarisesItOnce() {
+        StatementExtractionResponse result = matchTransactions(List.of(), List.of(
+                txn("Infosys", "INE009A01021"), txn("Infosys", "INE009A01021"), txn("Tata Steel", "INE081A01020")));
 
-        ExtractedTransaction txn = new ExtractedTransaction("2026-09-15", TransactionType.BUY,
-                "Infosys", "INE009A01021", BigDecimal.TEN, new BigDecimal("1500"), null, null);
-        StatementExtractionResponse result = service.matchAgainstExisting(
-                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), List.of(txn), null, List.of()), "u1");
-
-        assertThat(result.transactions()).isEmpty();
+        assertThat(result.transactions()).hasSize(3);
+        assertThat(result.transactions()).allSatisfy(t -> assertThat(t.matchedHoldingId()).isNull());
         assertThat(result.warnings()).hasSize(1);
-        assertThat(result.warnings().get(0)).contains("Infosys").contains("no existing holding");
+        assertThat(result.warnings().get(0)).contains("3 transactions across 2 instruments")
+                .contains("Infosys").contains("Tata Steel").doesNotContain("more");
+    }
+
+    @Test
+    void matchAgainstExistingMatchesAnUntaggedHoldingByUniqueName() {
+        StatementExtractionResponse result = matchTransactions(
+                List.of(holdingNamed("h-1", "Life Insurance Corporation"), holdingNamed("h-2", "Tata Steel")),
+                List.of(txn("TATA STEEL LTD", "INE081A01020")));
+
+        assertThat(result.transactions().get(0).matchedHoldingId()).isEqualTo("h-2");
+        assertThat(result.warnings()).isEmpty();
+    }
+
+    @Test
+    void matchAgainstExistingLeavesAnAmbiguousNameMatchForTheUserToPick() {
+        StatementExtractionResponse result = matchTransactions(
+                List.of(holdingNamed("h-1", "Tata Steel"), holdingNamed("h-2", "Tata Steel (second broker)")),
+                List.of(txn("Tata Steel", "INE081A01020")));
+
+        assertThat(result.transactions().get(0).matchedHoldingId()).isNull();
+        assertThat(result.warnings()).hasSize(1);
+    }
+
+    @Test
+    void unmatchedWarningUsesSingularWordsAndTruncatesLongInstrumentLists() {
+        assertThat(StatementImportService.unmatchedTransactionWarning(java.util.Map.of())).isEmpty();
+        assertThat(StatementImportService.unmatchedTransactionWarning(java.util.Map.of("Infosys", 1)).orElseThrow())
+                .startsWith("1 transaction across 1 instrument (Infosys)");
+
+        java.util.Map<String, Integer> many = new java.util.LinkedHashMap<>();
+        for (int i = 1; i <= 7; i++) many.put("Co" + i, 2);
+        assertThat(StatementImportService.unmatchedTransactionWarning(many).orElseThrow())
+                .startsWith("14 transactions across 7 instruments (Co1, Co2, Co3, Co4, Co5 and 2 more)");
+    }
+
+    /** Synthetic, anonymised stand-in for a Groww stock order-history CSV: a preamble with a
+     *  client name/code and a blank-line gap, then the header and rows (Value is the order total). */
+    static final String GROWW_STYLE_CSV = String.join("\n",
+            "Name,Test User,,,,,,,,",
+            "Unique Client Code,0000000000,,,,,,,,",
+            ",,,,,,,,,",
+            "Order history for stocks from 01-07-2020 to 21-10-2026,,,,,,,,,",
+            ",,,,,,,,,",
+            "Stock name,Symbol,ISIN,Type,Quantity,Value,Exchange,Exchange Order Id,Execution date and time,Order status",
+            "EXAMPLE CORP LTD,EXMPL,INE000A01010,BUY,6,4882.32,NSE,1000000000000001,03-04-2025 03:13 PM,Executed",
+            "EXAMPLE ETF,EXETF,INF000A01010,SELL,144,23254.56,NSE,1000000000000002,03-04-2025 03:14 PM,Executed");
+
+    @Test
+    void growwStyleCsvIsSentToTheModelWholeAndItsRowsSurviveParsingAndMatching() {
+        ObjectNode body = StatementImportService.buildTextRequestBody(json, "claude-sonnet-5", GROWW_STYLE_CSV);
+        String prompt = body.path("messages").path(0).path("content").path(0).path("text").asText();
+        assertThat(prompt).contains("Stock name,Symbol,ISIN,Type,Quantity,Value").contains("INF000A01010");
+
+        // What the model would hand back for that file: both rows, no price per unit anywhere.
+        ObjectNode toolInput = json.createObjectNode();
+        toolInput.put("statementType", "TRANSACTIONS");
+        var rows = toolInput.putArray("transactions");
+        rows.addObject().put("date", "2025-04-03").put("type", "BUY").put("instrumentName", "EXAMPLE CORP LTD")
+                .put("isin", "INE000A01010").put("quantity", 6).put("amount", 4882.32);
+        rows.addObject().put("date", "2025-04-03").put("type", "SELL").put("instrumentName", "EXAMPLE ETF")
+                .put("isin", "INF000A01010").put("quantity", 144).put("amount", 23254.56);
+        ObjectNode response = json.createObjectNode();
+        response.putArray("content").addObject().put("type", "tool_use").put("name", "extract_statement").set("input", toolInput);
+
+        StatementExtractionResponse parsed = StatementImportService.parseExtraction(response);
+        assertThat(parsed.transactions()).hasSize(2);
+
+        // A first-time import: no holdings exist yet. Rows must still reach the user.
+        StatementExtractionResponse matched = matchTransactions(List.of(), parsed.transactions());
+        assertThat(matched.transactions()).hasSize(2);
+        assertThat(matched.warnings()).hasSize(1);
     }
 
     @Test

@@ -85,9 +85,9 @@ import org.springframework.web.server.ResponseStatusException;
  * #resolveTicker} — the same live-price search the manual Add Holding form's ticker field already
  * uses. A match pre-fills the review form as {@code MARKET_PRICE} with that ticker; no match falls
  * back to {@code MANUAL}, same as before. Either way it's still a suggestion the user reviews, not
- * an applied fact. A transaction row is only ever surfaced once matched to an existing holding by
- * the same ISIN lookup — logging a transaction against a holding that doesn't exist isn't something
- * the ordinary Log Transaction form can do, so an unmatched row goes into {@code warnings} instead.
+ * an applied fact. A transaction row is matched to an existing holding by ISIN tag, then by a
+ * unique name match; a row that matches neither is still surfaced (with no holding preselected, so
+ * the user picks one in the review form) and summarised in one {@code warnings} note.
  */
 @Service
 public class StatementImportService {
@@ -117,6 +117,7 @@ public class StatementImportService {
     // transaction with notes) while still being large enough that a typical statement needs only
     // one or two calls.
     static final int MAX_SPREADSHEET_ROWS_PER_CALL = 150;
+    private static final int UNMATCHED_NAMES_IN_WARNING = 5;
 
     private static final String TOOL_NAME = "extract_statement";
     private static final byte[] PDF_MAGIC = "%PDF".getBytes(StandardCharsets.US_ASCII);
@@ -376,9 +377,11 @@ public class StatementImportService {
      * asked for again; a tagged holding whose ISIN doesn't turn up anywhere in a HOLDINGS (or
      * MIXED) statement is reported as a candidate to remove — never computed for a
      * transactions-only statement, which doesn't claim to be a full snapshot of what's held. A
-     * transaction row is only ever surfaced once its ISIN matches an existing holding; an
-     * unmatched one is dropped into {@code warnings} instead, since there's no form to log a
-     * transaction against a holding that doesn't exist yet.
+     * transaction row is matched by ISIN tag, falling back to a unique name match (a holding added
+     * by hand has no tag); one that matches neither keeps a null {@code matchedHoldingId} so the
+     * user picks the holding in the review form, and a single summary note is added to {@code
+     * warnings}. Dropping those rows was the bug that made a first-time broker transaction export
+     * look like "nothing extracted".
      *
      * <p>The obvious limitation: if a user edits that description's free-text Notes field after
      * import, the tag is gone and this holding can no longer be matched or offered for cleanup —
@@ -388,8 +391,9 @@ public class StatementImportService {
      * {@link HoldingRepository}.
      */
     StatementExtractionResponse matchAgainstExisting(StatementExtractionResponse extracted, String userId) {
+        List<Holding> userHoldings = holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId);
         Map<String, Holding> byIsin = new LinkedHashMap<>();
-        for (Holding h : holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId)) {
+        for (Holding h : userHoldings) {
             Matcher m = ISIN_TAG.matcher(h.getDescription() == null ? "" : h.getDescription());
             if (m.find()) byIsin.put(m.group(1), h);
         }
@@ -416,19 +420,42 @@ public class StatementImportService {
 
         List<String> warnings = new ArrayList<>(extracted.warnings());
         List<ExtractedTransaction> matchedTransactions = new ArrayList<>();
+        Map<String, Integer> unmatchedCounts = new LinkedHashMap<>();
         for (ExtractedTransaction row : extracted.transactions()) {
             Holding existing = byIsin.get(row.isin());
-            if (existing == null) {
-                warnings.add("Skipped a " + row.type() + " transaction for " + row.instrumentName()
-                        + " — no existing holding matches its ISIN. Add the holding first, then re-upload.");
-                continue;
-            }
+            if (existing == null) existing = uniqueHoldingByName(userHoldings, row.instrumentName());
+            if (existing == null) unmatchedCounts.merge(row.instrumentName(), 1, Integer::sum);
+            String holdingId = existing == null ? null : existing.getId();
             matchedTransactions.add(new ExtractedTransaction(row.date(), row.type(), row.instrumentName(), row.isin(),
-                    row.quantity(), row.amount(), row.notes(), existing.getId()));
+                    row.quantity(), row.amount(), row.notes(), holdingId));
         }
+        unmatchedTransactionWarning(unmatchedCounts).ifPresent(warnings::add);
 
         return new StatementExtractionResponse(extracted.statementType(), matchedHoldings, toRemove,
                 matchedTransactions, extracted.statementDate(), warnings);
+    }
+
+    /** The user's one holding whose name plausibly matches a statement instrument name, or null
+     *  when none or several do — an ambiguous guess is left for the user to pick instead.
+     *  Fallback for a holding that has no "ISIN" tag because it was added by hand. */
+    static Holding uniqueHoldingByName(List<Holding> userHoldings, String instrumentName) {
+        List<Holding> candidates = userHoldings.stream()
+                .filter(h -> namesLikelyMatch(instrumentName, h.getName()))
+                .toList();
+        return candidates.size() == 1 ? candidates.get(0) : null;
+    }
+
+    /** One summary note for transactions with no matching holding, instead of one note per row. */
+    static java.util.Optional<String> unmatchedTransactionWarning(Map<String, Integer> unmatchedCounts) {
+        if (unmatchedCounts.isEmpty()) return java.util.Optional.empty();
+        int total = unmatchedCounts.values().stream().mapToInt(Integer::intValue).sum();
+        String names = unmatchedCounts.keySet().stream().limit(UNMATCHED_NAMES_IN_WARNING).collect(Collectors.joining(", "));
+        int more = unmatchedCounts.size() - UNMATCHED_NAMES_IN_WARNING;
+        String suffix = more > 0 ? " and " + more + " more" : "";
+        return java.util.Optional.of(total + " transaction" + (total == 1 ? "" : "s") + " across "
+                + unmatchedCounts.size() + " instrument" + (unmatchedCounts.size() == 1 ? "" : "s")
+                + " (" + names + suffix + ") don't match any holding in your portfolio yet — pick the holding "
+                + "when you review each one, or add the holding first.");
     }
 
     /**
