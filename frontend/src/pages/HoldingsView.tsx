@@ -121,7 +121,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
-export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft, openingDate }: {
+export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft, openingDate }: Readonly<{
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
   // Carries the just-saved holding back to the caller so it can be spliced into local state
   // immediately — instant feedback instead of waiting on the reload that follows.
@@ -133,7 +133,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
   draft?: Partial<ReturnType<typeof blankHoldingForm>>
   // Dates a brand-new market holding's opening position (a transaction statement's first BUY) instead of today.
   openingDate?: string
-}) {
+}>) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
     ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', area: holding.area != null ? String(holding.area) : '', areaUnit: holding.areaUnit || 'SQ_FT', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
