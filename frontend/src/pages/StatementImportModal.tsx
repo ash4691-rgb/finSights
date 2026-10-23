@@ -34,7 +34,7 @@ const draftFromExtractedHolding = (row: ExtractedHolding): Partial<ReturnType<ty
 }
 
 const draftFromExtractedTransaction = (row: ExtractedTransaction) => ({
-  holdingId: row.matchedHoldingId,
+  holdingId: row.matchedHoldingId ?? '',
   type: row.type,
   date: row.date,
   amount: row.amount != null ? String(row.amount) : '',
@@ -129,7 +129,9 @@ export function StatementImportModal({ categories, holdings, displayCurrency, on
     {result && <>
       {result.statementDate && <p className="hint">Statement as of {result.statementDate}.</p>}
       {result.holdings.length === 0 && result.toRemove.length === 0 && result.transactions.length === 0
-        && <p className="hint">Nothing we could extract from this statement.</p>}
+        && <p className="hint">{result.warnings.length > 0
+          ? 'We read this statement but couldn\'t turn any of it into holdings or transactions — see the notes below for why.'
+          : 'Nothing we could extract from this statement. Make sure it\'s a holdings or transaction statement (not a P&L or tax report).'}</p>}
 
       {pendingHoldingRows.length > 0 && <>
         <div className="panel-heading"><h3>Holdings to review</h3><span>{pendingHoldingRows.length}</span></div>

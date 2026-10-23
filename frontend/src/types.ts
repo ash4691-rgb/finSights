@@ -114,13 +114,13 @@ export type ExtractedHolding = {
   // no review, just a quiet "already in your portfolio" confirmation.
   matchedHoldingId?: string
 }
-// One transaction found in an uploaded statement — a draft, not a saved transaction. Only ever
-// surfaced with matchedHoldingId set: logging a transaction against a holding that doesn't exist
-// isn't possible through the ordinary Log Transaction form, so an unmatched row is dropped into
-// the extraction's warnings instead.
+// One transaction found in an uploaded statement — a draft, not a saved transaction. A row with no
+// matchedHoldingId is still surfaced; the review form opens with no holding selected.
 export type ExtractedTransaction = {
   date: string; type: TransactionType; instrumentName: string; isin: string
-  quantity?: number; amount?: number; notes?: string; matchedHoldingId: string
+  quantity?: number; amount?: number; notes?: string
+  // Unset when no existing holding matched — the user picks one in the review form.
+  matchedHoldingId?: string
 }
 // An existing statement-tagged holding whose ISIN didn't turn up in the latest holdings statement
 // — a candidate to delete, applied only when the user clicks Done.
