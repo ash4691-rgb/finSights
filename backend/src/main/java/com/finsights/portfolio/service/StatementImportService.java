@@ -9,8 +9,10 @@ import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.dto.ExtractedHolding;
 import com.finsights.portfolio.dto.ExtractedTransaction;
 import com.finsights.portfolio.dto.HoldingToRemove;
+import com.finsights.portfolio.dto.InstrumentKind;
 import com.finsights.portfolio.dto.StatementExtractionResponse;
 import com.finsights.portfolio.dto.StatementExtractionResponse.StatementType;
+import com.finsights.portfolio.dto.StatementReconcileRequest;
 import com.finsights.portfolio.dto.SymbolSuggestion;
 import com.finsights.portfolio.repository.HoldingRepository;
 import java.io.ByteArrayInputStream;
@@ -126,25 +128,29 @@ public class StatementImportService {
     // OLE2/Compound File Binary signature — every legacy .xls file is one of these.
     private static final byte[] XLS_MAGIC = { (byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1 };
 
-    // Scoped to equity/ETF lines for holdings (same pilot scope CAS shipped with) and to the
-    // transaction types FinSights already tracks. CAS also lists mutual funds, bonds, and
-    // insurance, which don't fit the same per-unit-quantity shape and are left for a later pass.
-    // Out-of-scope or unmatched rows land in `warnings`, not silently dropped, so a short result
-    // has an explanation.
+    // Scoped to equities, ETFs and mutual funds for holdings (crypto and commodities are a later
+    // pass) and to the transaction types FinSights already tracks. Bonds, insurance and anything
+    // else land in `warnings`, not silently dropped, so a short result has an explanation.
     private static final String SYSTEM_PROMPT = """
             You read uploaded financial statements — a CDSL/NSDL Consolidated Account Statement (CAS), a \
-            broker's own holding statement, or a broker's transaction statement, in PDF, a spreadsheet \
-            (XLSX/XLS, flattened to plain text with one "Sheet: <name>" line per sheet), or plain text \
-            (CSV/TSV/XML) — and extract structured data from them using the extract_statement tool. Follow \
-            these rules exactly:
+            broker's or investing platform's own holding statement, or a transaction statement, in PDF, a \
+            spreadsheet (XLSX/XLS, flattened to plain text with one "Sheet: <name>" line per sheet), or plain \
+            text (CSV/TSV/XML) — and extract structured data from them using the extract_statement tool. \
+            Follow these rules exactly:
 
             1. First decide statementType: HOLDINGS if the document lists positions currently held, \
             TRANSACTIONS if it lists dated buy/sell/other activity, or MIXED if it has both. Only fill in \
-            the `holdings` and/or `transactions` arrays that actually apply.
-            2. For holdings: only report lines that are listed equities or ETFs with a quantity held. Skip \
-            mutual fund folios, bonds, insurance, and anything else — instead add one line to `warnings` \
-            naming what you skipped and why, so nothing is silently lost. Report the average cost per unit \
-            only if the statement states one; omit the field rather than estimating it.
+            the `holdings` and/or `transactions` arrays that actually apply. Also report `broker`: the name \
+            of the broker or investing platform the statement comes from, only if the document names it — \
+            never guess one.
+            2. For holdings: report listed equities, ETFs and mutual fund folios that have units held, and \
+            set each row's `kind` to STOCK, ETF or MUTUAL_FUND. For a mutual fund use the scheme name as \
+            the instrumentName and the units held as the quantity; report one row per folio line as printed \
+            (the same scheme may appear on several lines). Report investedValue and currentValue as the \
+            statement's own totals for that line, when it states them. Skip bonds, insurance, crypto, \
+            commodities and anything else — instead add one line to `warnings` naming what you skipped and \
+            why, so nothing is silently lost. Report the average cost per unit only if the statement \
+            states one; omit the field rather than estimating it.
             3. For transactions: report each dated buy, sell, split, interest/dividend, adjustment, or loan \
             repayment line, with its date as YYYY-MM-DD and its type as one of BUY, SELL, SPLIT, INTEREST, \
             ADJUSTMENT, REPAY — picking the closest fit when a broker uses different wording. Omit amount \
@@ -152,12 +158,13 @@ public class StatementImportService {
             own order/execution status, only report it when that status is executed/completed — skip a \
             cancelled, rejected, pending, or open order entirely (no warning needed; it never happened).
             4. Only ever return the fields the extract_statement tool defines. Never include PAN, bank \
-            account numbers, demat/folio account numbers, address, phone number, email, or any other \
-            personal information, even if it appears in the document — the schema has no field for it on \
-            purpose.
-            5. If you cannot confidently determine a holding's ISIN or quantity, or a transaction's date, \
-            type, or instrument, leave that row out of the result entirely and explain why in `warnings` \
-            instead of guessing.
+            account numbers, demat/folio account numbers, the holder's name, address, phone number, email, \
+            or any other personal information, even if it appears in the document — the schema has no \
+            field for it on purpose.
+            5. A stock or ETF needs its ISIN and quantity; a mutual fund needs its scheme name and units \
+            (an ISIN is optional for it — omit the field if the statement has none). If you cannot \
+            confidently determine those, or a transaction's date, type, or instrument, leave that row out \
+            of the result entirely and explain why in `warnings` instead of guessing.
             """;
 
     @Value("${app.statement-import.anthropic-api-key:}") private String apiKey;
@@ -211,7 +218,25 @@ public class StatementImportService {
                     chunkFlattenedSpreadsheet(spreadsheetToText(decrypted), MAX_SPREADSHEET_ROWS_PER_CALL));
             case TEXT -> parseExtraction(callClaude(buildTextRequestBody(json, model, decodeText(decrypted))));
         };
-        return matchAgainstExisting(enrichWithTickers(extracted), userId);
+        // Matching against the user's holdings waits for the broker to be confirmed (see reconcile).
+        return enrichWithTickers(extracted);
+    }
+
+    /**
+     * Second step of an import: takes the rows a first read produced plus what the user confirmed
+     * (statement type and broker) and matches them against <em>that broker's</em> holdings only —
+     * the same fund can legitimately be held at two brokers, so a statement is never matched
+     * against everything. Needs no model call and writes nothing.
+     */
+    public StatementExtractionResponse reconcile(StatementReconcileRequest request) {
+        if (request.broker() == null || request.broker().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Pick the broker this statement belongs to first.");
+        }
+        StatementType type = request.statementType() == null ? StatementType.HOLDINGS : request.statementType();
+        StatementExtractionResponse rows = new StatementExtractionResponse(type, request.holdings(), List.of(),
+                request.transactions(), request.statementDate(), request.warnings(), request.broker().trim());
+        return matchAgainstExisting(rows, currentUser.currentUser().getId(), request.broker());
     }
 
     /** One extraction call per chunk — see {@link #chunkFlattenedSpreadsheet} for why a large
@@ -324,7 +349,7 @@ public class StatementImportService {
 
     /**
      * Combines the per-chunk results of {@link #extractFromChunks} into one response: holdings are
-     * deduplicated by ISIN (keeping the first sighting — the same holding can legitimately appear in
+     * consolidated (see {@link StatementRows#consolidate} — the same holding can legitimately appear in
      * more than one chunk of the same statement), transactions and warnings are simply concatenated,
      * the first non-null statement date wins, and the statement type is whatever every chunk agreed
      * on, or MIXED if they didn't. Package-private and pure so it's unit-testable without a network
@@ -339,18 +364,20 @@ public class StatementImportService {
         Set<StatementType> types = parts.stream().map(StatementExtractionResponse::statementType).collect(Collectors.toSet());
         StatementType mergedType = types.size() == 1 ? types.iterator().next() : StatementType.MIXED;
 
-        Map<String, ExtractedHolding> holdingsByIsin = new LinkedHashMap<>();
+        List<ExtractedHolding> allHoldings = new ArrayList<>();
+        String broker = null;
         List<ExtractedTransaction> transactions = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         String statementDate = null;
         for (StatementExtractionResponse part : parts) {
-            for (ExtractedHolding holding : part.holdings()) holdingsByIsin.putIfAbsent(holding.isin(), holding);
+            allHoldings.addAll(part.holdings());
+            if (broker == null) broker = part.broker();
             transactions.addAll(part.transactions());
             warnings.addAll(part.warnings());
             if (statementDate == null) statementDate = part.statementDate();
         }
-        return new StatementExtractionResponse(mergedType, List.copyOf(holdingsByIsin.values()), List.of(),
-                transactions, statementDate, warnings);
+        return new StatementExtractionResponse(mergedType, StatementRows.consolidate(allHoldings), List.of(),
+                transactions, statementDate, warnings, broker);
     }
 
     private static String rowText(Row row, DataFormatter formatter) {
@@ -372,58 +399,45 @@ public class StatementImportService {
      * There's no {@code isin} column on {@code Holding} yet (see issue #89's deferred list), so
      * this reuses the one place an ISIN is already on record: the "ISIN &lt;isin&gt;" note a
      * statement-imported holding's description carries (see the frontend's {@code
-     * draftFromExtractedHolding}). A holding row whose ISIN matches one of those tagged holdings
-     * needs no review — it's already in the portfolio — so it's reported as matched rather than
-     * asked for again; a tagged holding whose ISIN doesn't turn up anywhere in a HOLDINGS (or
-     * MIXED) statement is reported as a candidate to remove — never computed for a
-     * transactions-only statement, which doesn't claim to be a full snapshot of what's held. A
-     * transaction row is matched by ISIN tag, falling back to a unique name match (a holding added
-     * by hand has no tag); one that matches neither keeps a null {@code matchedHoldingId} so the
-     * user picks the holding in the review form, and a single summary note is added to {@code
-     * warnings}. Dropping those rows was the bug that made a first-time broker transaction export
-     * look like "nothing extracted".
+     * draftFromExtractedHolding}).
      *
-     * <p>The obvious limitation: if a user edits that description's free-text Notes field after
-     * import, the tag is gone and this holding can no longer be matched or offered for cleanup —
-     * an acceptable trade for not adding a schema column for a pilot feature.
+     * <p>Only holdings at {@code broker} are considered at all — a holding is one per (name,
+     * broker), and the same fund or stock can be held at several brokers, so matching against every
+     * holding would attach a statement to the wrong one. A holding row matches by ISIN tag, falling
+     * back to a unique name match (a holding added by hand has no tag; a mutual fund row often has
+     * no ISIN); a matched row needs no review. For a HOLDINGS (or MIXED) statement — the only kinds
+     * that claim to be a full snapshot — every market-linked holding at that broker that no row
+     * matched is reported as missing, so the user can log the SELL that explains it. A transaction
+     * row matches the same way; one that matches nothing keeps a null {@code matchedHoldingId} so
+     * the user picks the holding in the review form, and a single summary note is added to {@code
+     * warnings}.
      *
      * <p>Package-private (not private) purely so it can be unit-tested directly against a mocked
      * {@link HoldingRepository}.
      */
-    StatementExtractionResponse matchAgainstExisting(StatementExtractionResponse extracted, String userId) {
-        List<Holding> userHoldings = holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId);
-        Map<String, Holding> byIsin = new LinkedHashMap<>();
-        for (Holding h : userHoldings) {
-            Matcher m = ISIN_TAG.matcher(h.getDescription() == null ? "" : h.getDescription());
-            if (m.find()) byIsin.put(m.group(1), h);
-        }
+    StatementExtractionResponse matchAgainstExisting(StatementExtractionResponse extracted, String userId, String broker) {
+        List<Holding> brokerHoldings = holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(userId).stream()
+                .filter(h -> StatementRows.sameBroker(h.getBroker(), broker))
+                .toList();
+        Map<String, Holding> byIsin = taggedByIsin(brokerHoldings);
 
-        Set<String> matchedIsins = new LinkedHashSet<>();
+        Set<String> matchedIds = new LinkedHashSet<>();
         List<ExtractedHolding> matchedHoldings = new ArrayList<>();
         for (ExtractedHolding row : extracted.holdings()) {
-            Holding existing = byIsin.get(row.isin());
-            if (existing != null) matchedIsins.add(row.isin());
-            matchedHoldings.add(existing == null ? row
-                    : new ExtractedHolding(row.instrumentName(), row.isin(), row.quantity(), row.averageCostPerUnit(),
-                            row.depository(), row.tickerSymbol(), existing.getId()));
+            Holding existing = findExisting(row.isin(), row.instrumentName(), byIsin, brokerHoldings);
+            if (existing != null) matchedIds.add(existing.getId());
+            matchedHoldings.add(existing == null ? row : row.withMatchedHolding(existing.getId()));
         }
 
-        // Only a HOLDINGS/MIXED statement claims to be a full snapshot of what's currently held —
-        // a transactions-only statement says nothing about what else is or isn't still held, so it
-        // never generates a removal candidate.
-        List<HoldingToRemove> toRemove = extracted.statementType() == StatementType.TRANSACTIONS
+        List<HoldingToRemove> missing = extracted.statementType() == StatementType.TRANSACTIONS
                 ? List.of()
-                : byIsin.entrySet().stream()
-                        .filter(e -> !matchedIsins.contains(e.getKey()))
-                        .map(e -> new HoldingToRemove(e.getValue().getId(), e.getValue().getName(), e.getValue().getBroker()))
-                        .toList();
+                : missingFromStatement(brokerHoldings, matchedIds);
 
         List<String> warnings = new ArrayList<>(extracted.warnings());
         List<ExtractedTransaction> matchedTransactions = new ArrayList<>();
         Map<String, Integer> unmatchedCounts = new LinkedHashMap<>();
         for (ExtractedTransaction row : extracted.transactions()) {
-            Holding existing = byIsin.get(row.isin());
-            if (existing == null) existing = uniqueHoldingByName(userHoldings, row.instrumentName());
+            Holding existing = findExisting(row.isin(), row.instrumentName(), byIsin, brokerHoldings);
             if (existing == null) unmatchedCounts.merge(row.instrumentName(), 1, Integer::sum);
             String holdingId = existing == null ? null : existing.getId();
             matchedTransactions.add(new ExtractedTransaction(row.date(), row.type(), row.instrumentName(), row.isin(),
@@ -431,8 +445,33 @@ public class StatementImportService {
         }
         unmatchedTransactionWarning(unmatchedCounts).ifPresent(warnings::add);
 
-        return new StatementExtractionResponse(extracted.statementType(), matchedHoldings, toRemove,
-                matchedTransactions, extracted.statementDate(), warnings);
+        return new StatementExtractionResponse(extracted.statementType(), matchedHoldings, missing,
+                matchedTransactions, extracted.statementDate(), warnings, extracted.broker());
+    }
+
+    private static Map<String, Holding> taggedByIsin(List<Holding> brokerHoldings) {
+        Map<String, Holding> byIsin = new LinkedHashMap<>();
+        for (Holding h : brokerHoldings) {
+            Matcher m = ISIN_TAG.matcher(h.getDescription() == null ? "" : h.getDescription());
+            if (m.find()) byIsin.put(m.group(1), h);
+        }
+        return byIsin;
+    }
+
+    /** ISIN tag first, then a unique name match; null when neither finds exactly one holding. */
+    private static Holding findExisting(String isin, String instrumentName, Map<String, Holding> byIsin,
+                                        List<Holding> brokerHoldings) {
+        Holding tagged = isin == null ? null : byIsin.get(isin);
+        if (tagged != null) return tagged;
+        return uniqueHoldingByName(brokerHoldings, instrumentName);
+    }
+
+    private static List<HoldingToRemove> missingFromStatement(List<Holding> brokerHoldings, Set<String> matchedIds) {
+        return brokerHoldings.stream()
+                .filter(StatementRows::listedOnBrokerStatements)
+                .filter(h -> !matchedIds.contains(h.getId()))
+                .map(h -> new HoldingToRemove(h.getId(), h.getName(), h.getBroker(), h.getQuantity()))
+                .toList();
     }
 
     /** The user's one holding whose name plausibly matches a statement instrument name, or null
@@ -466,20 +505,23 @@ public class StatementImportService {
      * fails because of this: {@link #resolveTicker} swallows every failure and simply leaves
      * {@code tickerSymbol} null, same as if nothing had been attempted.
      */
-    private StatementExtractionResponse enrichWithTickers(StatementExtractionResponse extracted) {
+    StatementExtractionResponse enrichWithTickers(StatementExtractionResponse extracted) {
         List<ExtractedHolding> enriched = extracted.holdings().stream()
-                .map(h -> new ExtractedHolding(h.instrumentName(), h.isin(), h.quantity(), h.averageCostPerUnit(),
-                        h.depository(), resolveTicker(h.instrumentName()), h.matchedHoldingId()))
+                .map(h -> h.withTicker(resolveTicker(h.instrumentName(), h.kind())))
                 .toList();
         return new StatementExtractionResponse(extracted.statementType(), enriched, extracted.toRemove(),
-                extracted.transactions(), extracted.statementDate(), extracted.warnings());
+                extracted.transactions(), extracted.statementDate(), extracted.warnings(), extracted.broker());
     }
+
+    String resolveTicker(String instrumentName) { return resolveTicker(instrumentName, InstrumentKind.STOCK); }
 
     /** Package-private (not private) purely so it can be unit-tested directly against a mocked
      *  {@link MarketDataService} without going through the full, network-calling {@link #extract}. */
-    String resolveTicker(String instrumentName) {
+    String resolveTicker(String instrumentName, InstrumentKind kind) {
         try {
-            for (SymbolSuggestion suggestion : marketData.search(instrumentName)) {
+            List<SymbolSuggestion> suggestions = marketData.search(instrumentName);
+            if (kind == InstrumentKind.MUTUAL_FUND) return resolveFundSchemeCode(instrumentName, suggestions);
+            for (SymbolSuggestion suggestion : suggestions) {
                 String symbol = suggestion.symbol();
                 // Statement holdings are Indian equities/ETFs — a Yahoo hit on a foreign exchange
                 // is never the right instrument here, whatever its name similarity score.
@@ -491,6 +533,19 @@ public class StatementImportService {
             log.debug("Ticker guess failed for '{}': {}", instrumentName, e.toString());
         }
         return null;
+    }
+
+    /** The AMFI scheme code ({@code MF:<code>}) only when exactly one scheme matches the fund's name —
+     *  Direct/Regular and Growth/IDCW variants share most of their words, so a guess between several
+     *  would be a coin flip; the user picks the right plan in the form instead. */
+    private static String resolveFundSchemeCode(String instrumentName, List<SymbolSuggestion> suggestions) {
+        List<String> candidates = suggestions.stream()
+                .filter(sg -> sg.symbol() != null && sg.symbol().startsWith("MF:"))
+                .filter(sg -> namesLikelyMatch(instrumentName, sg.name()))
+                .map(SymbolSuggestion::symbol)
+                .distinct()
+                .toList();
+        return candidates.size() == 1 ? candidates.get(0) : null;
     }
 
     // Deliberately excludes words like "INDUSTRIES" or "POWER" that happen to follow a company
@@ -610,6 +665,10 @@ public class StatementImportService {
     private static final String FIELD_ISIN = "isin";
     private static final String FIELD_QUANTITY = "quantity";
     private static final String FIELD_STATEMENT_TYPE = "statementType";
+    private static final String FIELD_KIND = "kind";
+    private static final String FIELD_INVESTED_VALUE = "investedValue";
+    private static final String FIELD_CURRENT_VALUE = "currentValue";
+    private static final String FIELD_BROKER = "broker";
     private static final String INSTRUMENT_NAME_DESCRIPTION = "Company or instrument name exactly as printed";
     private static final String ISIN_DESCRIPTION = "The 12-character ISIN for this instrument";
 
@@ -618,14 +677,19 @@ public class StatementImportService {
         holdingSchema.put(SCHEMA_TYPE, SCHEMA_OBJECT);
         ObjectNode holdingProps = json.createObjectNode();
         holdingProps.set(FIELD_INSTRUMENT_NAME, textProp(json, INSTRUMENT_NAME_DESCRIPTION));
-        holdingProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION));
+        holdingProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION + " — required for a stock or ETF, omit for a mutual fund that shows none"));
+        ObjectNode kind = textProp(json, "What kind of instrument this line is");
+        kind.set("enum", json.createArrayNode().add("STOCK").add("ETF").add("MUTUAL_FUND"));
+        holdingProps.set(FIELD_KIND, kind);
         holdingProps.set(FIELD_QUANTITY, numberProp(json, "Units held"));
+        holdingProps.set(FIELD_INVESTED_VALUE, numberProp(json, "Total amount invested in this line, if the statement shows it"));
+        holdingProps.set(FIELD_CURRENT_VALUE, numberProp(json, "Current market value of this line, if the statement shows it"));
         holdingProps.set("averageCostPerUnit", numberProp(json, "Average cost per unit — omit entirely if the statement doesn't show one"));
         ObjectNode depository = textProp(json, "Which depository this line is held under, if shown");
         depository.set("enum", json.createArrayNode().add("NSDL").add("CDSL").add("UNKNOWN"));
         holdingProps.set("depository", depository);
         holdingSchema.set(SCHEMA_PROPERTIES, holdingProps);
-        holdingSchema.set(SCHEMA_REQUIRED, json.createArrayNode().add(FIELD_INSTRUMENT_NAME).add(FIELD_ISIN).add(FIELD_QUANTITY));
+        holdingSchema.set(SCHEMA_REQUIRED, json.createArrayNode().add(FIELD_INSTRUMENT_NAME).add(FIELD_KIND).add(FIELD_QUANTITY));
 
         ObjectNode holdingsArray = json.createObjectNode();
         holdingsArray.put(SCHEMA_TYPE, SCHEMA_ARRAY);
@@ -660,6 +724,7 @@ public class StatementImportService {
 
         ObjectNode topProps = json.createObjectNode();
         topProps.set(FIELD_STATEMENT_TYPE, statementType);
+        topProps.set(FIELD_BROKER, textProp(json, "Broker or investing platform the statement comes from, only if the document names it"));
         topProps.set("statementDate", textProp(json, "As-of date of the statement, YYYY-MM-DD, if determinable"));
         topProps.set("holdings", holdingsArray);
         topProps.set("transactions", transactionsArray);
@@ -712,7 +777,9 @@ public class StatementImportService {
 
         StatementType statementType = parseStatementType(toolInput.path(FIELD_STATEMENT_TYPE).asText(null));
         String statementDate = blankToNull(toolInput.path("statementDate").asText(null));
-        return new StatementExtractionResponse(statementType, holdingRows, List.of(), txnRows, statementDate, warnings);
+        String broker = blankToNull(toolInput.path(FIELD_BROKER).asText(null));
+        return new StatementExtractionResponse(statementType, StatementRows.consolidate(holdingRows), List.of(), txnRows,
+                statementDate, warnings, broker);
     }
 
     private static JsonNode findToolInput(JsonNode apiResponse) {
@@ -727,16 +794,34 @@ public class StatementImportService {
     private static void parseHoldingRow(JsonNode row, List<ExtractedHolding> holdingRows, List<String> warnings) {
         String name = blankToNull(row.path(FIELD_INSTRUMENT_NAME).asText(null));
         String isin = blankToNull(row.path(FIELD_ISIN).asText(null));
+        InstrumentKind kind = parseKind(row.path(FIELD_KIND).asText(null), isin);
         JsonNode quantityNode = row.path(FIELD_QUANTITY);
-        if (name == null || isin == null || !quantityNode.isNumber() || quantityNode.decimalValue().signum() <= 0) {
+        boolean identified = name != null && (isin != null || kind == InstrumentKind.MUTUAL_FUND);
+        if (!identified || !quantityNode.isNumber() || quantityNode.decimalValue().signum() <= 0) {
             warnings.add("Skipped a holding row with an incomplete name, ISIN, or quantity" + (name != null ? " (" + name + ")" : ""));
             return;
         }
-        JsonNode avgCostNode = row.path("averageCostPerUnit");
-        BigDecimal avgCost = avgCostNode.isNumber() ? avgCostNode.decimalValue() : null;
+        BigDecimal quantity = quantityNode.decimalValue();
+        BigDecimal invested = decimalOrNull(row.path(FIELD_INVESTED_VALUE));
+        BigDecimal current = decimalOrNull(row.path(FIELD_CURRENT_VALUE));
+        BigDecimal avgCost = decimalOrNull(row.path("averageCostPerUnit"));
+        if (avgCost == null) avgCost = StatementRows.averageCost(invested, quantity);
         String depository = blankToNull(row.path("depository").asText(null));
-        holdingRows.add(new ExtractedHolding(name, isin.trim().toUpperCase(Locale.ROOT), quantityNode.decimalValue(), avgCost, depository, null, null));
+        String normalisedIsin = isin == null ? null : isin.toUpperCase(Locale.ROOT);
+        holdingRows.add(new ExtractedHolding(name, normalisedIsin, quantity, avgCost, depository, null, null,
+                kind, invested, current));
     }
+
+    /** A row with no kind but an ISIN is a stock (what every row was before kinds existed); one with
+     *  neither is unusable and comes back null so the caller skips it. */
+    private static InstrumentKind parseKind(String value, String isin) {
+        if (value != null) {
+            try { return InstrumentKind.valueOf(value); } catch (IllegalArgumentException e) { /* fall through */ }
+        }
+        return isin == null ? null : InstrumentKind.STOCK;
+    }
+
+    private static BigDecimal decimalOrNull(JsonNode node) { return node.isNumber() ? node.decimalValue() : null; }
 
     private static void parseTransactionRow(JsonNode row, List<ExtractedTransaction> txnRows, List<String> warnings) {
         String date = blankToNull(row.path("date").asText(null));

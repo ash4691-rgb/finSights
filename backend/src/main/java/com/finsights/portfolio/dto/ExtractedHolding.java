@@ -3,7 +3,7 @@ package com.finsights.portfolio.dto;
 import java.math.BigDecimal;
 
 /**
- * One equity/ETF position a statement-extraction model found in an uploaded statement. Nothing
+ * One equity, ETF, or mutual fund position a statement-extraction model found in an uploaded statement. Nothing
  * here is written to the database directly — the Holdings page pre-fills the ordinary Add Holding
  * form with these values so the user reviews and saves each one through the exact same path
  * (and the exact same validation) as typing it in by hand. See {@code StatementImportService}.
@@ -26,5 +26,29 @@ public record ExtractedHolding(
          *  needs no review: it's already in the portfolio, so the Holdings page shows it as
          *  "successfully parsed and mapped" rather than asking the user to create it again. Null
          *  means it's new and genuinely needs a reviewed Add Holding form. */
-        String matchedHoldingId
-) { }
+        String matchedHoldingId,
+        /** What kind of instrument this row is; never null once parsed (see {@code StatementImportService}). */
+        InstrumentKind kind,
+        /** Total amount invested as the statement states it, null when it doesn't. Used to derive
+         *  {@code averageCostPerUnit} for a mutual fund, whose statement lists a total, not a per-unit cost. */
+        BigDecimal investedValue,
+        /** Current market value as the statement states it, null when it doesn't. Pre-fills the review form. */
+        BigDecimal currentValue
+) {
+    /** The shape every row had before kind and amounts existed — a plain stock/ETF row. */
+    public ExtractedHolding(String instrumentName, String isin, BigDecimal quantity, BigDecimal averageCostPerUnit,
+                            String depository, String tickerSymbol, String matchedHoldingId) {
+        this(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol, matchedHoldingId,
+                InstrumentKind.STOCK, null, null);
+    }
+
+    public ExtractedHolding withTicker(String ticker) {
+        return new ExtractedHolding(instrumentName, isin, quantity, averageCostPerUnit, depository, ticker,
+                matchedHoldingId, kind, investedValue, currentValue);
+    }
+
+    public ExtractedHolding withMatchedHolding(String holdingId) {
+        return new ExtractedHolding(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol,
+                holdingId, kind, investedValue, currentValue);
+    }
+}

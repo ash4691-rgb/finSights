@@ -221,7 +221,7 @@ class StatementImportServiceTest {
         ExtractedHolding row = new ExtractedHolding("Reliance Industries", "INE002A01018",
                 new BigDecimal("10"), new BigDecimal("2450.50"), "NSDL", "RELIANCE.NS", null);
         StatementExtractionResponse result = service.matchAgainstExisting(
-                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(row), List.of(), List.of(), null, List.of()), "u1");
+                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(row), List.of(), List.of(), null, List.of()), "u1", "Zerodha");
 
         assertThat(result.holdings()).hasSize(1);
         assertThat(result.holdings().get(0).matchedHoldingId()).isEqualTo("h-existing-1");
@@ -235,7 +235,7 @@ class StatementImportServiceTest {
         ExtractedHolding row = new ExtractedHolding("Infosys", "INE009A01021",
                 BigDecimal.TEN, null, "NSDL", "INFY.NS", null);
         StatementExtractionResponse result = service.matchAgainstExisting(
-                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(row), List.of(), List.of(), null, List.of()), "u1");
+                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(row), List.of(), List.of(), null, List.of()), "u1", "Zerodha");
 
         assertThat(result.holdings()).hasSize(1);
         assertThat(result.holdings().get(0).matchedHoldingId()).isNull();
@@ -243,19 +243,21 @@ class StatementImportServiceTest {
     }
 
     @Test
-    void matchAgainstExistingFlagsATaggedHoldingNotSeenInAHoldingsStatementForRemoval() {
+    void matchAgainstExistingFlagsABrokerHoldingNotSeenInAHoldingsStatementAsMissing() {
         Holding stale = new Holding();
         stale.setName("Old Fund House Units");
         stale.setBroker("Groww");
         stale.setDescription("ISIN INE999Z99999");
+        stale.setQuantity(new BigDecimal("12.5"));
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(stale));
 
         StatementExtractionResponse result = service.matchAgainstExisting(
-                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(), List.of(), List.of(), null, List.of()), "u1");
+                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(), List.of(), List.of(), null, List.of()), "u1", "Groww");
 
         assertThat(result.toRemove()).hasSize(1);
         assertThat(result.toRemove().get(0).name()).isEqualTo("Old Fund House Units");
         assertThat(result.toRemove().get(0).broker()).isEqualTo("Groww");
+        assertThat(result.toRemove().get(0).quantity()).isEqualByComparingTo("12.5");
     }
 
     @Test
@@ -264,18 +266,19 @@ class StatementImportServiceTest {
         stale.setName("Old Fund House Units");
         stale.setBroker("Groww");
         stale.setDescription("ISIN INE999Z99999");
+        stale.setQuantity(new BigDecimal("12.5"));
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(stale));
 
         // A transactions-only statement says nothing about what else is or isn't still held — it
         // must never generate a removal candidate just because it didn't mention this holding.
         StatementExtractionResponse result = service.matchAgainstExisting(
-                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), List.of(), null, List.of()), "u1");
+                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), List.of(), null, List.of()), "u1", "Groww");
 
         assertThat(result.toRemove()).isEmpty();
     }
 
     @Test
-    void matchAgainstExistingIgnoresHoldingsWithNoIsinTagAtAll() {
+    void matchAgainstExistingNeverExpectsAHoldingWithNoUnitsOnAStatement() {
         Holding manual = new Holding();
         manual.setName("Manually added FD");
         manual.setBroker("HDFC Bank");
@@ -283,10 +286,10 @@ class StatementImportServiceTest {
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(List.of(manual));
 
         StatementExtractionResponse result = service.matchAgainstExisting(
-                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(), List.of(), List.of(), null, List.of()), "u1");
+                new StatementExtractionResponse(StatementType.HOLDINGS, List.of(), List.of(), List.of(), null, List.of()), "u1", "HDFC Bank");
 
-        // Never tagged from a statement import, so it's never a removal candidate just for being
-        // absent from this statement — only holdings this feature itself created are eligible.
+        // A fixed deposit has no units and never appears on a broker statement, so its absence from
+        // this one says nothing about whether it's still held.
         assertThat(result.toRemove()).isEmpty();
     }
 
@@ -302,7 +305,7 @@ class StatementImportServiceTest {
         ExtractedTransaction txn = new ExtractedTransaction("2026-09-15", TransactionType.BUY,
                 "Reliance Industries", "INE002A01018", BigDecimal.TEN, new BigDecimal("24505"), null, null);
         StatementExtractionResponse result = service.matchAgainstExisting(
-                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), List.of(txn), null, List.of()), "u1");
+                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), List.of(txn), null, List.of()), "u1", "Zerodha");
 
         assertThat(result.transactions()).hasSize(1);
         assertThat(result.transactions().get(0).matchedHoldingId()).isEqualTo("h-existing-1");
@@ -317,6 +320,7 @@ class StatementImportServiceTest {
     private static Holding holdingNamed(String id, String name) {
         Holding h = new Holding();
         h.setName(name);
+        h.setBroker("Zerodha");
         org.springframework.test.util.ReflectionTestUtils.setField(h, "id", id);
         return h;
     }
@@ -324,7 +328,7 @@ class StatementImportServiceTest {
     private StatementExtractionResponse matchTransactions(List<Holding> existing, List<ExtractedTransaction> rows) {
         when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc("u1")).thenReturn(existing);
         return service.matchAgainstExisting(
-                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), rows, null, List.of()), "u1");
+                new StatementExtractionResponse(StatementType.TRANSACTIONS, List.of(), List.of(), rows, null, List.of()), "u1", "Zerodha");
     }
 
     @Test
