@@ -92,16 +92,30 @@ app:
     # right amount of friction for it.
     admin-allowlist: ${GOKU_ADMIN_ALLOWLIST:ash4691@gmail.com}
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
-    model: ${GOKU_MODEL:claude-haiku-4-5-20251001}
+    # The three fixed tiers an admin can assign a user to (see GokuModelTier, GokuAllowlistService)
+    # — each the latest available model for that tier. Anyone not explicitly assigned one (e.g. a
+    # seeded row) runs on model-haiku. Keep these in sync with whatever's actually available on the
+    # account behind ANTHROPIC_API_KEY.
+    model-haiku: ${GOKU_MODEL_HAIKU:claude-haiku-4-5-20251001}
+    model-sonnet: ${GOKU_MODEL_SONNET:claude-sonnet-5}
+    model-opus: ${GOKU_MODEL_OPUS:claude-opus-5-5}
     daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
-  # CAS (CDSL/NSDL Consolidated Account Statement) upload — extraction only, never writes a
-  # holding directly; see CasImportService. Shares the same Anthropic account as Goku but its own
-  # config block since the two features have nothing else to do with each other, and extraction
-  # accuracy matters more here than chat latency, hence a stronger default model.
-  cas-import:
+  news:
+    # Signals' Radar news feed (NewsService/NewsRefreshScheduler) — Google News RSS, no API key,
+    # so there's nothing to leave blank the way Resend/Kite's api-key defaults do. This flag is
+    # purely an operational kill switch: if the undocumented feed starts failing hard or getting
+    # rate-limited in production, set NEWS_ENABLED=false to stop the hourly scheduler without a
+    # code change — forUser() keeps working either way, it just reads an unrefreshed/empty cache.
+    enabled: ${NEWS_ENABLED:true}
+  # Statement upload (CAS, broker holding statement, or broker transaction statement) — extraction
+  # only, never writes a holding or transaction directly; see StatementImportService. Shares the
+  # same Anthropic account as Goku but its own config block since the two features have nothing
+  # else to do with each other, and extraction accuracy matters more here than chat latency, hence
+  # a stronger default model.
+  statement-import:
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
-    model: ${CAS_IMPORT_MODEL:claude-sonnet-5}
-    daily-upload-limit: ${CAS_IMPORT_DAILY_UPLOAD_LIMIT:10}
+    model: ${STATEMENT_IMPORT_MODEL:claude-sonnet-5}
+    daily-upload-limit: ${STATEMENT_IMPORT_DAILY_UPLOAD_LIMIT:10}
 
 ---
 # Google OAuth is only wired when the "google" profile is active, so the demo

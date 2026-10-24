@@ -153,6 +153,6 @@ class TopMoversServiceTest {
         return new HoldingResponse(
                 id, id, "c-1", "Growth Equity", "Reliance", kind, method,
                 "RELIANCE", "Kite", "INR", "INR", new BigDecimal("100"), new BigDecimal("110"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null, null, null, null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null);
     }
 }

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import { money, since, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
+import { money, since, ago, toggleLabel, periodLabels, periodFields, numberLocale } from '../util'
 import { Field, SymbolSearchInput, InfoTip, useEscToClose } from '../ui'
 import { useChartHover } from '../charts'
-import type { Insights, Settings, Dashboard, ActionItem, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory, Category } from '../types'
+import type { Settings, Dashboard, ActionItem, DeferredAction, TopMover, MovementThresholds, WatchlistEntry, PeriodKey, MarketQuote, ChartRange, MarketHistory, Category, NewsItem } from '../types'
 
 // ---------------------------------------------------------------------------
 
@@ -15,7 +15,14 @@ import type { Insights, Settings, Dashboard, ActionItem, TopMover, MovementThres
 export function InsightsView({ displayCurrency, dataVersion, settings, dashboard, reload, onOpen }: {
   displayCurrency: string; dataVersion: number; settings: Settings; dashboard: Dashboard; reload: () => Promise<void>; onOpen: (id: string) => void
 }) {
-  const [data, setData] = useState<Insights | null>(null)
+  // Signals' sections each load from their own endpoint, independently — a slow or failing one
+  // (News, reading an external-feed-backed cache, is the likeliest candidate) never blocks the
+  // others from rendering. null = "still loading" (matches the existing topMovers convention
+  // below); [] = "loaded, nothing there."
+  const [actions, setActions] = useState<ActionItem[] | null>(null)
+  const [upcoming, setUpcoming] = useState<ActionItem[] | null>(null)
+  const [deferred, setDeferred] = useState<DeferredAction[] | null>(null)
+  const [news, setNews] = useState<NewsItem[] | null>(null)
   const [error, setError] = useState('')
   const [topMovers, setTopMovers] = useState<TopMover[] | null>(null)
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([])
@@ -32,10 +39,17 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   const [resolvingPending, setResolvingPending] = useState<string | null>(null)
   const [pendingError, setPendingError] = useState<Record<string, string>>({})
 
-  useEffect(() => { api<Insights>(`/api/insights?currency=${displayCurrency}`).then(setData).catch(e => setError(e.message)) }, [displayCurrency, dataVersion])
+  const loadActions = () => api<ActionItem[]>(`/api/insights/actions?currency=${displayCurrency}`).then(setActions).catch(() => setActions([]))
+  const loadUpcoming = () => api<ActionItem[]>('/api/insights/upcoming').then(setUpcoming).catch(() => setUpcoming([]))
+  const loadDeferred = () => api<DeferredAction[]>('/api/insights/deferred').then(setDeferred).catch(() => setDeferred([]))
+  const loadNews = () => api<NewsItem[]>('/api/insights/news').then(setNews).catch(() => setNews([]))
   const loadTopMovers = () => api<TopMover[]>(`/api/insights/top-movers?currency=${displayCurrency}`).then(setTopMovers).catch(() => setTopMovers([]))
   const loadWatchlist = () => api<WatchlistEntry[]>(`/api/watchlist?currency=${displayCurrency}`).then(setWatchlist).catch(() => setWatchlist([]))
   const loadThresholds = () => api<MovementThresholds>('/api/insights/thresholds').then(t => setThresholds(thresholdForm(t))).catch(() => { /* leave defaults */ })
+  useEffect(() => { void loadActions() }, [displayCurrency, dataVersion])
+  useEffect(() => { void loadUpcoming() }, [dataVersion])
+  useEffect(() => { void loadDeferred() }, [dataVersion])
+  useEffect(() => { void loadNews() }, [dataVersion])
   useEffect(() => { void loadTopMovers() }, [displayCurrency, dataVersion])
   useEffect(() => { void loadWatchlist() }, [displayCurrency, dataVersion])
   useEffect(() => { void loadThresholds() }, [dataVersion])
@@ -56,17 +70,18 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     await api(`/api/watchlist/${item.id}`, { method: 'DELETE' }); await loadWatchlist(); await loadTopMovers()
   }
 
-  if (error) return <p className="hint">{error}</p>
-  if (!data) return <p className="hint">Loading signals…</p>
   const thresholdsSet = Object.values(thresholds).filter(value => value.trim() !== '').length
 
   const isPendingAction = (kind: string) =>
     kind === 'EMI_DUE' || kind === 'EMI_OVERDUE' || kind === 'INTEREST_DUE' || kind === 'INTEREST_OVERDUE'
     || kind === 'BROKER_SYNC_NEW' || kind === 'BROKER_SYNC_CONFLICT'
-  const pendingActions = data.actions.filter(a => isPendingAction(a.kind))
-  const radarItems = data.actions.filter(a => !isPendingAction(a.kind))
+  const pendingActions = (actions ?? []).filter(a => isPendingAction(a.kind))
+  const radarItems = (actions ?? []).filter(a => !isPendingAction(a.kind))
+  // Dismissing/restoring only ever changes Tasks/Worth-a-look and Snoozed — reload just those two
+  // sections rather than the parent's full-page reload(), which EMI/interest logging and
+  // broker-sync resolution below still use since those actually change holdings/net worth.
   const dismissAction = async (key: string, status: 'DONE' | 'DEFERRED' | 'DELETED') => {
-    try { await api('/api/insights/actions', { method: 'POST', body: JSON.stringify({ key, status }) }); await reload() }
+    try { await api('/api/insights/actions', { method: 'POST', body: JSON.stringify({ key, status }) }); await Promise.all([loadActions(), loadDeferred()]) }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not update that item') }
   }
   const ensureCategoriesLoaded = () => {
@@ -93,8 +108,21 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     } finally { setResolvingPending(null) }
   }
   const restoreDeferred = async (key: string) => {
-    try { await api(`/api/insights/actions?key=${encodeURIComponent(key)}`, { method: 'DELETE' }); await reload() }
+    try { await api(`/api/insights/actions?key=${encodeURIComponent(key)}`, { method: 'DELETE' }); await Promise.all([loadActions(), loadDeferred()]) }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not restore that item') }
+  }
+  // Star acts on the ticker — boosts every headline for that symbol to the top (see
+  // NewsService#forUser's ranking). Cross acts on just this one article: it's dismissed for good
+  // (won't resurface on reload) but the ticker itself stays fully visible — no ticker-level
+  // blocking happens here. Both only ever change News, so just reload that section.
+  const toggleStarTicker = async (n: NewsItem) => {
+    if (!n.tickerSymbol) return
+    try { await api(`/api/insights/news/${encodeURIComponent(n.tickerSymbol)}/star`, { method: n.starred ? 'DELETE' : 'POST' }); await loadNews() }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not update that ticker') }
+  }
+  const dismissNewsItem = async (n: NewsItem) => {
+    try { await api('/api/insights/news/dismiss', { method: 'POST', body: JSON.stringify({ link: n.link }) }); await loadNews() }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not dismiss that article') }
   }
 
   // Shared by Tasks (pendingActions) and Radar's lower-urgency items — same row, same tools
@@ -143,11 +171,14 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     </div>
   }
 
-  return <div className="signals-grid">
+  return <>
+    {error && <p className="form-error">{error}</p>}
+    <div className="signals-grid">
     <div className="signals-main">
       <section className="panel signals-tasks">
-        <div className="panel-heading"><h3>📥 Tasks <InfoTip text="EMIs and interest payouts due or overdue right now — log them here or from the holding itself." /></h3><span>{pendingActions.length} item{pendingActions.length === 1 ? '' : 's'}</span></div>
-        {pendingActions.length
+        <div className="panel-heading"><h3>📥 Tasks <InfoTip text="EMIs and interest payouts due or overdue right now — log them here or from the holding itself." /></h3><span>{actions === null ? '' : `${pendingActions.length} item${pendingActions.length === 1 ? '' : 's'}`}</span></div>
+        {actions === null ? <p className="hint">Loading tasks…</p>
+          : pendingActions.length
           ? <div className="dense-list">{pendingActions.map(a => renderActionRow(a))}</div>
           : <p className="hint">Nothing to log right now — you're caught up.</p>}
       </section>
@@ -207,27 +238,46 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
     <aside className="signals-side">
       <section className="panel signals-radar">
         <div className="panel-heading"><h3>👀 Radar <InfoTip text="A passive feed, not an inbox — lower-urgency flags, EMI/interest payouts coming up beyond the immediate window, and anything you've snoozed." /></h3></div>
-        {!radarItems.length && !data.upcoming.length && !data.deferred.length
-          ? <p className="hint">Nothing on your radar right now.</p>
+        {news === null && actions === null && upcoming === null && deferred === null
+          ? <p className="hint">Loading radar…</p>
           : <>
-            {radarItems.length > 0 && <div className="radar-group">
+            {news === null ? <p className="hint">Loading news…</p> : news.length > 0 && <div className="radar-group">
+              <h5 className="radar-group-label">News</h5>
+              <div className="dense-list">{news.map(n => <div key={n.link} className="dense-row signal-row">
+                <span className="source-chip" title={n.name}>{initials(n.name)}</span>
+                <a className="signal-row-body" href={n.link} target="_blank" rel="noopener noreferrer">
+                  <strong>{n.title}</strong><span>{n.source} · {ago(n.publishedAt)}</span>
+                </a>
+                <div className="warning-tools">
+                  <button className={`warning-tool star${n.starred ? ' active' : ''}`}
+                    title={n.starred ? 'Unstar this ticker' : "Star this ticker — boosts its news to the top"}
+                    aria-label={n.starred ? 'Unstar' : 'Star'} onClick={() => void toggleStarTicker(n)}>{n.starred ? '★' : '☆'}</button>
+                  <button className="warning-tool delete" title="Dismiss this article — won't come back" aria-label="Dismiss"
+                    onClick={() => void dismissNewsItem(n)}>✕</button>
+                </div>
+              </div>)}</div>
+            </div>}
+            {actions !== null && radarItems.length > 0 && <div className="radar-group">
               <h5 className="radar-group-label">Worth a look</h5>
               <div className="dense-list">{radarItems.map(a => renderActionRow(a, true))}</div>
             </div>}
-            {data.upcoming.length > 0 && <div className="radar-group">
+            {upcoming === null ? <p className="hint">Loading upcoming…</p> : upcoming.length > 0 && <div className="radar-group">
               <h5 className="radar-group-label">Upcoming</h5>
-              <div className="dense-list">{data.upcoming.map(a => <button key={a.key} className="dense-row signal-row" onClick={() => a.holdingId && onOpen(a.holdingId)}>
+              <div className="dense-list">{upcoming.map(a => <button key={a.key} className="dense-row signal-row" onClick={() => a.holdingId && onOpen(a.holdingId)}>
                 {a.broker && <span className="source-chip" title={a.broker}>{initials(a.broker)}</span>}
                 <div className="signal-row-body"><strong>{a.title}</strong><span>{a.detail}</span></div>
               </button>)}</div>
             </div>}
-            {data.deferred.length > 0 && <div className="radar-group">
+            {deferred === null ? <p className="hint">Loading snoozed…</p> : deferred.length > 0 && <div className="radar-group">
               <h5 className="radar-group-label">Snoozed</h5>
-              <div className="dense-list">{data.deferred.map(d => <div key={d.key} className="dense-row signal-row">
+              <div className="dense-list">{deferred.map(d => <div key={d.key} className="dense-row signal-row">
                 <div className="signal-row-body"><strong>{d.label} — {d.holdingName}</strong><span>Snoozed until {since(d.deferredUntil)}</span></div>
                 <button className="warning-tool delete" title="Un-snooze" aria-label="Un-snooze" onClick={() => void restoreDeferred(d.key)}>✕</button>
               </div>)}</div>
             </div>}
+            {news !== null && actions !== null && upcoming !== null && deferred !== null
+              && !news.length && !radarItems.length && !upcoming.length && !deferred.length
+              && <p className="hint">Nothing on your radar right now.</p>}
           </>}
       </section>
     </aside>
@@ -237,7 +287,8 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
       onSaved={() => { setAddingWatch(false); setEditingWatch(null); void loadWatchlist(); void loadTopMovers() }} />}
     {viewingChart && <ViewMoverItemModal symbol={viewingChart.symbol} name={viewingChart.name} currency={viewingChart.currency} triggered={viewingChart.triggered}
       onClose={() => setViewingChart(null)} />}
-  </div>
+    </div>
+  </>
 }
 
 // First letter of each of the first two words, or the first two letters of a one-word name —

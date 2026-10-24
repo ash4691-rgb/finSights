@@ -12,5 +12,7 @@ public record CategoryRequest(
         @NotNull HoldingKind kind,
         @Size(max = 1024, message = "Description must be 1024 characters or fewer") String description,
         /** Empty or null means no restriction — every valuation method is allowed. */
-        Set<ValuationMethod> allowedValuationMethods
+        Set<ValuationMethod> allowedValuationMethods,
+        /** True for a real-estate category — its holdings ask for area + unit instead of quantity. */
+        boolean realEstate
 ) { }

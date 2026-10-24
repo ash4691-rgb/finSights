@@ -137,7 +137,7 @@ export function CategoryDrawer({ category, holdings, onClose, onEdit, onAddHoldi
 
 export function CategoryModal({ category, holdings, onClose, onSaved }: { category: Category | null; holdings: Holding[]; onClose: () => void; onSaved: (saved: Category) => void }) {
   const [form, setForm] = useState(() => category
-    ? { name: category.name, kind: category.kind, description: category.description || '', allowedValuationMethods: category.allowedValuationMethods ?? [] }
+    ? { name: category.name, kind: category.kind, description: category.description || '', allowedValuationMethods: category.allowedValuationMethods ?? [], realEstate: !!category.realEstate }
     : blankCategoryForm())
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -173,6 +173,11 @@ export function CategoryModal({ category, holdings, onClose, onSaved }: { catego
             </label>)}
           </div>
           <p className="hint">Leave all unchecked to allow every method. Checked methods are enforced on holdings filed under this category.</p>
+        </Field>}
+        {form.kind === 'ASSET' && <Field label="Real estate" wide>
+          <label><input type="checkbox" checked={form.realEstate}
+            onChange={e => { setDirty(true); setForm(current => ({ ...current, realEstate: e.target.checked })) }} /> Holdings in this category are land/property</label>
+          <p className="hint">Asks for area + unit instead of quantity on the Add/Edit Holding form (quantity is fixed at 1 — one holding per unit).</p>
         </Field>}
         <Field label="Notes" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={1024} /></Field>
       </div>

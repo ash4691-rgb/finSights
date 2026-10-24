@@ -28,12 +28,14 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -197,12 +199,34 @@ public class MarketDataService {
         }
     }
 
-    /** Best-effort batch: never throws, missing symbols are simply absent from the map. */
+    /** Caps how many quote fetches run at once — bounded on purpose rather than one thread per
+     * symbol: a large tracked-symbol pool shouldn't turn into dozens of simultaneous connections
+     * against a free, unauthenticated, rate-limit-prone feed. */
+    private static final int QUOTE_CONCURRENCY = 8;
+
+    /** Best-effort batch: never throws, missing symbols are simply absent from the map. Fetches
+     * up to {@link #QUOTE_CONCURRENCY} symbols at once rather than one blocking HTTP call at a
+     * time — quote()'s own cache (a ConcurrentHashMap) is already safe for concurrent use, and
+     * each quote is an independent fetch, so there's nothing to serialize. invokeAll() blocks
+     * until every task finishes before returning, same as the old serial loop did, just in
+     * parallel (a plain bounded thread pool, not virtual threads — this service still targets
+     * Java 17, see backend/Dockerfile). */
     public Map<String, MarketQuoteResponse> quotes(Collection<String> symbols) {
-        Map<String, MarketQuoteResponse> out = new HashMap<>();
-        if (symbols == null) return out;
-        for (String symbol : symbols) {
-            quote(symbol).ifPresent(q -> out.put(symbol.trim().toUpperCase(), q));
+        Map<String, MarketQuoteResponse> out = new ConcurrentHashMap<>();
+        if (symbols == null || symbols.isEmpty()) return out;
+        ExecutorService executor = Executors.newFixedThreadPool(Math.min(QUOTE_CONCURRENCY, symbols.size()));
+        try {
+            List<Callable<Void>> tasks = symbols.stream()
+                    .<Callable<Void>>map(symbol -> () -> {
+                        quote(symbol).ifPresent(q -> out.put(symbol.trim().toUpperCase(), q));
+                        return null;
+                    })
+                    .toList();
+            executor.invokeAll(tasks);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            executor.shutdown();
         }
         return out;
     }

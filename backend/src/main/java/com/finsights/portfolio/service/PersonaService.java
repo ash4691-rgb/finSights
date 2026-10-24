@@ -219,7 +219,7 @@ public class PersonaService {
             String name = CATEGORY_NAMES.get(type);
             if (name == null || existingNames.contains(name.toLowerCase())) continue;
             categoryService.create(new CategoryRequest(name, HoldingKind.ASSET, null,
-                    Set.of(CATEGORY_VALUATION.getOrDefault(type, ValuationMethod.MANUAL))));
+                    Set.of(CATEGORY_VALUATION.getOrDefault(type, ValuationMethod.MANUAL)), type == InstrumentType.REAL_ESTATE));
         }
     }
 

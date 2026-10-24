@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import type * as React from 'react'
 import type { FormEvent } from 'react'
-import { api, API_URL } from '../api'
-import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel, checkLoanTerm } from '../util'
+import { api } from '../api'
+import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel, checkLoanTerm, areaUnits, areaUnitLabel } from '../util'
 import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
 import { TransactionModal } from './TransactionsView'
-import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction, ExtractedHolding, CasExtractionResult } from '../types'
+import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
 // ---------------------------------------------------------------------------
@@ -22,6 +22,8 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const filtered = useMemo(() => holdings.filter(h =>
     `${h.name} ${h.broker ?? ''} ${h.categoryName} ${h.currency} ${h.tags.join(' ')}`.toLowerCase().includes(filter.toLowerCase())
     && (!categoryId || h.categoryId === categoryId)), [holdings, filter, categoryId])
@@ -54,7 +56,13 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
     await reload()
   }
 
-  const remove = async (holding: Holding) => { if (confirm(`Delete ${holding.name}?`)) { await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload() } }
+  const remove = async (holding: Holding) => {
+    if (!confirm(`Delete ${holding.name}?`)) return
+    setDeletingId(holding.id); setDeleteError('')
+    try { await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload() }
+    catch (err) { setDeleteError(err instanceof Error ? err.message : 'Could not delete holding') }
+    finally { setDeletingId(null) }
+  }
 
   return <>
     <section className="holdings-toolbar">
@@ -63,6 +71,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
       {sortKey && <button className="outline compact" onClick={() => setSortKey(null)}>Clear sort</button>}
       <button className="primary push-end" onClick={onAdd} disabled={!categories.length} title={categories.length ? '' : 'Add a category first'}>+ Add holding</button>
     </section>
+    {deleteError && <p className="form-error">{deleteError}</p>}
     <section className="table-panel"><table>
       <thead><tr>
         <th className="drag-col" title={sortKey ? 'Clear the column sort to drag-reorder rows' : 'Drag rows to reorder'} />
@@ -72,7 +81,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
         <th className="sortable" onClick={() => toggleSort('investedValue')}>Invested{arrow('investedValue')}</th>
         <th className="sortable" onClick={() => toggleSort('currentValue')}>Current value{arrow('currentValue')}</th>
         <th className="sortable" onClick={() => toggleSort('profitLoss')}>P/L{arrow('profitLoss')}</th>
-        <th>Quantity</th>
+        <th>Quantity / Area</th>
         <th>Tags</th>
         <th />
       </tr></thead>
@@ -93,7 +102,9 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
         <td>{money(holding.investedValue, holding.currency)}</td>
         <td><strong>{money(holding.currentValue, holding.currency)}</strong></td>
         <td>{holding.kind === 'LIABILITY' ? <span className="owner">—</span> : <span className={holding.profitLoss >= 0 ? 'positive' : 'negative'}>{holding.profitLoss >= 0 ? '+' : ''}{money(holding.profitLoss, holding.currency)}<small>{percent(holding.profitLossPercentage)}</small></span>}</td>
-        <td>{holding.quantity != null && holding.quantity > 0
+        <td>{holding.area != null && holding.areaUnit
+          ? <span>{holding.area} <small className="owner">{areaUnitLabel(holding.areaUnit)}</small></span>
+          : holding.quantity != null && holding.quantity > 0
           ? <span>{holding.quantity}<small className="owner">avg {rate(holding.investedValue / holding.quantity, holding.currency)}</small></span>
           : <span className="owner">—</span>}</td>
         <td>{holding.liquidWithinSevenDays || holding.blocked || holding.tags.length
@@ -104,13 +115,13 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
               {holding.tags.length > 5 && <em className="tag-more" title={holding.tags.slice(5).join(', ')}>+{holding.tags.length - 5}</em>}
             </div>
           : <span className="owner">—</span>}</td>
-        <td className="actions actions-vertical"><button className="primary-link" onClick={() => onEdit(holding)}>Edit</button><button className="danger-link" onClick={() => void remove(holding)}>Delete</button></td>
+        <td className="actions actions-vertical"><button className="primary-link" onClick={() => onEdit(holding)} disabled={deletingId === holding.id}>Edit</button><button className="danger-link" onClick={() => void remove(holding)} disabled={deletingId === holding.id}>{deletingId === holding.id ? 'Deleting…' : 'Delete'}</button></td>
       </tr>) : <tr><td colSpan={10} className="empty"><strong>No holdings match</strong><span>Every holding maps to a category and a broker. {categories.length ? 'Add one below.' : 'Add a category first.'}</span><button className="primary" onClick={onAdd} disabled={!categories.length}>Add holding</button></td></tr>}</tbody>
     </table></section>
   </>
 }
 
-export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft }: {
+export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft, openingDate }: Readonly<{
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
   // Carries the just-saved holding back to the caller so it can be spliced into local state
   // immediately — instant feedback instead of waiting on the reload that follows.
@@ -120,15 +131,18 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
   // Holding object for `holding` above: that would flip isEdit and lock fields (broker, quantity)
   // a draft still needs the user to confirm. Ignored once `holding` is set; editing always wins.
   draft?: Partial<ReturnType<typeof blankHoldingForm>>
-}) {
+  // Dates a brand-new market holding's opening position (a transaction statement's first BUY) instead of today.
+  openingDate?: string
+}>) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
-    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
+    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', area: holding.area != null ? String(holding.area) : '', areaUnit: holding.areaUnit || 'SQ_FT', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
     : { ...blankHoldingForm(startCategoryId), ...draft })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
   const selectedCategory = categories.find(c => c.id === form.categoryId)
   const isLiability = selectedCategory?.kind === 'LIABILITY'
+  const isRealEstate = !isLiability && !!selectedCategory?.realEstate
   const isFixedRate = !isLiability && form.valuationMethod === 'FIXED_RATE'
   const isMarket = !isLiability && form.valuationMethod === 'MARKET_PRICE'
   const isOneTime = isLiability && form.repaymentFrequency === 'ONE_TIME'
@@ -221,11 +235,12 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
       categoryId: form.categoryId, name: form.name,
       valuationMethod: isLiability ? 'MANUAL' : form.valuationMethod,
       tickerSymbol: isLiability ? null : (form.tickerSymbol || null), broker: form.broker.trim(),
-      currency: form.currency, quantity: isLiability ? null : (form.quantity ? numeric(form.quantity) : null),
+      currency: form.currency, quantity: isLiability || isRealEstate ? null : (form.quantity ? numeric(form.quantity) : null),
+      area: isRealEstate && form.area ? numeric(form.area) : null, areaUnit: isRealEstate ? form.areaUnit : null,
       investedValue: numeric(form.investedValue), currentValue: isFixedRate ? null : numeric(form.currentValue),
       fixedAnnualRate: (isFixedRate || isLiability) && form.fixedAnnualRate ? numeric(form.fixedAnnualRate) / 100 : null,
       compoundingFrequency: isFixedRate ? form.compoundingFrequency : null,
-      fixedRateStartDate: isFixedRate ? form.fixedRateStartDate : null,
+      fixedRateStartDate: isFixedRate ? form.fixedRateStartDate : (openingDate ?? null),
       fixedRateEndDate: isFixedRate && form.fixedRateEndDate ? form.fixedRateEndDate : null,
       repaymentFrequency: isLiability ? form.repaymentFrequency : null,
       repaymentDueDate: isOneTime && form.repaymentDueDate ? form.repaymentDueDate : null,
@@ -267,7 +282,11 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
               <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries'} /></Field>
               <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><SuggestInput required maxLength={96} value={form.broker} suggestions={brokerSuggestions} onChange={v => set('broker', v)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>
             </div>}
-        {!isLiability && !isEdit && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
+        {!isLiability && !isEdit && !isRealEstate && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
+        {isRealEstate && <div className="field-pair">
+          <Field label="Area" required><input required type="number" step="any" min="0" value={form.area} onChange={e => set('area', e.target.value)} placeholder="e.g. 1200" /></Field>
+          <Field label="Unit" required><select required value={form.areaUnit} onChange={e => set('areaUnit', e.target.value)}>{areaUnits.map(u => <option key={u} value={u}>{areaUnitLabel(u)}</option>)}</select></Field>
+        </div>}
         {!isLiability && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required>
           <input required type="number" min="0" step="0.01" disabled={moneyLoading} placeholder={moneyLoading ? 'Loading…' : ''} value={moneyLoading ? '' : form.investedValue} onChange={e => set('investedValue', e.target.value)} />
           {investedDelta !== 0 && <p className="hint">Saving will log an adjustment transaction of {investedDelta > 0 ? '+' : ''}{money(investedDelta, form.currency)} (from {money(nativeHolding!.investedValue, form.currency)} to {money(numeric(form.investedValue), form.currency)}) — visible in Transactions afterward.</p>}
@@ -331,6 +350,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || moneyLoading || !form.categoryId || !form.name.trim()
         || (isMarket && !form.tickerSymbol.trim())
         || (isMarket && !isEdit && !form.quantity)
+        || (isRealEstate && !form.area)
         || (!isLiability && !form.investedValue)
         || (!isLiability && form.valuationMethod === 'MANUAL' && !form.currentValue)
         || (isLiability && (!form.investedValue || !form.currentValue || (isOneTime ? !form.repaymentDueDate : (!form.emiDayOfMonth || (!form.emiAmount && !form.loanTermMonths)))))
@@ -355,6 +375,8 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
   const [visibleTxns, setVisibleTxns] = useState(10)
   const [calcOpen, setCalcOpen] = useState(false)
   const [addingTxn, setAddingTxn] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   // Suppressed while the transaction modal is open on top — otherwise one Esc closes both.
   useEscToClose(() => { if (!addingTxn) onClose() })
   const loadDetail = () => { api<ValuationDetail>(`/api/holdings/${holding.id}/valuation`).then(setDetail).catch(() => setDetail(null)) }
@@ -378,7 +400,9 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
   const repaid = Math.max(0, holding.investedValue - holding.currentValue)
   const removeHolding = async () => {
     if (!confirm(`Delete ${holding.name}?`)) return
-    await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload(); onClose()
+    setDeleting(true); setDeleteError('')
+    try { await api(`/api/holdings/${holding.id}`, { method: 'DELETE' }); await reload(); onClose() }
+    catch (err) { setDeleteError(err instanceof Error ? err.message : 'Could not delete holding'); setDeleting(false) }
   }
   return <div className="modal-backdrop" onClick={onClose}><section className="modal drawer" onClick={e => e.stopPropagation()}>
     <div className="modal-header">
@@ -408,7 +432,9 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
         <button type="button" className={`calc-toggle${calcOpen ? ' open' : ''}`} aria-expanded={calcOpen} aria-label="How this value is calculated" title="How this value is calculated" onClick={() => setCalcOpen(o => !o)}><i>i</i></button>
       </b></span>}
       <span>Last updated<b>{since(holding.updatedAt)}</b></span>
-      {holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
+      {holding.area != null && holding.areaUnit
+        ? <span>Area<b>{holding.area} {areaUnitLabel(holding.areaUnit)}</b></span>
+        : holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
       {!isLiab && holding.valuationMethod === 'FIXED_RATE' && <span>Payout frequency<b>{holding.compoundingFrequency ? frequencyLabel(holding.compoundingFrequency) : '—'}</b></span>}
       {!isLiab && holding.valuationMethod === 'FIXED_RATE' && <span>Maturity<b>{holding.fixedRateEndDate ? since(holding.fixedRateEndDate) : 'Open-ended'}</b></span>}
       {!isLiab && holding.accruedIncome > 0 && <span>Accrued income<b className="positive">+{money(holding.accruedIncome, holding.currency)}</b></span>}
@@ -435,165 +461,12 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
           {t.notes && <span className="drawer-txn-notes">{t.notes}</span>}
         </div>)}{visibleTxns < txns.length && <p className="hint drawer-txns-more">Scroll for {txns.length - visibleTxns} more</p>}</div>}
 
+    {deleteError && <p className="form-error">{deleteError}</p>}
     <div className="modal-actions">
-      <button type="button" className="outline compact push-start" onClick={() => setAddingTxn(true)}>+ Log transaction</button>
-      <button className="primary" onClick={() => onEdit(holding)}>Edit holding</button>
-      <button className="danger-btn" onClick={() => void removeHolding()}>Delete holding</button>
+      <button type="button" className="outline compact push-start" onClick={() => setAddingTxn(true)} disabled={deleting}>+ Log transaction</button>
+      <button className="primary" onClick={() => onEdit(holding)} disabled={deleting}>Edit holding</button>
+      <button className="danger-btn" onClick={() => void removeHolding()} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete holding'}</button>
     </div>
     {addingTxn && <TransactionModal transaction={null} holdings={[holding]} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => setAddingTxn(false)} onSaved={() => { setAddingTxn(false); loadTxns(); loadDetail(); refreshHolding(); void reload() }} />}
-  </section></div>
-}
-
-// ---------------------------------------------------------------------------
-// CAS import — upload a CDSL/NSDL Consolidated Account Statement PDF, review each extracted
-// position one at a time through the ordinary Add Holding form (pre-filled, not auto-saved), and
-// save (or skip) it exactly like a manual entry. The upload step only ever extracts; nothing here
-// writes a holding on its own — see the backend's CasImportService for why.
-// ---------------------------------------------------------------------------
-
-// A pre-filled holding is seeded at its own average cost (quantity × avg cost per unit), same
-// reasoning as a fresh MARKET_PRICE holding: a sane non-zero starting value beats leaving current
-// value at 0 until the user has a reason to change it. Left blank when the statement didn't state
-// an average cost — better an empty field the user must fill than a silently wrong one. A resolved
-// ticker (best-effort, see CasImportService.resolveTicker) pre-selects MARKET_PRICE with it; no
-// match leaves the usual MANUAL default — either way the user can still change both in the form.
-const draftFromExtractedHolding = (row: ExtractedHolding): Partial<ReturnType<typeof blankHoldingForm>> => {
-  const seedValue = row.averageCostPerUnit != null ? String(Math.round(row.quantity * row.averageCostPerUnit * 100) / 100) : ''
-  return {
-    name: row.instrumentName,
-    quantity: String(row.quantity),
-    investedValue: seedValue,
-    currentValue: seedValue,
-    description: row.isin ? `ISIN ${row.isin}` : '',
-    ...(row.tickerSymbol ? { valuationMethod: 'MARKET_PRICE' as const, tickerSymbol: row.tickerSymbol } : {}),
-  }
-}
-
-export function CasImportModal({ categories, holdings, displayCurrency, onClose, onSaved, onRemoved }: {
-  categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
-  onSaved: (saved: Holding) => void
-  // Called once, with every holding id actually deleted, right before the modal closes itself —
-  // the caller reconciles its own holdings list; this modal doesn't own that state.
-  onRemoved: (holdingIds: string[]) => void
-}) {
-  useEscToClose(onClose)
-  const [busy, setBusy] = useState(false)
-  const [file, setFile] = useState<File | null>(null)
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [result, setResult] = useState<CasExtractionResult | null>(null)
-  // Indexes into result.holdings that are brand-new (no matchedHoldingId) and have been either
-  // saved or explicitly skipped — once every new row is in here, Done unlocks. A matched row
-  // needs no review (it's already in the portfolio) so it's never in this set at all.
-  const [resolvedNew, setResolvedNew] = useState<Set<number>>(new Set())
-  const [reviewingIndex, setReviewingIndex] = useState<number | null>(null)
-  // holdingIds the user explicitly chose to keep despite not appearing in this statement — removed
-  // from the to-delete list, and never deleted on Done, however many times the file is re-read.
-  const [keptIds, setKeptIds] = useState<Set<string>>(new Set())
-  const [finishing, setFinishing] = useState(false)
-
-  // Takes the password as an argument rather than closing over state — a "retry with this
-  // password" click needs to send what was *just* typed, before React has necessarily re-rendered
-  // with it, and reusing the already-picked file this way means a wrong password doesn't force
-  // the user back to their file browser to pick the same statement again.
-  const upload = async (pickedFile: File, pdfPassword: string) => {
-    setBusy(true); setError(''); setResult(null); setResolvedNew(new Set()); setKeptIds(new Set()); setFile(pickedFile)
-    try {
-      const body = await pickedFile.arrayBuffer()
-      const response = await fetch(`${API_URL}/api/holdings/import/cas`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/pdf', 'X-Demo-User': 'demo@finsights.local', ...(pdfPassword.trim() ? { 'X-Document-Password': pdfPassword.trim() } : {}) }, body,
-      })
-      const parsed = await response.json()
-      if (!response.ok) throw new Error(parsed.message ?? 'Could not read that statement')
-      setResult(parsed)
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not read that statement') }
-    finally { setBusy(false) }
-  }
-
-  const newRows = result ? result.holdings.map((row, index) => ({ row, index })).filter(({ row }) => !row.matchedHoldingId) : []
-  const matchedRows = result ? result.holdings.filter(row => row.matchedHoldingId) : []
-  const pendingNewRows = newRows.filter(({ index }) => !resolvedNew.has(index))
-  const toRemove = result ? result.toRemove.filter(r => !keptIds.has(r.holdingId)) : []
-  const canFinish = pendingNewRows.length === 0 && !finishing
-
-  const finish = async () => {
-    if (!canFinish) return
-    setFinishing(true); setError('')
-    try {
-      for (const r of toRemove) await api(`/api/holdings/${r.holdingId}`, { method: 'DELETE' })
-      onRemoved(toRemove.map(r => r.holdingId))
-      onClose()
-    } catch (err) { setError(err instanceof Error ? err.message : 'Could not finish removing the holdings flagged above') }
-    finally { setFinishing(false) }
-  }
-
-  return <div className="modal-backdrop"><section className="modal" onClick={e => e.stopPropagation()}>
-    <div className="modal-header"><div><p className="eyebrow">BULK IMPORT</p><h2>Import from a CAS statement</h2></div><button className="close" onClick={onClose}>×</button></div>
-    <p className="hint">Upload your CDSL or NSDL Consolidated Account Statement (PDF). Nothing is saved or deleted automatically — review what's below, then click Done to apply it.</p>
-
-    <Field label="Statement password"><input type="password" autoComplete="off" value={password} disabled={busy} onChange={e => setPassword(e.target.value)} placeholder="Usually your PAN, e.g. ABCDE1234F — leave blank if it isn't locked" /></Field>
-
-    <div className="import-upload">
-      <label className="outline file-label">{busy ? 'Reading…' : file ? 'Choose a different file' : '↑ Choose a CAS PDF'}
-        <input type="file" accept=".pdf,application/pdf" hidden disabled={busy}
-          onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f, password); e.target.value = '' }} />
-      </label>
-      {file && <span className="hint">{file.name}</span>}
-    </div>
-
-    {error && <p className="form-error">{error}
-      {file && /password/i.test(error) && <> — update it above, then <button type="button" className="text-link" disabled={busy} onClick={() => void upload(file, password)}>try this file again</button>.</>}
-    </p>}
-
-    {result && <>
-      {result.statementDate && <p className="hint">Statement as of {result.statementDate}.</p>}
-      {result.holdings.length === 0 && result.toRemove.length === 0 && <p className="hint">No equity holdings found in this statement.</p>}
-
-      {pendingNewRows.length > 0 && <>
-        <div className="panel-heading"><h3>Pending review</h3><span>{pendingNewRows.length}</span></div>
-        <div className="mapped-holdings">{pendingNewRows.map(({ row, index }) => <div key={`${row.isin}:${row.depository ?? ''}`} className="mapped-holding status-new">
-            <button type="button" className="mapped-holding-name" onClick={() => setReviewingIndex(index)}>
-              <strong title={row.instrumentName}>{row.instrumentName}</strong>
-              <small>{row.isin}{row.tickerSymbol ? ` · ${row.tickerSymbol}` : ''}{row.depository && row.depository !== 'UNKNOWN' ? ` · ${row.depository}` : ''}</small>
-            </button>
-            <div className="mapped-holding-value"><span>Qty {row.quantity}</span>
-              <small><button type="button" className="text-link" onClick={() => setResolvedNew(current => new Set(current).add(index))}>Skip</button></small>
-            </div>
-          </div>)}</div>
-      </>}
-
-      {toRemove.length > 0 && <>
-        <div className="panel-heading"><h3>To be deleted</h3><span>{toRemove.length}</span></div>
-        <p className="hint">Tagged from an earlier CAS import, but not found in this statement.</p>
-        <div className="mapped-holdings">{toRemove.map(r => <div key={r.holdingId} className="mapped-holding status-remove">
-            <div className="mapped-holding-name"><strong title={r.name}>{r.name}</strong><small>{r.broker || 'Unassigned broker'}</small></div>
-            <div className="mapped-holding-value"><small><button type="button" className="text-link" onClick={() => setKeptIds(current => new Set(current).add(r.holdingId))}>Keep — don't delete</button></small></div>
-          </div>)}</div>
-      </>}
-
-      {matchedRows.length > 0 && <>
-        <div className="panel-heading"><h3>Successfully parsed and mapped</h3><span>{matchedRows.length}</span></div>
-        <div className="mapped-holdings">{matchedRows.map(row => <div key={`${row.isin}:${row.depository ?? ''}`} className="mapped-holding status-matched">
-            <div className="mapped-holding-name"><strong title={row.instrumentName}>{row.instrumentName}</strong><small>{row.isin} · already in your portfolio</small></div>
-            <div className="mapped-holding-value"><span>Qty {row.quantity}</span></div>
-          </div>)}</div>
-      </>}
-
-      {result.warnings.length > 0 && <section className="import-summary">
-        <strong>{result.warnings.length} note{result.warnings.length === 1 ? '' : 's'} from the extraction</strong>
-        {result.warnings.map(w => <span key={w}>{w}</span>)}
-      </section>}
-    </>}
-
-    <div className="modal-actions">
-      {pendingNewRows.length > 0 && <p className="hint push-start">{pendingNewRows.length} holding{pendingNewRows.length === 1 ? '' : 's'} still need{pendingNewRows.length === 1 ? 's' : ''} review before you can finish.</p>}
-      <button type="button" className="outline" disabled={!canFinish} title={canFinish ? '' : 'Review or skip every pending holding first'} onClick={() => void finish()}>{finishing ? 'Finishing…' : 'Done'}</button>
-    </div>
-
-    {reviewingIndex != null && result && <HoldingModal holding={null} category={null} categories={categories} holdings={holdings}
-      displayCurrency={displayCurrency} draft={draftFromExtractedHolding(result.holdings[reviewingIndex])}
-      onClose={() => setReviewingIndex(null)}
-      onSaved={saved => { onSaved(saved); setResolvedNew(current => new Set(current).add(reviewingIndex)); setReviewingIndex(null) }} />}
   </section></div>
 }

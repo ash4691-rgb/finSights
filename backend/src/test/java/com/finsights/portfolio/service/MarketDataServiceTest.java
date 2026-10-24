@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,6 +44,7 @@ class MarketDataServiceTest {
         assertThat(service.quote(null)).isEmpty();
         assertThat(service.quote("")).isEmpty();
         assertThat(service.quotes(null)).isEmpty();
+        assertThat(service.quotes(Set.of())).isEmpty();
         assertThat(service.history(null, "1M")).isEmpty();
         assertThat(service.history("", "1M")).isEmpty();
     }

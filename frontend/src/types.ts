@@ -4,6 +4,7 @@ export type ValuationMethod = 'MANUAL' | 'MARKET_PRICE' | 'BROKER_SYNC' | 'FIXED
 export type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'ANNUALLY' | 'AT_MATURITY'
 export type RepaymentFrequency = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'ONE_TIME'
 export type TransactionType = 'BUY' | 'SELL' | 'SPLIT' | 'INTEREST' | 'ADJUSTMENT' | 'REPAY'
+export type AreaUnit = 'ACRE' | 'HECTARE' | 'SQ_M' | 'SQ_FT'
 export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
 
 // A user-defined bucket (Name + Asset/Liability type). Invested/current/P&L, weightage, and
@@ -13,6 +14,8 @@ export type Category = {
   // Valuation methods holdings filed under this category may use. Empty/absent means no
   // restriction — every method is allowed (the default for categories that predate this field).
   allowedValuationMethods?: ValuationMethod[]
+  // True for a real-estate category — its holdings ask for area + unit instead of quantity.
+  realEstate?: boolean
   investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number
   weightagePercent: number; liquidAmount: number; liquidPercent: number; npaAmount: number; npaPercent: number
   holdingCount: number; createdAt?: string; updatedAt?: string
@@ -27,7 +30,7 @@ export type Holding = {
   // becomes the selected view currency on a display-currency-converted holdings list.
   defaultCurrency: string
   investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; realisedProfitLoss: number; accruedIncome: number
-  quantity?: number; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string; fixedRateEndDate?: string
+  quantity?: number; area?: number; areaUnit?: AreaUnit; fixedAnnualRate?: number; compoundingFrequency?: Frequency; fixedRateStartDate?: string; fixedRateEndDate?: string
   repaymentFrequency?: RepaymentFrequency; emiAmount?: number; emiDayOfMonth?: number; loanTermMonths?: number; repaymentDueDate?: string
   liquidWithinSevenDays: boolean; blocked: boolean; description?: string; notes?: string; tags: string[]
   createdAt?: string; updatedAt?: string; priceUpdatedAt?: string
@@ -73,10 +76,12 @@ export type Transaction = {
   id: string; holdingId: string; holdingName: string; categoryId: string; categoryName: string; broker?: string
   currency: string; type: TransactionType; date: string; amount: number; quantity?: number; principalPortion?: number; interestPaid?: boolean; notes?: string; createdAt?: string
 }
-export type Mover = { id: string; name: string; profitLoss: number; profitLossPercentage: number }
 export type ActionItem = { kind: string; severity: 'WARN' | 'INFO'; title: string; detail: string; holdingId?: string; holdingName?: string; broker?: string; dueDate?: string; amount?: number; period?: string; pendingId?: string; key: string }
 export type DeferredAction = { key: string; kind: string; label: string; holdingName: string; deferredUntil: string }
-export type Insights = { byCategory: Breakdown[]; byBroker: Breakdown[]; byTag: Breakdown[]; byCurrency: Breakdown[]; byLiquidity: Breakdown[]; topGainers: Mover[]; topLosers: Mover[]; actions: ActionItem[]; upcoming: ActionItem[]; deferred: DeferredAction[] }
+export type NewsItem = { subjectType: 'HOLDING' | 'WATCHLIST'; id: string; name: string; tickerSymbol?: string; title: string; link: string; source: string; publishedAt: string; starred: boolean }
+// Signals' four sections — each its own GET (/api/insights/actions|upcoming|deferred|news), not one
+// bundled response, so a slow or failing section never blocks the others. See InsightsController's
+// doc comment for why (the old bundled Insights type/response this replaced is gone from git history).
 export type PeriodKey = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'
 export type PeriodMovement = { period: PeriodKey; percent: number; thresholdPercent: number }
 export type TopMover = {
@@ -98,25 +103,52 @@ export type Source = { key: string; name: string; status: string; description: s
 export type Brokers = { brokers: BrokerGroup[]; sources: Source[] }
 export type ValuationDetail = { method: ValuationMethod; investedValue: number; currentValue: number; profitLoss: number; profitLossPercentage: number; steps: string[]; projectedMaturityDate?: string; projectedMaturityValue?: number }
 export type ImportResult = { created: number; updated: number; skipped: number; errors: { row: number; message: string }[] }
-// One equity/ETF position found in an uploaded CAS statement — a draft, not a saved holding. The
+// One equity/ETF position found in an uploaded statement — a draft, not a saved holding. The
 // Holdings page pre-fills the ordinary Add Holding form with this and the user reviews/edits/saves
 // it like any manual entry; nothing here is written to the database on its own.
+export type InstrumentKind = 'STOCK' | 'ETF' | 'MUTUAL_FUND' | 'CRYPTO' | 'COMMODITY'
 export type ExtractedHolding = {
-  instrumentName: string; isin: string; quantity: number; averageCostPerUnit?: number; depository?: string
+  // isin is absent for most mutual fund rows — a fund is identified by its scheme name instead.
+  instrumentName: string; isin?: string; quantity: number; averageCostPerUnit?: number; depository?: string
+  kind?: InstrumentKind; investedValue?: number; currentValue?: number
+  // The symbol the statement prints for this line (a coin's "BTC"), when it prints one.
+  symbol?: string
+  account?: string | null
   // Best-effort guess, not a fact — the review form still shows it as an editable field.
   tickerSymbol?: string
-  // Set when this ISIN matches a holding already created from a past CAS import — it needs no
-  // review, just a quiet "already in your portfolio" confirmation.
+  // Set when this ISIN matches a holding already created from a past statement import — it needs
+  // no review, just a quiet "already in your portfolio" confirmation.
   matchedHoldingId?: string
 }
-// An existing CAS-tagged holding whose ISIN didn't turn up in the latest statement — a candidate
-// to delete, applied only when the user clicks Done.
-export type CasHoldingToRemove = { holdingId: string; name: string; broker?: string }
-export type CasExtractionResult = { holdings: ExtractedHolding[]; toRemove: CasHoldingToRemove[]; statementDate?: string; warnings: string[] }
+// One transaction found in an uploaded statement — a draft, not a saved transaction. A row with no
+// matchedHoldingId is still surfaced; the review form opens with no holding selected.
+export type ExtractedTransaction = {
+  date: string; type: TransactionType; instrumentName: string; isin?: string
+  quantity?: number; amount?: number; notes?: string
+  // Unset when no existing holding matched — the user picks one in the review form.
+  matchedHoldingId?: string
+  kind?: InstrumentKind; symbol?: string; account?: string | null
+  // Best-effort ticker for an unmatched BUY, so a holding created from it can be market-valued.
+  tickerSymbol?: string
+}
+// An existing holding at the statement's broker that the latest holdings statement no longer lists —
+// the user logs a SELL for it, deletes it (applied only on Done), or keeps it.
+export type HoldingToRemove = { holdingId: string; name: string; broker?: string; quantity?: number }
+export type StatementType = 'HOLDINGS' | 'TRANSACTIONS' | 'MIXED'
+export type StatementExtractionResult = {
+  statementType: StatementType
+  holdings: ExtractedHolding[]; toRemove: HoldingToRemove[]; transactions: ExtractedTransaction[]
+  statementDate?: string; warnings: string[]
+  // The broker the statement names, if it names one — a suggestion the user confirms before matching.
+  broker?: string
+}
 export type FxRates = { base: string; asOf: string; ratesToBase: Record<string, number>; note: string }
 export type Theme = 'light' | 'dark'
 export type GokuConfig = { available: boolean; admin: boolean; reason?: string }
 export type GokuRole = 'user' | 'assistant'
 export type GokuMessage = { id: string; role: GokuRole; content: string }
 export type GokuChatReply = { reply: string; queriesRemainingToday: number }
-export type GokuAllowedUser = { email: string; addedAt: string; addedBy?: string }
+export type GokuTier = 'NO_ACCESS' | 'HAIKU' | 'SONNET' | 'OPUS'
+export type GokuUserSearchResult = { email: string; displayName?: string; tier: GokuTier }
+export type GokuAccessResult = { email: string; tier: GokuTier }
+export type GokuGroupedByTier = Record<'HAIKU' | 'SONNET' | 'OPUS', string[]>

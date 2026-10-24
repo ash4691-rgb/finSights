@@ -25,6 +25,8 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [sortKey, setSortKey] = useState<TransactionSortKey | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const brokers = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
 
   const load = async () => {
@@ -60,7 +62,13 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
   }
   const arrow = (key: TransactionSortKey) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
 
-  const remove = async (t: Transaction) => { if (confirm(`Delete this ${label(t.type)} transaction?`)) { await api(`/api/transactions/${t.id}`, { method: 'DELETE' }); await reload() } }
+  const remove = async (t: Transaction) => {
+    if (!confirm(`Delete this ${label(t.type)} transaction?`)) return
+    setDeletingId(t.id); setDeleteError('')
+    try { await api(`/api/transactions/${t.id}`, { method: 'DELETE' }); await reload() }
+    catch (err) { setDeleteError(err instanceof Error ? err.message : 'Could not delete transaction') }
+    finally { setDeletingId(null) }
+  }
 
   return <>
     <section className="holdings-toolbar">
@@ -74,6 +82,7 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
       <button className="primary compact push-end" onClick={() => setCreating(true)} disabled={!holdings.length} title={holdings.length ? '' : 'Add a holding first'}>+ Log transaction</button>
     </section>
     {error && <p className="hint">{error}</p>}
+    {deleteError && <p className="form-error">{deleteError}</p>}
     <section className="table-panel"><table>
       <thead><tr>
         <th className="sortable" onClick={() => toggleSort('date')}>Date{arrow('date')}</th>
@@ -93,7 +102,7 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
         <td><strong>{money(t.amount, t.currency)}</strong></td>
         <td>{t.quantity ?? '—'}</td>
         <td className="txn-notes">{t.notes || '—'}</td>
-        <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditing(t)}>Edit</button><button className="danger-link" onClick={() => void remove(t)}>Delete</button></td>
+        <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditing(t)} disabled={deletingId === t.id}>Edit</button><button className="danger-link" onClick={() => void remove(t)} disabled={deletingId === t.id}>{deletingId === t.id ? 'Deleting…' : 'Delete'}</button></td>
       </tr>) : <tr><td colSpan={8} className="empty"><strong>No transactions match</strong><span>Log a buy, sell, split, interest, or adjustment against a holding.</span>{holdings.length > 0 && <button className="primary" onClick={() => setCreating(true)}>Log transaction</button>}</td></tr>}</tbody>
     </table></section>
     {(creating || editing) && <TransactionModal transaction={editing} holdings={holdings} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => { setCreating(false); setEditing(null) }} onSaved={() => { setCreating(false); setEditing(null); void reload() }} />}
@@ -109,15 +118,19 @@ export const txnTypeHint: Partial<Record<TransactionType, string>> = {
   REPAY: 'A loan repayment — interest for the period is settled first, the rest cuts the outstanding balance.',
 }
 
-export function TransactionModal({ transaction, holdings, displayCurrency, fxRatesToBase, onClose, onSaved }: {
+export function TransactionModal({ transaction, holdings, displayCurrency, fxRatesToBase, onClose, onSaved, draft }: {
   transaction: Transaction | null; holdings: Holding[]; displayCurrency?: string; fxRatesToBase?: Record<string, number>; onClose: () => void; onSaved: () => void
+  // Pre-fills part of a brand-new transaction's form — a statement-import draft, say — without
+  // faking a Transaction object for `transaction` above: that would flip into edit mode. Ignored
+  // once `transaction` is set; editing always wins.
+  draft?: Partial<{ holdingId: string; type: TransactionType; date: string; amount: string; quantity: string; notes: string }>
 }) {
   const holdingOf = (id: string) => holdings.find(h => h.id === id)
   const isLiab = (id: string) => holdingOf(id)?.kind === 'LIABILITY'
-  const startHoldingId = transaction?.holdingId ?? holdings[0]?.id ?? ''
+  const startHoldingId = transaction?.holdingId ?? draft?.holdingId ?? holdings[0]?.id ?? ''
   const [form, setForm] = useState(() => transaction
     ? { holdingId: transaction.holdingId, type: transaction.type, date: transaction.date.slice(0, 10), amount: String(transaction.amount), quantity: transaction.quantity != null ? String(transaction.quantity) : '', interestPaid: !!transaction.interestPaid, notes: transaction.notes || '' }
-    : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', interestPaid: false, notes: '' })
+    : { holdingId: startHoldingId, type: (isLiab(startHoldingId) ? 'REPAY' : 'BUY') as TransactionType, date: new Date().toISOString().slice(0, 10), amount: '', quantity: '', interestPaid: false, notes: '', ...draft })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
   // The passed-in transaction may be from a view-currency-converted list — its amount is only

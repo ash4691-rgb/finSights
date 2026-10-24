@@ -47,8 +47,12 @@ const connectSteps = (s: Source): string[] => {
 // sources — see the "Connect a source" panel below — so building out per-widget layout editing
 // for this page ahead of the underlying feature isn't worth the complexity. Revisit once sync
 // actually ships for more brokers.
-export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNotice }: {
+export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNotice, hasCategories, onUploadStatement }: {
   displayCurrency: string; dataVersion: number; notice?: BrokerNotice | null; onDismissNotice?: () => void
+  // Whether there's anywhere to file an extracted holding yet — mirrors the same guard the
+  // Holdings page used to put directly on its own "Import from CAS" button.
+  hasCategories: boolean
+  onUploadStatement: () => void
 }) {
   const [data, setData] = useState<Brokers | null>(null)
   const [error, setError] = useState('')
@@ -144,6 +148,14 @@ export function BrokersView({ displayCurrency, dataVersion, notice, onDismissNot
               expanded={expandedBroker === b.name} onToggle={() => setExpandedBroker(k => k === b.name ? null : b.name)} />)}
           </div>
         : <p className="hint">Assign holdings to a broker to see them grouped here.</p>}
+    </section>
+    <section className="panel">
+      <div className="panel-heading"><h3>Upload data manually</h3><span>One-off statements</span></div>
+      <p className="hint">Already have a statement on hand? Upload a CAS statement, a broker's holding statement, or a transaction statement — PDF, XLSX/XLS, CSV/TSV, or XML, up to 15MB for a PDF or 10MB (max 10,000 rows) for a spreadsheet — we'll work out what it is and pull out the holdings and transactions for you to review, with any personal details left out.</p>
+      <button type="button" className="upload-option upload-statement-card" onClick={onUploadStatement} disabled={!hasCategories} title={hasCategories ? '' : 'Add a category first'}>
+        <span className="upload-option-icon">↑</span>
+        <strong>Upload a statement</strong>
+      </button>
     </section>
     <section className="panel">
       <div className="panel-heading"><h3>Connect a source</h3><span>Automated sync</span></div>

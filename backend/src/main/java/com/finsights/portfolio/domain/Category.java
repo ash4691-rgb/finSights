@@ -1,6 +1,7 @@
 package com.finsights.portfolio.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.ColumnDefault;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -33,6 +34,11 @@ public class Category {
     /** Manual drag-to-reorder position within the Categories table; new categories append to the end. */
     @Column(nullable = false)
     private int sortOrder = 0;
+    /** True for a real-estate category: its holdings take an area + unit instead of a quantity
+     *  (one holding = one unit, so quantity is forced to 1 — see HoldingService). */
+    @Column(nullable = false)
+    @ColumnDefault("false")
+    private boolean realEstate = false;
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
     @Version private long version;
@@ -55,6 +61,8 @@ public class Category {
     public void setAllowedValuationMethods(Set<ValuationMethod> allowedValuationMethods) { this.allowedValuationMethods = allowedValuationMethods; }
     public int getSortOrder() { return sortOrder; }
     public void setSortOrder(int sortOrder) { this.sortOrder = sortOrder; }
+    public boolean isRealEstate() { return realEstate; }
+    public void setRealEstate(boolean realEstate) { this.realEstate = realEstate; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

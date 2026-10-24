@@ -8,6 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface GokuAllowedUserRepository extends JpaRepository<GokuAllowedUser, String> {
     boolean existsByEmailIgnoreCase(String email);
     Optional<GokuAllowedUser> findByEmailIgnoreCase(String email);
-    List<GokuAllowedUser> findAllByOrderByCreatedAtAsc();
+    List<GokuAllowedUser> findAllByOrderByEmailAsc();
     void deleteByEmailIgnoreCase(String email);
 }

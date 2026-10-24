@@ -44,7 +44,7 @@ class BrokerServiceTest {
         return new HoldingResponse(id, "ref-" + id, "c-1", "Category", "Holding " + id, HoldingKind.ASSET, ValuationMethod.MANUAL,
                 null, broker, "INR", "INR", new BigDecimal(invested), new BigDecimal(current),
                 new BigDecimal(current).subtract(new BigDecimal(invested)), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
                 false, false, null, null, java.util.Set.of(), null, null, null, false, null);
     }
 

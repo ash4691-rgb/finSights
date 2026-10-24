@@ -166,6 +166,24 @@ class PersonaServiceTest {
         assertThat(response.platforms()).containsExactlyInAnyOrder("Zerodha", "Groww");
     }
 
+    // Real Estate is the one starter category seedCategories() marks realEstate — every other
+    // instrument type's starter category must come through with the flag off.
+    @Test
+    void submitSeedsRealEstateStarterCategoryWithRealEstateFlagSet() {
+        when(currentUserService.currentUser()).thenReturn(user);
+        when(personas.findByUser_Id(user.getId())).thenReturn(Optional.empty());
+        when(categoryService.list(null)).thenReturn(List.of());
+
+        PersonaRequest request = new PersonaRequest(30, "Engineer", SalaryRange.L10_TO_25L, PortfolioSize.L1_TO_10L,
+                InvestingTenure.UNDER_1_YEAR, Set.of(InstrumentType.REAL_ESTATE, InstrumentType.CRYPTO),
+                Set.of(), 1, 1, 1, 1, 1);
+
+        service.submit(request);
+
+        verify(categoryService).create(argThat(r -> r.name().equals("Real Estate") && r.realEstate()));
+        verify(categoryService).create(argThat(r -> !r.name().equals("Real Estate") && !r.realEstate()));
+    }
+
     // --- derivePersona, exercised through submit() since it's private ---
 
     @Test

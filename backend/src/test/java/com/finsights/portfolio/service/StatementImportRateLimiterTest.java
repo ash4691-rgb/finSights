@@ -6,14 +6,14 @@ import java.lang.reflect.Field;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class CasImportRateLimiterTest {
+class StatementImportRateLimiterTest {
 
-    private CasImportRateLimiter limiter;
+    private StatementImportRateLimiter limiter;
 
     @BeforeEach
     void setUp() throws Exception {
-        limiter = new CasImportRateLimiter();
-        Field field = CasImportRateLimiter.class.getDeclaredField("dailyLimit");
+        limiter = new StatementImportRateLimiter();
+        Field field = StatementImportRateLimiter.class.getDeclaredField("dailyLimit");
         field.setAccessible(true);
         field.set(limiter, 2);
     }

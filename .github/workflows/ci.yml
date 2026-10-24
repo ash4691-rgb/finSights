@@ -37,6 +37,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      - run: npm test
+        working-directory: frontend
       - run: npm run build
         working-directory: frontend
 
@@ -58,6 +60,11 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Check SONAR_TOKEN is configured
         id: sonar-check
         run: echo "configured=${{ secrets.SONAR_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
@@ -65,6 +72,10 @@ jobs:
         if: steps.sonar-check.outputs.configured == 'true'
         working-directory: backend
         run: ./mvnw -B test
+      - name: Test + coverage (vitest/LCOV)
+        if: steps.sonar-check.outputs.configured == 'true'
+        working-directory: frontend
+        run: npm ci && npm run test:coverage
       - name: SonarCloud scan
         if: steps.sonar-check.outputs.configured == 'true'
         uses: SonarSource/sonarqube-scan-action@v4

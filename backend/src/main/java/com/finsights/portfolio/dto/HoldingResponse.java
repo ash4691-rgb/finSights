@@ -17,7 +17,7 @@ public record HoldingResponse(
         String defaultCurrency,
         BigDecimal investedValue, BigDecimal currentValue, BigDecimal profitLoss, BigDecimal profitLossPercentage,
         BigDecimal realisedProfitLoss, BigDecimal accruedIncome,
-        BigDecimal quantity, BigDecimal fixedAnnualRate, CompoundingFrequency compoundingFrequency,
+        BigDecimal quantity, BigDecimal area, AreaUnit areaUnit, BigDecimal fixedAnnualRate, CompoundingFrequency compoundingFrequency,
         LocalDate fixedRateStartDate, LocalDate fixedRateEndDate,
         RepaymentFrequency repaymentFrequency, BigDecimal emiAmount, Integer emiDayOfMonth,
         Integer loanTermMonths, LocalDate repaymentDueDate,
@@ -33,7 +33,7 @@ public record HoldingResponse(
         if (dataIssue) return this;
         return new HoldingResponse(id, holdingId, categoryId, categoryName, name, kind, valuationMethod,
                 tickerSymbol, broker, currency, defaultCurrency, investedValue, currentValue, profitLoss, profitLossPercentage,
-                realisedProfitLoss, accruedIncome, quantity, fixedAnnualRate, compoundingFrequency,
+                realisedProfitLoss, accruedIncome, quantity, area, areaUnit, fixedAnnualRate, compoundingFrequency,
                 fixedRateStartDate, fixedRateEndDate, repaymentFrequency, emiAmount, emiDayOfMonth,
                 loanTermMonths, repaymentDueDate, liquidWithinSevenDays, blocked, description, notes, tags,
                 createdAt, updatedAt, priceUpdatedAt, true, message);

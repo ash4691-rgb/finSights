@@ -387,6 +387,11 @@ th.sortable:hover{color:var(--text)}
 .warning-tool.done:hover{border-color:var(--positive);color:var(--positive)}
 .warning-tool.defer:hover{border-color:var(--accent);color:var(--accent-soft-text)}
 .warning-tool.delete:hover{border-color:var(--negative);color:var(--negative)}
+/* Star uses --accent, not amber/yellow — that's reserved for Tasks' severity, see signals-grid's
+   doc comment on strict color coding. Active state is filled-looking (solid border+bg), not just
+   a hover tint, since it reflects a saved preference rather than a transient pointer state. */
+.warning-tool.star:hover{border-color:var(--accent);color:var(--accent-soft-text)}
+.warning-tool.star.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-soft-text)}
 /* Action centre — two side-by-side columns, each scrolling past ~5 rows */
 .action-split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .action-col{display:flex;flex-direction:column;min-width:0}
@@ -423,11 +428,14 @@ th.sortable:hover{color:var(--text)}
 .view-mover-thresholds .top-mover-badges{justify-content:flex-start}
 .timeline-panel{margin-top:10px}
 
-/* Signals: a wide Main column (Tasks, Movers) + a narrow Side column (Radar). Fixed — this page
-   has no Edit Layout — so it's a plain static grid, not the drag/resizable .layout-zone engine. */
-.signals-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+/* Signals: a Main column (Tasks, Movers) + a Side column (Radar), stretched to equal height so
+   neither column leaves dead space below a shorter panel. Fixed — this page has no Edit Layout —
+   so it's a plain static grid, not the drag/resizable .layout-zone engine. */
+.signals-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:stretch}
 .signals-main{display:flex;flex-direction:column;gap:16px;min-width:0}
-.signals-side{min-width:0}
+.signals-main>.panel{flex:1;display:flex;flex-direction:column}
+.signals-side{min-width:0;display:flex;flex-direction:column}
+.signals-side>.panel{flex:1}
 
 /* "Row compaction over card separation": one shared container border per list, rows separated by
    a thin divider instead of each row getting its own bordered/background card (contrast with the
@@ -436,13 +444,14 @@ th.sortable:hover{color:var(--text)}
 .dense-row{display:flex;gap:10px;width:100%;padding:9px 12px;text-align:left;color:var(--text-2);font-size:12px;background:none;border:0;border-top:1px solid var(--border-soft);border-radius:0}
 .dense-row:first-child{border-top:0}
 button.dense-row{cursor:pointer}
-button.dense-row:hover{background:var(--surface-2)}
+a.dense-row{color:inherit;text-decoration:none}
+button.dense-row:hover,a.dense-row:hover{background:var(--surface-2)}
 
 /* Tasks/Radar's icon + body + tools rows want top alignment (body text can wrap to 2 lines);
    .top-mover rows (also .dense-row, but not .signal-row) keep their own center alignment. */
 .signal-row{align-items:flex-start}
 
-.signal-row-body{flex:1;min-width:0;display:grid;gap:2px;border:0;background:none;text-align:left;color:inherit;padding:0}
+.signal-row-body{flex:1;min-width:0;display:grid;gap:2px;border:0;background:none;text-align:left;color:inherit;text-decoration:none;padding:0}
 .signal-row-body strong{color:var(--text);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .signal-row-body span{color:var(--text-3);font-size:11px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
@@ -591,6 +600,20 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 /* minmax's floor is never smaller than (100% - 5 gaps) / 6, so at most 6 tiles ever fit per row
    no matter how wide the panel gets — it only drops below 6 (growing each tile) on a narrower one. */
 .broker-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(max(165px,calc((100% - 50px) / 6)),1fr));gap:10px}
+.upload-option-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.upload-option{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:16px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:left}
+.upload-option:not(.coming-soon):hover{border-color:var(--border-strong)}
+.upload-option:disabled{opacity:.6;cursor:not-allowed}
+.upload-option strong{font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px}
+.upload-option-icon{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent-soft-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+.upload-option.coming-soon{cursor:default}
+/* A single standalone upload entry point (unlike the broker-tile-grid rows above it): the file
+   types and limits live once in the panel's own paragraph above, so this is just the action
+   itself — a short, full-width bar rather than a tall boxy dropzone repeating that text. */
+.upload-option.upload-statement-card{flex-direction:row;align-items:center;justify-content:center;gap:10px;width:100%;padding:16px 24px;border-style:dashed}
+.upload-option.upload-statement-card:not(.coming-soon):hover{border-color:var(--accent)}
+.upload-option.upload-statement-card .upload-option-icon{width:32px;height:32px;font-size:14px}
+.upload-option.upload-statement-card strong{font-size:14px}
 .broker-tile{display:flex;flex-direction:column;align-items:center;gap:10px;padding:22px 14px;border:1px solid var(--border-soft);border-radius:12px;background:var(--surface-2);text-align:center}
 .broker-tile:hover{border-color:var(--border-strong)}
 .broker-tile.connected{border-color:var(--success-text)}
@@ -692,6 +715,11 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .switch input:checked+.switch-track .switch-thumb{transform:translateX(16px);background:#fff}
 .switch-text{font-size:13px;color:var(--text);display:inline-flex;align-items:center;gap:5px}
 .import-upload{display:flex;align-items:center;gap:12px;margin:16px 0;padding:14px;border:1px dashed var(--border-strong);border-radius:10px;background:var(--surface-2)}
+/* The statement-import modal's dropzone is the one thing a user comes to this modal to do, so
+   it reads better centered and roomier than the plain inline bar TransactionsView's CSV import
+   uses — a modifier class rather than changing .import-upload itself, which TransactionsView
+   still relies on unchanged. */
+.import-upload.statement-upload{flex-direction:column;justify-content:center;max-width:380px;margin:16px auto;padding:26px 20px}
 .date-filter{padding:0 10px;color:var(--text-2)}
 .txn-notes{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge.txn-buy,.badge.txn-interest{background:var(--success-bg);border-color:var(--success-bg);color:var(--success-text)}
@@ -805,15 +833,21 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .goku-input-row textarea{flex:1;resize:none;max-height:90px;font:inherit}
 .goku-remaining{margin:0 16px 12px;font-size:10.5px;color:var(--text-4);text-align:right}
 .goku-admin-btn{margin-top:2px;opacity:.85}
-.goku-admin-add{display:flex;gap:8px}
-.goku-admin-add input{flex:1}
 .goku-admin-error{color:var(--negative)}
-.goku-admin-list{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto}
-.goku-admin-list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid var(--border-soft)}
+.goku-admin-search{position:relative}
+.goku-admin-search input{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border-strong);background:var(--surface-input);color:var(--text);font-size:13px}
+.goku-admin-selected{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;background:var(--surface-2);border-radius:9px}
+.goku-admin-selected strong{font-size:13px;overflow-wrap:anywhere;display:block}
+.goku-admin-selected small{color:var(--text-3);font-size:11px}
+.goku-admin-selected select{flex-shrink:0;font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text)}
+.goku-admin-groups{margin-top:18px;display:flex;flex-direction:column;gap:8px}
+.goku-model-group{border:1px solid var(--border-soft);border-radius:9px;overflow:hidden}
+.goku-model-group summary{padding:10px 12px;font-size:13px;font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.goku-model-group summary::-webkit-details-marker{display:none}
+.goku-model-group-count{font-size:11px;font-weight:400;color:var(--text-3);background:var(--surface-2);border-radius:20px;padding:1px 8px}
+.goku-admin-list{list-style:none;margin:0;padding:0 12px 10px;display:flex;flex-direction:column;gap:2px;max-height:300px;overflow-y:auto}
+.goku-admin-list li{padding:7px 2px;font-size:12.5px;border-top:1px solid var(--border-soft);overflow-wrap:anywhere}
 .goku-admin-list li:first-child{border-top:0}
-.goku-admin-list li div{display:flex;flex-direction:column;gap:2px;min-width:0}
-.goku-admin-list li strong{font-size:13px;overflow-wrap:anywhere}
-.goku-admin-list li small{color:var(--text-3);font-size:11px}
 @media(max-width:900px){
   .public-features{grid-template-columns:1fr}
   .public-hero-copy h1{font-size:34px}
@@ -856,3 +890,10 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
   .tour-nudge{left:16px;right:16px;bottom:16px;width:auto}
   .tour-nudge-above-goku{bottom:88px}
 }
+.mapped-holding small.conflict-note{color:var(--error-text)}
+.missing-actions{display:grid;gap:4px;justify-items:end}
+.import-confirm .form-grid{margin-bottom:8px}
+.import-log-all{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:8px;padding:10px 12px;margin:14px 0}
+.import-log-all p{flex:1 1 220px;margin:0}
+
+.import-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
