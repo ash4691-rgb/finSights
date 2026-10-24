@@ -33,22 +33,50 @@ public record ExtractedHolding(
          *  {@code averageCostPerUnit} for a mutual fund, whose statement lists a total, not a per-unit cost. */
         BigDecimal investedValue,
         /** Current market value as the statement states it, null when it doesn't. Pre-fills the review form. */
-        BigDecimal currentValue
+        BigDecimal currentValue,
+        /** The symbol the statement prints for this line (a coin's "BTC", say), when it prints one —
+         *  a better ticker-search query than the display name. Null otherwise. */
+        String symbol,
+        /** The institution this line is held through — the broker or depository participant for shares,
+         *  the fund house for a mutual fund — when the statement names one per line (a CAS does, a
+         *  single-broker statement doesn't need to). Never an account, client or folio number. */
+        String account
 ) {
+    /** The shape every row had before the account existed. */
+    public ExtractedHolding(String instrumentName, String isin, BigDecimal quantity, BigDecimal averageCostPerUnit,
+                            String depository, String tickerSymbol, String matchedHoldingId, InstrumentKind kind,
+                            BigDecimal investedValue, BigDecimal currentValue, String symbol) {
+        this(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol, matchedHoldingId, kind,
+                investedValue, currentValue, symbol, null);
+    }
+
+    /** The shape every row had before the symbol existed. */
+    public ExtractedHolding(String instrumentName, String isin, BigDecimal quantity, BigDecimal averageCostPerUnit,
+                            String depository, String tickerSymbol, String matchedHoldingId, InstrumentKind kind,
+                            BigDecimal investedValue, BigDecimal currentValue) {
+        this(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol, matchedHoldingId, kind,
+                investedValue, currentValue, null, null);
+    }
+
     /** The shape every row had before kind and amounts existed — a plain stock/ETF row. */
     public ExtractedHolding(String instrumentName, String isin, BigDecimal quantity, BigDecimal averageCostPerUnit,
                             String depository, String tickerSymbol, String matchedHoldingId) {
         this(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol, matchedHoldingId,
-                InstrumentKind.STOCK, null, null);
+                InstrumentKind.STOCK, null, null, null, null);
     }
 
     public ExtractedHolding withTicker(String ticker) {
         return new ExtractedHolding(instrumentName, isin, quantity, averageCostPerUnit, depository, ticker,
-                matchedHoldingId, kind, investedValue, currentValue);
+                matchedHoldingId, kind, investedValue, currentValue, symbol, account);
     }
 
     public ExtractedHolding withMatchedHolding(String holdingId) {
         return new ExtractedHolding(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol,
-                holdingId, kind, investedValue, currentValue);
+                holdingId, kind, investedValue, currentValue, symbol, account);
+    }
+
+    public ExtractedHolding withAccount(String newAccount) {
+        return new ExtractedHolding(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol,
+                matchedHoldingId, kind, investedValue, currentValue, symbol, newAccount);
     }
 }

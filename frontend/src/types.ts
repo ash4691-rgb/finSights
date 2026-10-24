@@ -106,11 +106,14 @@ export type ImportResult = { created: number; updated: number; skipped: number; 
 // One equity/ETF position found in an uploaded statement — a draft, not a saved holding. The
 // Holdings page pre-fills the ordinary Add Holding form with this and the user reviews/edits/saves
 // it like any manual entry; nothing here is written to the database on its own.
-export type InstrumentKind = 'STOCK' | 'ETF' | 'MUTUAL_FUND'
+export type InstrumentKind = 'STOCK' | 'ETF' | 'MUTUAL_FUND' | 'CRYPTO' | 'COMMODITY'
 export type ExtractedHolding = {
   // isin is absent for most mutual fund rows — a fund is identified by its scheme name instead.
   instrumentName: string; isin?: string; quantity: number; averageCostPerUnit?: number; depository?: string
   kind?: InstrumentKind; investedValue?: number; currentValue?: number
+  // The symbol the statement prints for this line (a coin's "BTC"), when it prints one.
+  symbol?: string
+  account?: string | null
   // Best-effort guess, not a fact — the review form still shows it as an editable field.
   tickerSymbol?: string
   // Set when this ISIN matches a holding already created from a past statement import — it needs
@@ -120,10 +123,13 @@ export type ExtractedHolding = {
 // One transaction found in an uploaded statement — a draft, not a saved transaction. A row with no
 // matchedHoldingId is still surfaced; the review form opens with no holding selected.
 export type ExtractedTransaction = {
-  date: string; type: TransactionType; instrumentName: string; isin: string
+  date: string; type: TransactionType; instrumentName: string; isin?: string
   quantity?: number; amount?: number; notes?: string
   // Unset when no existing holding matched — the user picks one in the review form.
   matchedHoldingId?: string
+  kind?: InstrumentKind; symbol?: string; account?: string | null
+  // Best-effort ticker for an unmatched BUY, so a holding created from it can be market-valued.
+  tickerSymbol?: string
 }
 // An existing holding at the statement's broker that the latest holdings statement no longer lists —
 // the user logs a SELL for it, deletes it (applied only on Done), or keeps it.

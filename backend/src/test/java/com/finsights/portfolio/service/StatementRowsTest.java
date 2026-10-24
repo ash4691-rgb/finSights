@@ -103,4 +103,51 @@ class StatementRowsTest {
         assertThat(StatementRows.sameBroker(null, "Groww")).isFalse();
         assertThat(StatementRows.sameBroker("Groww", null)).isFalse();
     }
+
+    private static ExtractedHolding at(ExtractedHolding row, String account) { return row.withAccount(account); }
+
+    private static Holding held(String ticker) {
+        Holding holding = new Holding();
+        holding.setTickerSymbol(ticker);
+        return holding;
+    }
+
+    @Test
+    void theSameFundThroughTwoInstitutionsStaysTwoRowsUntilAccountsAreMapped() {
+        List<ExtractedHolding> rows = List.of(
+                at(fund("Alpha Fund", "10", "1000", "1200"), "Fund House A"),
+                at(fund("Alpha Fund", "5", "500", "600"), "Fund House B"));
+
+        assertThat(StatementRows.consolidate(rows)).hasSize(2);
+        List<ExtractedHolding> merged = StatementRows.consolidateAcrossAccounts(rows);
+        assertThat(merged).hasSize(1);
+        assertThat(merged.get(0).quantity()).isEqualByComparingTo("15");
+        assertThat(merged.get(0).account()).isNull();
+    }
+
+    @Test
+    void aStockHeldInTwoDematAccountsIsNotDroppedAsADuplicate() {
+        ExtractedHolding first = new ExtractedHolding("Infosys", "INE009A01021", BigDecimal.TEN, null, null, null, null).withAccount("Zerodha Broking");
+        ExtractedHolding second = first.withAccount("Groww");
+
+        assertThat(StatementRows.consolidate(List.of(first, second))).hasSize(2);
+        assertThat(StatementRows.consolidate(List.of(first, first.withAccount(" ZERODHA broking ")))).hasSize(1);
+    }
+
+    @Test
+    void aStatementOfOnlyFundsSaysNothingAboutStocksAndTheOtherWayRound() {
+        List<ExtractedHolding> funds = List.of(fund("Alpha Fund", "1", null, null));
+        List<ExtractedHolding> stocks = List.of(new ExtractedHolding("Infosys", "INE009A01021", BigDecimal.ONE, null, null, null, null));
+
+        assertThat(StatementRows.couldBeListed(held("MF:100"), funds)).isTrue();
+        assertThat(StatementRows.couldBeListed(held("INFY.NS"), funds)).isFalse();
+        assertThat(StatementRows.couldBeListed(held("MF:100"), stocks)).isFalse();
+        assertThat(StatementRows.couldBeListed(held("INFY.NS"), stocks)).isTrue();
+    }
+
+    @Test
+    void aHoldingWithNoTickerOrAStatementWithNoRowsConstrainsNothing() {
+        assertThat(StatementRows.couldBeListed(held(null), List.of(fund("Alpha Fund", "1", null, null)))).isTrue();
+        assertThat(StatementRows.couldBeListed(held("INFY.NS"), List.of())).isTrue();
+    }
 }

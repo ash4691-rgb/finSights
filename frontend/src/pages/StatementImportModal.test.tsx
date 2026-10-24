@@ -385,17 +385,89 @@ describe('StatementImportModal', () => {
       await waitFor(() => expect(screen.queryByText('Transactions to review')).not.toBeInTheDocument())
     })
 
-    test('a transaction with no matching holding is listed with its conflict and cannot be saved without picking one', async () => {
+    test('a BUY for a holding you do not have is offered as a new holding built from its first buy', async () => {
       const unmatched: StatementExtractionResult = {
         statementType: 'TRANSACTIONS', broker: 'Zerodha', holdings: [], toRemove: [], warnings: [],
-        transactions: [{ date: '2025-04-03', type: 'BUY', instrumentName: 'Example Corp', isin: 'INE000A01010', amount: 4882.32, quantity: 6 }],
+        transactions: [{ date: '2025-04-03', type: 'BUY', instrumentName: 'Example Corp', isin: 'INE000A01010', amount: 4882.32, quantity: 6, tickerSymbol: 'EXAMPLE.NS' }],
+      }
+      await reachReview(unmatched, unmatched)
+      expect(screen.getByText('New holdings from these transactions')).toBeInTheDocument()
+      expect(screen.getByText(/first buy 2025-04-03/)).toBeInTheDocument()
+      expect(screen.getByText(/Conflict: Create its new holding first/)).toBeInTheDocument()
+
+      fireEvent.click(screen.getAllByText('Example Corp')[0])
+
+      expect((await screen.findAllByDisplayValue('4882.32')).length).toBeGreaterThan(0)
+      expect(screen.getByDisplayValue('EXAMPLE.NS')).toBeInTheDocument()
+    })
+
+    test('saving the new-holding form creates it, resolves the first buy and attaches the later lines to it', async () => {
+      const rows: StatementExtractionResult = {
+        statementType: 'TRANSACTIONS', broker: 'Zerodha', holdings: [], toRemove: [], warnings: [],
+        transactions: [
+          { date: '2025-04-03', type: 'BUY', instrumentName: 'Example Corp', isin: 'INE000A01010', amount: 4882.32, quantity: 6 },
+          { date: '2025-05-03', type: 'BUY', instrumentName: 'Example Corp', isin: 'INE000A01010', amount: 1000, quantity: 1 },
+        ],
+      }
+      const { onSaved } = await reachReview(rows, rows)
+      fireEvent.click(screen.getByText(/first buy 2025-04-03/))
+      await screen.findAllByDisplayValue('4882.32')
+      fetchMock.mockReturnValue(jsonResponse({ id: 'h-new', name: 'Example Corp' }))
+
+      fireEvent.click(screen.getByRole('button', { name: /^(Add|Save) holding$/ }))
+
+      await waitFor(() => expect(onSaved).toHaveBeenCalledWith({ id: 'h-new', name: 'Example Corp' }))
+      const holdingCall = fetchMock.mock.calls.find(([url, init]) => String(url).includes('/api/holdings') && init?.method === 'POST')!
+      expect(JSON.parse(holdingCall[1].body as string)).toMatchObject({ name: 'Example Corp', broker: 'Zerodha', quantity: 6, fixedRateStartDate: '2025-04-03' })
+      await waitFor(() => expect(screen.queryByText('New holdings from these transactions')).not.toBeInTheDocument())
+      // The later buy is now attached to the new holding and has no conflict left.
+      expect(screen.getByText('Transactions to review')).toBeInTheDocument()
+      expect(screen.queryByText(/Conflict:/)).not.toBeInTheDocument()
+    })
+
+    test('closing the new-holding form leaves the group pending, and Skip drops all of its lines', async () => {
+      const rows: StatementExtractionResult = {
+        statementType: 'TRANSACTIONS', broker: 'Zerodha', holdings: [], toRemove: [], warnings: [],
+        transactions: [
+          { date: '2025-04-03', type: 'BUY', instrumentName: 'Example Corp', isin: 'INE000A01010', amount: 4882.32, quantity: 6 },
+          { date: '2025-06-03', type: 'SELL', instrumentName: 'Example Corp', isin: 'INE000A01010', amount: 900, quantity: 1 },
+        ],
+      }
+      await reachReview(rows, rows)
+
+      fireEvent.click(screen.getByText(/first buy 2025-04-03/))
+      await screen.findAllByDisplayValue('4882.32')
+      fireEvent.click(screen.getAllByRole('button', { name: '×' })[1])
+      expect(screen.getByText('New holdings from these transactions')).toBeInTheDocument()
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Skip' })[0])
+      await waitFor(() => expect(screen.queryByText('New holdings from these transactions')).not.toBeInTheDocument())
+      expect(screen.queryByText('Transactions to review')).not.toBeInTheDocument()
+    })
+
+    test('a SELL for an instrument with no buy anywhere is flagged and cannot be logged', async () => {
+      const orphan: StatementExtractionResult = {
+        statementType: 'TRANSACTIONS', broker: 'Zerodha', holdings: [], toRemove: [], warnings: [],
+        transactions: [{ date: '2025-04-03', type: 'SELL', instrumentName: 'Orphan Corp', isin: 'INE111A01011', amount: 900, quantity: 1 }],
+      }
+      await reachReview(orphan, orphan)
+
+      expect(screen.getByText(/Conflict: SELL for a holding you don't have at this broker/)).toBeInTheDocument()
+      expect(screen.queryByText('New holdings from these transactions')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Log all (0)' })).toBeDisabled()
+    })
+
+    test('a transaction with no matching holding can still be opened and needs a holding picked', async () => {
+      const unmatched: StatementExtractionResult = {
+        statementType: 'TRANSACTIONS', broker: 'Zerodha', holdings: [], toRemove: [], warnings: [],
+        transactions: [{ date: '2025-04-03', type: 'INTEREST', instrumentName: 'Example Corp', isin: 'INE000A01010', amount: 12.5 }],
       }
       await reachReview(unmatched, unmatched)
       expect(screen.getByText(/Conflict: No matching holding at this broker/)).toBeInTheDocument()
 
       fireEvent.click(screen.getByText('Example Corp'))
 
-      expect(await screen.findByDisplayValue('4882.32')).toBeInTheDocument()
+      expect(await screen.findByDisplayValue('12.5')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Log transaction' })).toBeDisabled()
     })
   })
@@ -442,6 +514,33 @@ describe('StatementImportModal', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
       expect(screen.getByRole('button', { name: 'Log all (2)' })).toBeInTheDocument()
       expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    test('Log all creates a new holding from its first buy and logs the later lines against it', async () => {
+      const rows: StatementExtractionResult = {
+        statementType: 'TRANSACTIONS', broker: 'Groww', warnings: [], toRemove: [], holdings: [],
+        transactions: [
+          { date: '2026-01-01', type: 'BUY', instrumentName: 'Alpha Small Cap Fund', kind: 'MUTUAL_FUND', amount: 1000, quantity: 10, tickerSymbol: 'MF:100' },
+          { date: '2026-02-01', type: 'BUY', instrumentName: 'Alpha Small Cap Fund', kind: 'MUTUAL_FUND', amount: 500, quantity: 4 },
+          { date: '2026-03-01', type: 'SELL', instrumentName: 'Alpha Small Cap Fund', kind: 'MUTUAL_FUND', quantity: 2 },
+        ],
+      }
+      const { onSaved, onTransactionSaved } = await reachReview(rows, rows, 'Groww')
+      expect(screen.getByText(/2 rows ready with no conflicts; 1 with conflicts will be skipped/)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Log all (2)' }))
+      fetchMock.mockReturnValueOnce(jsonResponse({ id: 'h-new' }))
+      fetchMock.mockReturnValueOnce(jsonResponse({}))
+      fireEvent.click(screen.getByRole('button', { name: 'Yes, log 2' }))
+
+      await waitFor(() => expect(screen.getByText('Logged 2 rows.')).toBeInTheDocument())
+      expect(onSaved).toHaveBeenCalledWith({ id: 'h-new' })
+      expect(onTransactionSaved).toHaveBeenCalledTimes(1)
+      const txnCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/transactions'))!
+      expect(JSON.parse(txnCall[1].body as string)).toMatchObject({ holdingId: 'h-new', type: 'BUY', amount: 500 })
+      // Only the SELL, which has no amount, is left to review — now attached to the new holding.
+      expect(screen.getByText(/Conflict: No amount in the statement/)).toBeInTheDocument()
+      expect(screen.getByText(/1 row still needs review/)).toBeInTheDocument()
     })
 
     test('a row the server rejects stays in the list and is counted in the summary', async () => {
