@@ -813,7 +813,6 @@ class StatementImportServiceTest {
     void extractSplitsALargeSpreadsheetIntoOneCallPerChunkAndMergesTheResults() throws Exception {
         when(currentUser.currentUser()).thenReturn(new UserAccount("demo@finsights.local", "Demo"));
         when(rateLimiter.tryConsume(any())).thenReturn(true);
-        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of());
         when(marketData.search(any())).thenReturn(List.of());
 
         java.util.concurrent.atomic.AtomicInteger callCount = new java.util.concurrent.atomic.AtomicInteger();
@@ -855,7 +854,6 @@ class StatementImportServiceTest {
     void extractCallsTheModelOnceForAPdfUploadAndReturnsWhatItReports() throws Exception {
         when(currentUser.currentUser()).thenReturn(new UserAccount("demo@finsights.local", "Demo"));
         when(rateLimiter.tryConsume(any())).thenReturn(true);
-        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of());
         when(marketData.search(any())).thenReturn(List.of());
 
         server = singleResponseServer("""
@@ -878,7 +876,6 @@ class StatementImportServiceTest {
     void extractCallsTheModelOnceForAPlainTextUploadAndReturnsWhatItReports() throws Exception {
         when(currentUser.currentUser()).thenReturn(new UserAccount("demo@finsights.local", "Demo"));
         when(rateLimiter.tryConsume(any())).thenReturn(true);
-        when(holdings.findByUser_IdOrderBySortOrderAscUpdatedAtDesc(any())).thenReturn(List.of());
 
         server = singleResponseServer("""
                 {"content": [{"type": "tool_use", "name": "extract_statement", "input": {
