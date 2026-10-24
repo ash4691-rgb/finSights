@@ -170,8 +170,12 @@ public class StatementImportService {
             account numbers, demat/folio account numbers, the holder's name, address, phone number, email, \
             or any other personal information, even if it appears in the document — the schema has no \
             field for it on purpose.
-            5. A stock or ETF needs its ISIN and quantity; a mutual fund, crypto asset or commodity needs \
-            its name and quantity (an ISIN is optional for those — omit the field if the statement has none). If you cannot \
+            5. A stock or ETF needs its quantity and either its ISIN or, when the statement prints no ISIN \
+            (a US/foreign broker's report lists tickers only), its ticker in `symbol` — never invent an ISIN; \
+            a mutual fund, crypto asset or commodity needs its name and quantity (an ISIN is optional for \
+            those — omit the field if the statement has none). Set `currency` to the ISO code of the currency \
+            the statement's amounts are in (USD for a "$" column, say) whenever it isn't INR. Leave out a line \
+            whose quantity is zero or a rounding residue of zero (a fully sold position). If you cannot \
             confidently determine those, or a transaction's date, type, or instrument, leave that row out \
             of the result entirely and explain why in `warnings` instead of guessing.
             6. If the statement covers several accounts (a CAS lists every demat account and fund folio you \
@@ -570,7 +574,7 @@ public class StatementImportService {
      */
     StatementExtractionResponse enrichWithTickers(StatementExtractionResponse extracted) {
         List<ExtractedHolding> enriched = extracted.holdings().stream()
-                .map(h -> h.withTicker(resolveTicker(h.instrumentName(), h.symbol(), h.kind())))
+                .map(h -> h.withTicker(resolveTicker(h.instrumentName(), h.symbol(), h.kind(), h.currency())))
                 .toList();
         return new StatementExtractionResponse(extracted.statementType(), enriched, extracted.toRemove(),
                 extracted.transactions(), extracted.statementDate(), extracted.warnings(), extracted.broker());
@@ -583,6 +587,12 @@ public class StatementImportService {
     /** Package-private (not private) purely so it can be unit-tested directly against a mocked
      *  {@link MarketDataService} without going through the full, network-calling {@link #extract}. */
     String resolveTicker(String instrumentName, String symbol, InstrumentKind kind) {
+        return resolveTicker(instrumentName, symbol, kind, null);
+    }
+
+    /** As above, plus the statement's currency: a stock/ETF stated in a foreign currency is looked up
+     *  by its printed symbol among non-Indian listings (a US broker's report carries tickers, not ISINs). */
+    String resolveTicker(String instrumentName, String symbol, InstrumentKind kind, String currency) {
         // A commodity statement line (digital gold, a bullion balance…) has no listing that is priced
         // in the statement's own currency, so it's left unguessed — the user picks a valuation.
         if (kind == InstrumentKind.COMMODITY) return null;
@@ -591,6 +601,7 @@ public class StatementImportService {
             List<SymbolSuggestion> suggestions = marketData.search(query);
             if (kind == InstrumentKind.MUTUAL_FUND) return resolveFundSchemeCode(instrumentName, suggestions);
             if (kind == InstrumentKind.CRYPTO) return resolveCryptoPair(instrumentName, symbol, suggestions);
+            if (currency != null && symbol != null) return resolveForeignListing(symbol, suggestions);
             return resolveIndianListing(instrumentName, suggestions);
         } catch (RuntimeException e) {
             log.debug("Ticker guess failed for '{}': {}", instrumentName, e.toString());
@@ -606,6 +617,17 @@ public class StatementImportService {
             boolean isIndianListing = symbol != null
                     && (symbol.toUpperCase(Locale.ROOT).endsWith(".NS") || symbol.toUpperCase(Locale.ROOT).endsWith(".BO"));
             if (isIndianListing && namesLikelyMatch(instrumentName, suggestion.name())) return symbol;
+        }
+        return null;
+    }
+
+    /** The suggestion whose symbol is exactly the printed one — a bare ticker (no exchange suffix such
+     *  as {@code .NS}), which is how a US listing is quoted. Null when nothing matches exactly. */
+    private static String resolveForeignListing(String symbol, List<SymbolSuggestion> suggestions) {
+        String wanted = symbol.trim();
+        for (SymbolSuggestion suggestion : suggestions) {
+            String candidate = suggestion.symbol();
+            if (candidate != null && candidate.equalsIgnoreCase(wanted)) return candidate;
         }
         return null;
     }
@@ -760,7 +782,10 @@ public class StatementImportService {
     private static final String FIELD_SYMBOL = "symbol";
     private static final String FIELD_ACCOUNT = "account";
     private static final String ACCOUNT_DESCRIPTION = "Name of the broker, depository participant or fund house this line is held through, only when the statement names one per line — never an account, client or folio number";
+    private static final BigDecimal CLOSED_POSITION_EPSILON = new BigDecimal("0.000001");
+    private static final String FIELD_CURRENCY = "currency";
     private static final String SYMBOL_DESCRIPTION = "The ticker/symbol printed for this line (e.g. BTC), only if the statement prints one";
+    private static final String CURRENCY_DESCRIPTION = "ISO 4217 code of the currency this line's amounts are stated in (e.g. USD), only when it is not INR";
     private static final String INSTRUMENT_NAME_DESCRIPTION = "Company or instrument name exactly as printed";
     private static final String ISIN_DESCRIPTION = "The 12-character ISIN for this instrument";
 
@@ -769,12 +794,13 @@ public class StatementImportService {
         holdingSchema.put(SCHEMA_TYPE, SCHEMA_OBJECT);
         ObjectNode holdingProps = json.createObjectNode();
         holdingProps.set(FIELD_INSTRUMENT_NAME, textProp(json, INSTRUMENT_NAME_DESCRIPTION));
-        holdingProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION + " — required for a stock or ETF, omit for a mutual fund that shows none"));
+        holdingProps.set(FIELD_ISIN, textProp(json, ISIN_DESCRIPTION + " — omit for a mutual fund, or a stock/ETF of a statement that shows none (give its `symbol` instead)"));
         ObjectNode kind = textProp(json, "What kind of instrument this line is");
         kind.set("enum", kindEnum(json));
         holdingProps.set(FIELD_KIND, kind);
         holdingProps.set(FIELD_SYMBOL, textProp(json, SYMBOL_DESCRIPTION));
         holdingProps.set(FIELD_ACCOUNT, textProp(json, ACCOUNT_DESCRIPTION));
+        holdingProps.set(FIELD_CURRENCY, textProp(json, CURRENCY_DESCRIPTION));
         holdingProps.set(FIELD_QUANTITY, numberProp(json, "Units held"));
         holdingProps.set(FIELD_INVESTED_VALUE, numberProp(json, "Total amount invested in this line, if the statement shows it"));
         holdingProps.set(FIELD_CURRENT_VALUE, numberProp(json, "Current market value of this line, if the statement shows it"));
@@ -899,9 +925,11 @@ public class StatementImportService {
     private static void parseHoldingRow(JsonNode row, List<ExtractedHolding> holdingRows, List<String> warnings) {
         String name = blankToNull(row.path(FIELD_INSTRUMENT_NAME).asText(null));
         String isin = blankToNull(row.path(FIELD_ISIN).asText(null));
-        InstrumentKind kind = parseKind(row.path(FIELD_KIND).asText(null), isin);
+        String symbol = blankToNull(row.path(FIELD_SYMBOL).asText(null));
+        InstrumentKind kind = parseKind(row.path(FIELD_KIND).asText(null), isin, symbol);
         JsonNode quantityNode = row.path(FIELD_QUANTITY);
-        boolean identified = name != null && (isin != null || (kind != null && kind.identifiedByName()));
+        if (isClosedPosition(quantityNode)) return;
+        boolean identified = name != null && (isin != null || symbol != null || (kind != null && kind.identifiedByName()));
         if (!identified || !quantityNode.isNumber() || quantityNode.decimalValue().signum() <= 0) {
             warnings.add("Skipped a holding row with an incomplete name, ISIN, or quantity" + (name != null ? " (" + name + ")" : ""));
             return;
@@ -914,17 +942,32 @@ public class StatementImportService {
         String depository = blankToNull(row.path("depository").asText(null));
         String normalisedIsin = isin == null ? null : isin.toUpperCase(Locale.ROOT);
         holdingRows.add(new ExtractedHolding(name, normalisedIsin, quantity, avgCost, depository, null, null,
-                kind, invested, current, blankToNull(row.path(FIELD_SYMBOL).asText(null)),
-                blankToNull(row.path(FIELD_ACCOUNT).asText(null))));
+                kind, invested, current, symbol, blankToNull(row.path(FIELD_ACCOUNT).asText(null)),
+                currencyOrNull(row.path(FIELD_CURRENCY).asText(null))));
     }
 
-    /** A row with no kind but an ISIN is a stock (what every row was before kinds existed); one with
-     *  neither is unusable and comes back null so the caller skips it. */
-    private static InstrumentKind parseKind(String value, String isin) {
+    /** A quantity that is zero, or a floating-point residue of zero (a fully sold position that a
+     *  broker report still lists as 2e-15 units), is a closed position, not a holding to import. */
+    private static boolean isClosedPosition(JsonNode quantityNode) {
+        if (!quantityNode.isNumber()) return false;
+        return quantityNode.decimalValue().abs().compareTo(CLOSED_POSITION_EPSILON) < 0;
+    }
+
+    /** Upper-cased ISO code, or null for blank and for INR (the default, so it needs no override). */
+    private static String currencyOrNull(String value) {
+        String code = blankToNull(value);
+        if (code == null) return null;
+        String upper = code.toUpperCase(Locale.ROOT);
+        return "INR".equals(upper) ? null : upper;
+    }
+
+    /** A row with no kind but an ISIN or a symbol is a stock (what every row was before kinds existed);
+     *  one with neither is unusable and comes back null so the caller skips it. */
+    private static InstrumentKind parseKind(String value, String isin, String symbol) {
         if (value != null) {
             try { return InstrumentKind.valueOf(value); } catch (IllegalArgumentException e) { /* fall through */ }
         }
-        return isin == null ? null : InstrumentKind.STOCK;
+        return isin == null && symbol == null ? null : InstrumentKind.STOCK;
     }
 
     private static BigDecimal decimalOrNull(JsonNode node) { return node.isNumber() ? node.decimalValue() : null; }
@@ -933,9 +976,10 @@ public class StatementImportService {
         String date = blankToNull(row.path("date").asText(null));
         String name = blankToNull(row.path(FIELD_INSTRUMENT_NAME).asText(null));
         String isin = blankToNull(row.path(FIELD_ISIN).asText(null));
-        InstrumentKind kind = parseKind(row.path(FIELD_KIND).asText(null), isin);
+        String symbol = blankToNull(row.path(FIELD_SYMBOL).asText(null));
+        InstrumentKind kind = parseKind(row.path(FIELD_KIND).asText(null), isin, symbol);
         TransactionType type = parseTransactionType(row.path(SCHEMA_TYPE).asText(null));
-        boolean identified = name != null && (isin != null || (kind != null && kind.identifiedByName()));
+        boolean identified = name != null && (isin != null || symbol != null || (kind != null && kind.identifiedByName()));
         if (date == null || !identified || type == null) {
             warnings.add("Skipped a transaction row with an incomplete date, type, name, or ISIN" + (name != null ? " (" + name + ")" : ""));
             return;
@@ -945,7 +989,7 @@ public class StatementImportService {
         String notes = blankToNull(row.path("notes").asText(null));
         String normalisedIsin = isin == null ? null : isin.toUpperCase(Locale.ROOT);
         txnRows.add(new ExtractedTransaction(date, type, name, normalisedIsin, quantity, amount, notes, null,
-                kind, blankToNull(row.path(FIELD_SYMBOL).asText(null)), null, blankToNull(row.path(FIELD_ACCOUNT).asText(null))));
+                kind, symbol, null, blankToNull(row.path(FIELD_ACCOUNT).asText(null))));
     }
 
     private static StatementType parseStatementType(String value) {

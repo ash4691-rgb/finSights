@@ -114,6 +114,8 @@ export type ExtractedHolding = {
   // The symbol the statement prints for this line (a coin's "BTC"), when it prints one.
   symbol?: string
   account?: string | null
+  // ISO code the statement's amounts are in, set only when it isn't INR (a US broker's USD report).
+  currency?: string
   // Best-effort guess, not a fact — the review form still shows it as an editable field.
   tickerSymbol?: string
   // Set when this ISIN matches a holding already created from a past statement import — it needs

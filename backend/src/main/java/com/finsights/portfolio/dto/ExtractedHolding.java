@@ -40,8 +40,19 @@ public record ExtractedHolding(
         /** The institution this line is held through — the broker or depository participant for shares,
          *  the fund house for a mutual fund — when the statement names one per line (a CAS does, a
          *  single-broker statement doesn't need to). Never an account, client or folio number. */
-        String account
+        String account,
+        /** ISO currency the statement states its amounts in (a US broker's "USD"), when it says so —
+         *  null means the statement's own default, INR. */
+        String currency
 ) {
+    /** The shape every row had before the currency existed. */
+    public ExtractedHolding(String instrumentName, String isin, BigDecimal quantity, BigDecimal averageCostPerUnit,
+                            String depository, String tickerSymbol, String matchedHoldingId, InstrumentKind kind,
+                            BigDecimal investedValue, BigDecimal currentValue, String symbol, String account) {
+        this(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol, matchedHoldingId, kind,
+                investedValue, currentValue, symbol, account, null);
+    }
+
     /** The shape every row had before the account existed. */
     public ExtractedHolding(String instrumentName, String isin, BigDecimal quantity, BigDecimal averageCostPerUnit,
                             String depository, String tickerSymbol, String matchedHoldingId, InstrumentKind kind,
@@ -67,16 +78,16 @@ public record ExtractedHolding(
 
     public ExtractedHolding withTicker(String ticker) {
         return new ExtractedHolding(instrumentName, isin, quantity, averageCostPerUnit, depository, ticker,
-                matchedHoldingId, kind, investedValue, currentValue, symbol, account);
+                matchedHoldingId, kind, investedValue, currentValue, symbol, account, currency);
     }
 
     public ExtractedHolding withMatchedHolding(String holdingId) {
         return new ExtractedHolding(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol,
-                holdingId, kind, investedValue, currentValue, symbol, account);
+                holdingId, kind, investedValue, currentValue, symbol, account, currency);
     }
 
     public ExtractedHolding withAccount(String newAccount) {
         return new ExtractedHolding(instrumentName, isin, quantity, averageCostPerUnit, depository, tickerSymbol,
-                matchedHoldingId, kind, investedValue, currentValue, symbol, newAccount);
+                matchedHoldingId, kind, investedValue, currentValue, symbol, newAccount, currency);
     }
 }

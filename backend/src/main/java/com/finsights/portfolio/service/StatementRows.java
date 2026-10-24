@@ -57,7 +57,7 @@ final class StatementRows {
         BigDecimal invested = sumNullable(a.investedValue(), b.investedValue());
         BigDecimal current = sumNullable(a.currentValue(), b.currentValue());
         return new ExtractedHolding(a.instrumentName(), a.isin(), quantity, averageCost(invested, quantity),
-                a.depository(), a.tickerSymbol(), a.matchedHoldingId(), a.kind(), invested, current, a.symbol(), a.account());
+                a.depository(), a.tickerSymbol(), a.matchedHoldingId(), a.kind(), invested, current, a.symbol(), a.account(), a.currency());
     }
 
     /** A total is only known if every contributing row stated one; a gap makes it unknown, not smaller. */
