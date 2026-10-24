@@ -95,7 +95,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class StatementImportService {
     private static final Logger log = LoggerFactory.getLogger(StatementImportService.class);
     private static final String ANTHROPIC_VERSION = "2023-06-01";
-    private static final URI MESSAGES_URI = URI.create("https://api.anthropic.com/v1/messages");
+    private static final URI DEFAULT_MESSAGES_URI = URI.create("https://api.anthropic.com/v1/messages");
+    // Package-private and mutable purely so a test can point it at a local stub server to exercise
+    // extract()'s full SPREADSHEET-chunking flow (including multiple real HTTP round trips) without
+    // calling the real Anthropic API.
+    URI messagesUri = DEFAULT_MESSAGES_URI;
     // A multi-year order-history export can run into the thousands of rows, and each extracted
     // holding/transaction costs several dozen output tokens of JSON — 4096 was only ever enough
     // for a short CAS-style statement. Raised well past that, and large spreadsheets are additionally
@@ -957,7 +961,7 @@ public class StatementImportService {
     private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 
     private JsonNode callClaude(ObjectNode body) {
-        return callClaude(http, MESSAGES_URI, apiKey, json, body);
+        return callClaude(http, messagesUri, apiKey, json, body);
     }
 
     /** Package-private and static — takes the HTTP client and target URI as parameters so the
