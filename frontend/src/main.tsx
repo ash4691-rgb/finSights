@@ -93,9 +93,12 @@ export function Root() {
 }
 
 export const homeFeatures: [string, string, string][] = [
-  ['◈', 'Categories & holdings', 'Define your own buckets — Growth Equity, Emergency Fund, whatever makes sense to you — and file every stock, fund, FD, or loan under one you own.'],
+  ['◈', 'Categories & holdings', 'Define your own buckets — Growth Equity, Emergency Fund, whatever makes sense to you — and file every stock, fund, FD, EPFO balance, or loan under one you own.'],
   ['⇄', 'FX-aware, base-currency first', 'Every value converts on the fly against your base currency, with the live conversion rate shown — never hidden behind a single blended number.'],
-  ['▤', 'Manual-first, by design', 'No live broker sync yet, so every figure is one you entered and can trust. Bulk-import transactions from CSV or XML the moment you\'re ready.'],
+  ['⟳', 'Automated broker sync', 'Connect Zerodha Kite, CoinSwitch, or INDmoney and your holdings sync daily. Anything that doesn\'t cleanly match an existing position routes to a quick review instead of silently guessing.'],
+  ['◔', 'Signals that flag what needs attention', 'Tasks surfaces EMIs and interest due right now, Movers catches price swings past thresholds you set, and Radar keeps a passive eye on everything lower-priority — so nothing needs you to go looking for it.'],
+  ['◷', 'Loans, FDs & fixed income', 'Repayment schedules for EMIs, compounding for fixed-rate deposits and bonds. Confirm a payout once and it\'s logged as a real transaction, not just a number you update by hand.'],
+  ['⚡', 'Ask Goku about your own portfolio', 'A read-only chat assistant that answers questions over your real holdings in plain English — never a trade, never a data dump to a third party, just your own numbers explained.'],
 ]
 
 export function Homepage({ onGetStarted, onSignIn }: { onGetStarted: () => void; onSignIn: () => void }) {
@@ -113,15 +116,15 @@ export function Homepage({ onGetStarted, onSignIn }: { onGetStarted: () => void;
       <div className="public-hero-copy">
         <p className="eyebrow">PORTFOLIO INTELLIGENCE</p>
         <h1>Know what your portfolio needs, not just what it's worth.</h1>
-        <p className="public-lede">Bring your categories, holdings, and transactions together in one place, and FinSights reads the whole picture — surfacing what's moved, what's drifted, and what actually needs your attention.</p>
+        <p className="public-lede">Stocks, mutual funds, EPFO, fixed deposits, loans, crypto — synced automatically where it can be, entered once where it can't. FinSights reads the whole picture and tells you what actually needs a decision.</p>
         <div className="public-cta-row">
           <button className="primary" onClick={onGetStarted}>Get started</button>
           <a className="outline" href="#features">Explore features</a>
         </div>
         <ul className="public-checklist">
-          <li>✓ Intelligence that flags what needs a look</li>
-          <li>✓ Your data lives in your own backend</li>
-          <li>✓ Built for long-term, hands-on investors</li>
+          <li>✓ Synced automatically where it can be</li>
+          <li>✓ Signals that flag what needs a decision</li>
+          <li>✓ Your data lives in your own backend, not ours</li>
         </ul>
       </div>
       <div className="public-hero-preview" aria-hidden="true">
@@ -150,7 +153,7 @@ export function Homepage({ onGetStarted, onSignIn }: { onGetStarted: () => void;
       <div>
         <p className="eyebrow">WHAT YOUR PORTFOLIO IS ASKING FOR</p>
         <h2>The numbers, read for you.</h2>
-        <p className="public-lede">Set movement thresholds — daily to yearly — for holdings you own and symbols you're just watching, and Hot picks surfaces the ones that broke them. The Action centre gathers what needs a decision — EMIs due, interest payouts to confirm, deposits that matured, missing values. Allocation drift, concentration risk, and rebalancing prompts are next.</p>
+        <p className="public-lede">Set movement thresholds — daily to yearly — for holdings you own and symbols you're just watching, and Movers surfaces the ones that broke them. Tasks gathers what needs a decision right now — EMIs due, interest payouts to confirm, deposits that matured — while Radar keeps a passive eye on everything else, snoozed items included. Stuck on what a number means? Ask Goku.</p>
       </div>
     </section>
 
