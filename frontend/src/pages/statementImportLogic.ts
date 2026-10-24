@@ -69,6 +69,7 @@ export const draftFromExtractedHolding = (row: ExtractedHolding, broker: string,
     investedValue: invest,
     currentValue: current,
     description: row.isin ? `ISIN ${row.isin}` : '',
+    ...(row.currency ? { currency: row.currency } : {}),
     ...(row.tickerSymbol ? { valuationMethod: 'MARKET_PRICE' as const, tickerSymbol: row.tickerSymbol } : {}),
   }
 }
@@ -79,7 +80,7 @@ export const holdingPayload = (row: ExtractedHolding, broker: string, categoryId
   return {
     categoryId, name: row.instrumentName, broker,
     valuationMethod: row.tickerSymbol ? 'MARKET_PRICE' : 'MANUAL', tickerSymbol: row.tickerSymbol ?? null,
-    currency: 'INR', quantity: row.quantity, investedValue: invested, currentValue: row.currentValue ?? invested,
+    currency: row.currency ?? 'INR', quantity: row.quantity, investedValue: invested, currentValue: row.currentValue ?? invested,
     liquidWithinSevenDays: false, blocked: false, description: row.isin ? `ISIN ${row.isin}` : null, notes: null, tags: [] as string[],
   }
 }

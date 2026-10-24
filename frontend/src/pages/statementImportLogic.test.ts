@@ -58,6 +58,14 @@ describe('holding rows', () => {
     expect(draft).toMatchObject({ categoryId: 'c-mf', name: 'Alpha Fund', broker: 'Groww', quantity: '10', investedValue: '1000', currentValue: '1200', description: 'ISIN INF000A01010', valuationMethod: 'MARKET_PRICE', tickerSymbol: 'MF:100' })
   })
 
+  test('a foreign-currency statement row carries its currency into the draft and the payload', () => {
+    const usd = fund({ currency: 'USD', tickerSymbol: 'ASML' })
+    expect(draftFromExtractedHolding(usd, 'DriveWealth', 'c-us')).toMatchObject({ currency: 'USD', tickerSymbol: 'ASML' })
+    expect(holdingPayload(usd, 'DriveWealth', 'c-us')).toMatchObject({ currency: 'USD' })
+    expect(draftFromExtractedHolding(fund(), 'Groww', 'c-mf')).not.toHaveProperty('currency')
+    expect(holdingPayload(fund(), 'Groww', 'c-mf')).toMatchObject({ currency: 'INR' })
+  })
+
   test('the draft leaves category and valuation alone when there is nothing to put in them', () => {
     const draft = draftFromExtractedHolding(fund({ investedValue: undefined, currentValue: undefined }), 'Groww', '')
     expect(draft).not.toHaveProperty('categoryId')

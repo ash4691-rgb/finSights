@@ -12,6 +12,7 @@ import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.dto.ExtractedHolding;
+import com.finsights.portfolio.dto.InstrumentKind;
 import com.finsights.portfolio.dto.ExtractedTransaction;
 import com.finsights.portfolio.dto.StatementExtractionResponse;
 import com.finsights.portfolio.dto.StatementExtractionResponse.StatementType;
@@ -737,6 +738,55 @@ class StatementImportServiceTest {
         assertThat(result.transactions().get(0).amount()).isEqualByComparingTo(new BigDecimal("24505"));
         // An unparseable transaction type is dropped with an explanation, not guessed.
         assertThat(result.warnings()).anyMatch(w -> w.contains("Bad Row"));
+    }
+
+    @Test
+    void symbolOnlyForeignStocksAreKeptWithTheirCurrencyAndZeroResiduesAreClosedPositions() throws Exception {
+        JsonNode response = json.readTree("""
+                {"content": [{"type": "tool_use", "name": "extract_statement", "input": {
+                  "statementType": "HOLDINGS",
+                  "holdings": [
+                    {"instrumentName": "ASML", "symbol": "ASML", "kind": "STOCK", "currency": "usd", "quantity": 1.34, "averageCostPerUnit": 1495.3},
+                    {"instrumentName": "SOXX", "symbol": "SOXX", "currency": "INR", "quantity": 8.1},
+                    {"instrumentName": "NFLX", "symbol": "NFLX", "currency": "USD", "quantity": -2.2e-15},
+                    {"instrumentName": "No Symbol Co", "kind": "STOCK", "quantity": 3}
+                  ]}}]}
+                """);
+
+        StatementExtractionResponse result = StatementImportService.parseExtraction(response);
+
+        assertThat(result.holdings()).extracting(ExtractedHolding::instrumentName).containsExactly("ASML", "SOXX");
+        assertThat(result.holdings().get(0).currency()).isEqualTo("USD");
+        assertThat(result.holdings().get(0).kind()).isEqualTo(InstrumentKind.STOCK);
+        assertThat(result.holdings().get(1).currency()).isNull();
+        // The closed position is dropped quietly; the unidentifiable row still explains itself.
+        assertThat(result.warnings()).noneMatch(w -> w.contains("NFLX"));
+        assertThat(result.warnings()).anyMatch(w -> w.contains("No Symbol Co"));
+    }
+
+    @Test
+    void aTransactionIdentifiedOnlyBySymbolIsKept() throws Exception {
+        JsonNode response = json.readTree("""
+                {"content": [{"type": "tool_use", "name": "extract_statement", "input": {
+                  "statementType": "TRANSACTIONS",
+                  "transactions": [{"date": "2026-01-02", "type": "BUY", "instrumentName": "Visa", "symbol": "V", "quantity": 2, "amount": 700}]}}]}
+                """);
+
+        StatementExtractionResponse result = StatementImportService.parseExtraction(response);
+
+        assertThat(result.transactions()).hasSize(1);
+        assertThat(result.transactions().get(0).kind()).isEqualTo(InstrumentKind.STOCK);
+    }
+
+    @Test
+    void foreignCurrencyStockResolvesToTheExactBareTicker() {
+        when(marketData.search("ASML")).thenReturn(List.of(
+                new SymbolSuggestion("ASML.AS", "ASML Holding", "AMS", "Equity"),
+                new SymbolSuggestion("ASML", "ASML Holding NV", "NMS", "Equity")));
+        assertThat(service.resolveTicker("ASML", "ASML", InstrumentKind.STOCK, "USD")).isEqualTo("ASML");
+
+        when(marketData.search("ZZZ")).thenReturn(List.of(new SymbolSuggestion("ZZZ.NS", "Zzz", "NSE", "Equity")));
+        assertThat(service.resolveTicker("ZZZ", "ZZZ", InstrumentKind.STOCK, "USD")).isNull();
     }
 
     @Test
