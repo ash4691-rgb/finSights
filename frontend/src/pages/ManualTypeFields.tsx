@@ -48,6 +48,11 @@ function EpfoFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>)
       <Field label="Employer contribution">{number(form.employerContribution, v => set('employerContribution', v), { disabled })}</Field>
     </div>
     <div className="field-pair">
+      <Field label="Monthly employee contribution">{number(form.monthlyEmployeeContribution, v => set('monthlyEmployeeContribution', v), { disabled, placeholder: 'Per month' })}</Field>
+      <Field label="Monthly employer contribution">{number(form.monthlyEmployerContribution, v => set('monthlyEmployerContribution', v), { disabled, placeholder: 'Per month' })}</Field>
+    </div>
+    <p className="hint">With a monthly amount set, a task on the 1st of each month asks you to log last month's contribution.</p>
+    <div className="field-pair">
       <Field label="Interest accumulated">{number(form.interestAccumulated, v => set('interestAccumulated', v), { placeholder: '0', disabled })}</Field>
       <Field label="Expected interest rate (% p.a.)">{number(form.expectedInterestRate, v => set('expectedInterestRate', v), { max: '100', placeholder: 'e.g. 8.25' })}</Field>
     </div>
@@ -78,6 +83,8 @@ function epfoFacts(holding: Holding) {
   return [
     m.employeeContribution != null ? fact('Employee contribution', money(m.employeeContribution, holding.currency)) : null,
     m.employerContribution != null ? fact('Employer contribution', money(m.employerContribution, holding.currency)) : null,
+    m.monthlyEmployeeContribution != null ? fact('Monthly employee contribution', money(m.monthlyEmployeeContribution, holding.currency)) : null,
+    m.monthlyEmployerContribution != null ? fact('Monthly employer contribution', money(m.monthlyEmployerContribution, holding.currency)) : null,
     m.interestAccumulated != null ? fact('Interest accumulated', money(m.interestAccumulated, holding.currency)) : null,
     m.expectedInterestRate != null ? fact('Expected rate', `${percent(m.expectedInterestRate * 100)} p.a.`) : null,
   ]

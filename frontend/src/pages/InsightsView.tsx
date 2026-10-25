@@ -74,7 +74,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
   const isPendingAction = (kind: string) =>
     kind === 'EMI_DUE' || kind === 'EMI_OVERDUE' || kind === 'INTEREST_DUE' || kind === 'INTEREST_OVERDUE'
-    || kind === 'BROKER_SYNC_NEW' || kind === 'BROKER_SYNC_CONFLICT' || kind === 'EPFO_INTEREST_CHECK'
+    || kind === 'BROKER_SYNC_NEW' || kind === 'BROKER_SYNC_CONFLICT' || kind === 'EPFO_INTEREST_CHECK' || kind === 'EPFO_CONTRIBUTION'
   const pendingActions = (actions ?? []).filter(a => isPendingAction(a.kind))
   const radarItems = (actions ?? []).filter(a => !isPendingAction(a.kind))
   // Dismissing/restoring only ever changes Tasks/Worth-a-look and Snoozed — reload just those two

@@ -116,7 +116,8 @@ public class FxRateService {
         if (d == null) return null;
         return new ManualDetails(convertOrNull(d.purchaseUnitPrice(), from, to), convertOrNull(d.currentUnitPrice(), from, to),
                 convertOrNull(d.employeeContribution(), from, to), convertOrNull(d.employerContribution(), from, to),
-                convertOrNull(d.interestAccumulated(), from, to), d.expectedInterestRate());
+                convertOrNull(d.interestAccumulated(), from, to), d.expectedInterestRate(),
+                convertOrNull(d.monthlyEmployeeContribution(), from, to), convertOrNull(d.monthlyEmployerContribution(), from, to));
     }
 
     private BigDecimal convertOrNull(BigDecimal amount, String from, String to) {

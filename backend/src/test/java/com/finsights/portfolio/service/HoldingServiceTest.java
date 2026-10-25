@@ -585,7 +585,7 @@ class HoldingServiceTest {
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
         ManualDetails details = new ManualDetails(null, null, new BigDecimal("100000"), new BigDecimal("60000"),
-                new BigDecimal("12000"), new BigDecimal("0.0825"));
+                new BigDecimal("12000"), new BigDecimal("0.0825"), new BigDecimal("1800"), new BigDecimal("1800"));
 
         HoldingResponse response = service.create(epfoRequest(null, details));
 
@@ -598,6 +598,8 @@ class HoldingServiceTest {
         assertThat(stored.getQuantity()).isNull();
         assertThat(stored.getArea()).isNull();
         assertThat(stored.getExpectedInterestRate()).isEqualByComparingTo("0.0825");
+        assertThat(stored.getMonthlyEmployeeContribution()).isEqualByComparingTo("1800");
+        assertThat(response.manual().monthlyEmployerContribution()).isEqualByComparingTo("1800");
         assertThat(response.manualType()).isEqualTo(ManualType.EPFO);
     }
 

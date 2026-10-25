@@ -59,6 +59,11 @@ public class Holding {
     private BigDecimal interestAccumulated;
     @Column(precision = 10, scale = 6)
     private BigDecimal expectedInterestRate;
+    /** EPFO: the regular monthly contribution, used to prompt for each month's entry. */
+    @Column(precision = 20, scale = 2)
+    private BigDecimal monthlyEmployeeContribution;
+    @Column(precision = 20, scale = 2)
+    private BigDecimal monthlyEmployerContribution;
     /** Remaining cost basis after average-cost SELLs; the ledger owns this (see HoldingService). */
     @Column(precision = 20, scale = 2)
     private BigDecimal investedValue = BigDecimal.ZERO;
@@ -157,6 +162,10 @@ public class Holding {
     public void setEmployerContribution(BigDecimal employerContribution) { this.employerContribution = employerContribution; }
     public BigDecimal getInterestAccumulated() { return interestAccumulated; }
     public void setInterestAccumulated(BigDecimal interestAccumulated) { this.interestAccumulated = interestAccumulated; }
+    public BigDecimal getMonthlyEmployeeContribution() { return monthlyEmployeeContribution; }
+    public void setMonthlyEmployeeContribution(BigDecimal monthlyEmployeeContribution) { this.monthlyEmployeeContribution = monthlyEmployeeContribution; }
+    public BigDecimal getMonthlyEmployerContribution() { return monthlyEmployerContribution; }
+    public void setMonthlyEmployerContribution(BigDecimal monthlyEmployerContribution) { this.monthlyEmployerContribution = monthlyEmployerContribution; }
     public BigDecimal getExpectedInterestRate() { return expectedInterestRate; }
     public void setExpectedInterestRate(BigDecimal expectedInterestRate) { this.expectedInterestRate = expectedInterestRate; }
     public BigDecimal getInvestedValue() { return investedValue; }

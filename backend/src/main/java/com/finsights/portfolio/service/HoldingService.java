@@ -591,7 +591,7 @@ public class HoldingService {
     private ManualDetails manualDetailsOf(Holding holding) {
         return new ManualDetails(holding.getPurchaseUnitPrice(), holding.getCurrentUnitPrice(),
                 holding.getEmployeeContribution(), holding.getEmployerContribution(), holding.getInterestAccumulated(),
-                holding.getExpectedInterestRate());
+                holding.getExpectedInterestRate(), holding.getMonthlyEmployeeContribution(), holding.getMonthlyEmployerContribution());
     }
 
     /** Validates a real-estate/EPFO request and derives its invested and current value from the inputs. */
@@ -695,6 +695,8 @@ public class HoldingService {
         target.setEmployerContribution(epfo ? d.employerContribution() : null);
         target.setInterestAccumulated(epfo ? d.interestAccumulated() : null);
         target.setExpectedInterestRate(epfo ? d.expectedInterestRate() : null);
+        target.setMonthlyEmployeeContribution(epfo ? d.monthlyEmployeeContribution() : null);
+        target.setMonthlyEmployerContribution(epfo ? d.monthlyEmployerContribution() : null);
     }
 
     private Set<String> cleanTags(Set<String> tags) {

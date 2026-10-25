@@ -11,7 +11,7 @@ export type ManualType = 'DEFAULT' | 'REAL_ESTATE' | 'EPFO'
 export type ManualDetails = {
   purchaseUnitPrice?: number; currentUnitPrice?: number
   employeeContribution?: number; employerContribution?: number; interestAccumulated?: number
-  expectedInterestRate?: number
+  expectedInterestRate?: number; monthlyEmployeeContribution?: number; monthlyEmployerContribution?: number
 }
 export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
 

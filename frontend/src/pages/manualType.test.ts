@@ -42,7 +42,9 @@ describe('manualPayload', () => {
   test('EPFO converts the rate to a fraction and leaves unset fields out', () => {
     expect(manualPayload('EPFO', form({ expectedInterestRate: '8.25', interestAccumulated: '10' })))
       .toMatchObject({ expectedInterestRate: 0.0825, interestAccumulated: 10, employeeContribution: undefined })
-    expect(manualPayload('EPFO', form({}))).toMatchObject({ expectedInterestRate: undefined })
+    expect(manualPayload('EPFO', form({}))).toMatchObject({ expectedInterestRate: undefined, monthlyEmployeeContribution: undefined })
+    expect(manualPayload('EPFO', form({ monthlyEmployeeContribution: '1800', monthlyEmployerContribution: '1800' })))
+      .toMatchObject({ monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 })
   })
 
   test('the default type sends no manual block', () => {
@@ -51,10 +53,10 @@ describe('manualPayload', () => {
 })
 
 describe('form helpers', () => {
-  const base = { id: 'h', manualType: 'EPFO', manual: { employeeContribution: 5, expectedInterestRate: 0.0825 } } as Holding
+  const base = { id: 'h', manualType: 'EPFO', manual: { employeeContribution: 5, expectedInterestRate: 0.0825, monthlyEmployerContribution: 1800 } } as Holding
 
   test('manualFormFrom restores a saved holding, rate as a percentage', () => {
-    expect(manualFormFrom(base)).toMatchObject({ manualType: 'EPFO', employeeContribution: '5', expectedInterestRate: '8.25', purchaseUnitPrice: '' })
+    expect(manualFormFrom(base)).toMatchObject({ manualType: 'EPFO', employeeContribution: '5', monthlyEmployerContribution: '1800', monthlyEmployeeContribution: '', expectedInterestRate: '8.25', purchaseUnitPrice: '' })
   })
 
   test('manualFormFrom falls back to the default type with empty fields', () => {

@@ -38,11 +38,20 @@ class ActionCentreServiceTest {
     }
 
     private HoldingResponse holding(ManualType type) {
+        return holding(type, ManualDetails.NONE);
+    }
+
+    private HoldingResponse monthly(String employee, String employer) {
+        return holding(ManualType.EPFO, new ManualDetails(null, null, null, null, null, null,
+                employee == null ? null : new BigDecimal(employee), employer == null ? null : new BigDecimal(employer)));
+    }
+
+    private HoldingResponse holding(ManualType type, ManualDetails manual) {
         return new HoldingResponse("h-1", "epf-1", "c-1", "Provident Fund", "EPF - Acme", HoldingKind.ASSET, ValuationMethod.MANUAL,
                 null, "EPFO", user().getBaseCurrency(), user().getBaseCurrency(), new BigDecimal("148000"), new BigDecimal("160000"),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null, null, null,
                 null, null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null,
-                type, ManualDetails.NONE);
+                type, manual);
     }
 
     private UserAccount user() {
@@ -87,6 +96,44 @@ class ActionCentreServiceTest {
 
         assertThat(service.actions(List.of(holding(ManualType.EPFO)), true, LocalDate.of(2026, 10, 15))).isEmpty();
         assertThat(service.actions(List.of(holding(ManualType.EPFO)), true, LocalDate.of(2027, 10, 15))).hasSize(1);
+    }
+
+    @Test
+    void monthlyContributionTaskAsksForLastMonthDueEndOfThisMonth() {
+        List<ActionItemResponse> items = service.actions(List.of(monthly("1800", "1800")), true, LocalDate.of(2026, 3, 5));
+
+        assertThat(items).hasSize(1);
+        ActionItemResponse task = items.get(0);
+        assertThat(task.kind()).isEqualTo("EPFO_CONTRIBUTION");
+        assertThat(task.period()).isEqualTo("2026-02");
+        assertThat(task.dueDate()).isEqualTo(LocalDate.of(2026, 3, 31));
+        assertThat(task.key()).isEqualTo("EPFO_CONTRIBUTION|h-1|2026-02");
+        assertThat(task.detail()).contains("February 2026").contains("employee 1800").contains("employer 1800");
+    }
+
+    @Test
+    void monthlyTaskRollsOverTheYearBoundary() {
+        List<ActionItemResponse> items = service.actions(List.of(monthly("100", null)), true, LocalDate.of(2027, 1, 2));
+
+        assertThat(items.get(0).period()).isEqualTo("2026-12");
+        assertThat(items.get(0).detail()).contains("employee 100").contains("employer 0");
+    }
+
+    @Test
+    void noMonthlyTaskWithoutAPositiveMonthlyAmountOrForOtherTypes() {
+        LocalDate day = LocalDate.of(2026, 3, 5);
+        assertThat(service.actions(List.of(monthly(null, null)), true, day)).isEmpty();
+        assertThat(service.actions(List.of(monthly("0", "0")), true, day)).isEmpty();
+        assertThat(service.actions(List.of(holding(ManualType.DEFAULT)), true, day)).isEmpty();
+        assertThat(service.actions(List.of(holding(ManualType.EPFO, null)), true, day)).isEmpty();
+    }
+
+    @Test
+    void aDismissedMonthlyTaskIsHiddenForThatMonthOnly() {
+        when(dismissals.suppressedKeys()).thenReturn(Set.of("EPFO_CONTRIBUTION|h-1|2026-02"));
+
+        assertThat(service.actions(List.of(monthly("1", "1")), true, LocalDate.of(2026, 3, 5))).isEmpty();
+        assertThat(service.actions(List.of(monthly("1", "1")), true, LocalDate.of(2026, 4, 5))).hasSize(1);
     }
 
     @Test

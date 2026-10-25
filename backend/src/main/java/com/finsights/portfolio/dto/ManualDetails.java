@@ -14,7 +14,16 @@ public record ManualDetails(
         BigDecimal employerContribution,
         BigDecimal interestAccumulated,
         /** Expected annual rate as a fraction (0.0825 = 8.25%). */
-        BigDecimal expectedInterestRate
+        BigDecimal expectedInterestRate,
+        /** EPFO: what is contributed each month; drives the monthly "log last month's contribution" task. */
+        BigDecimal monthlyEmployeeContribution,
+        BigDecimal monthlyEmployerContribution
 ) {
-    public static final ManualDetails NONE = new ManualDetails(null, null, null, null, null, null);
+    public ManualDetails(BigDecimal purchaseUnitPrice, BigDecimal currentUnitPrice, BigDecimal employeeContribution,
+                         BigDecimal employerContribution, BigDecimal interestAccumulated, BigDecimal expectedInterestRate) {
+        this(purchaseUnitPrice, currentUnitPrice, employeeContribution, employerContribution, interestAccumulated,
+                expectedInterestRate, null, null);
+    }
+
+    public static final ManualDetails NONE = new ManualDetails(null, null, null, null, null, null, null, null);
 }

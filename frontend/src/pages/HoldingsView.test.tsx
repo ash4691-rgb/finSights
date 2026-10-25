@@ -290,6 +290,8 @@ describe('HoldingModal — manual types', () => {
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'EPFO' } })
     fireEvent.change(screen.getByLabelText(/^Total balance/), { target: { value: '200000' } })
     fireEvent.change(screen.getByLabelText(/^Interest accumulated/), { target: { value: '10000' } })
+    fireEvent.change(screen.getByLabelText(/^Monthly employee contribution/), { target: { value: '1800' } })
+    fireEvent.change(screen.getByLabelText(/^Monthly employer contribution/), { target: { value: '1800' } })
     fireEvent.change(screen.getByLabelText(/^Expected interest rate/), { target: { value: '8.25' } })
     fillBasics('EPF - Acme')
     fireEvent.click(screen.getByRole('button', { name: 'Add holding' }))
@@ -297,7 +299,7 @@ describe('HoldingModal — manual types', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(posted).toMatchObject({
       manualType: 'EPFO', quantity: null, area: null, investedValue: 190000, currentValue: 200000,
-      manual: { interestAccumulated: 10000, expectedInterestRate: 0.0825 },
+      manual: { interestAccumulated: 10000, expectedInterestRate: 0.0825, monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 },
     })
   })
 
@@ -349,7 +351,7 @@ describe('manual type display', () => {
 
   const epfoHolding: Holding = {
     ...holding, id: 'h-epf', name: 'EPF', manualType: 'EPFO',
-    manual: { employeeContribution: 100000, employerContribution: 60000, interestAccumulated: 12000, expectedInterestRate: 0.0825 },
+    manual: { employeeContribution: 100000, employerContribution: 60000, interestAccumulated: 12000, expectedInterestRate: 0.0825, monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 },
   }
 
   test('the drawer shows the EPFO contributions and rate', () => {
@@ -360,6 +362,7 @@ describe('manual type display', () => {
     expect(screen.getByText('Employer contribution')).toBeInTheDocument()
     expect(screen.getByText('Interest accumulated')).toBeInTheDocument()
     expect(screen.getByText('Expected rate')).toBeInTheDocument()
+    expect(screen.getByText('Monthly employee contribution')).toBeInTheDocument()
     expect(screen.queryByText('Quantity')).not.toBeInTheDocument()
   })
 

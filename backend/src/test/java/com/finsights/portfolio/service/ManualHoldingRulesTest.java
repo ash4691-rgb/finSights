@@ -118,6 +118,17 @@ class ManualHoldingRulesTest {
     }
 
     @Test
+    void epfoKeepsTheMonthlyContributionsAndRejectsNegativeOnes() {
+        ManualDetails monthly = new ManualDetails(null, null, null, null, null, null, n("1800"), n("1800"));
+        HoldingRequest resolved = ManualHoldingRules.resolve(epfo(n("100"), monthly), false);
+
+        assertThat(resolved.manual().monthlyEmployeeContribution()).isEqualByComparingTo("1800");
+        assertThat(resolved.manual().monthlyEmployerContribution()).isEqualByComparingTo("1800");
+        assertRejected(epfo(n("100"), new ManualDetails(null, null, null, null, null, null, n("-1"), null)), "Monthly employee contribution");
+        assertRejected(epfo(n("100"), new ManualDetails(null, null, null, null, null, null, null, n("-1"))), "Monthly employer contribution");
+    }
+
+    @Test
     void epfoWithoutAnyContributionIsRejected() {
         assertRejected(epfo(null, null), "total balance");
     }

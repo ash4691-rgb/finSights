@@ -6,7 +6,11 @@ import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.ActionItemResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.time.Month;
+import java.time.YearMonth;
+import java.time.format.TextStyle;
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -62,6 +66,7 @@ public class ActionCentreService {
                         h));
             }
             if (isEpfoCheckDue(h, today)) items.add(epfoInterestCheck(h, today));
+            if (hasMonthlyEpfoContribution(h)) items.add(epfoMonthlyContribution(h, today));
             if (h.valuationMethod() == ValuationMethod.MARKET_PRICE
                     && h.tickerSymbol() != null && !h.tickerSymbol().isBlank() && h.priceUpdatedAt() == null) {
                 items.add(item("PRICE_UNAVAILABLE", "WARN",
@@ -115,6 +120,35 @@ public class ActionCentreService {
     /** The yearly EPFO interest check appears from 1 October and stays until it is done or deferred. */
     private static boolean isEpfoCheckDue(HoldingResponse h, LocalDate today) {
         return h.manualType() == ManualType.EPFO && today.getMonthValue() >= EPFO_CHECK_MONTH.getValue();
+    }
+
+    private static boolean hasMonthlyEpfoContribution(HoldingResponse h) {
+        if (h.manualType() != ManualType.EPFO || h.manual() == null) return false;
+        return positive(h.manual().monthlyEmployeeContribution()) || positive(h.manual().monthlyEmployerContribution());
+    }
+
+    private static boolean positive(BigDecimal amount) {
+        return amount != null && amount.signum() > 0;
+    }
+
+    /** From the 1st of a month, a task to log the previous month's contribution, due that month's last day. */
+    private static ActionItemResponse epfoMonthlyContribution(HoldingResponse h, LocalDate today) {
+        String kind = "EPFO_CONTRIBUTION";
+        YearMonth last = YearMonth.from(today).minusMonths(1);
+        String period = last.toString();
+        String month = last.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + last.getYear();
+        BigDecimal employee = h.manual().monthlyEmployeeContribution();
+        BigDecimal employer = h.manual().monthlyEmployerContribution();
+        return new ActionItemResponse(kind, "INFO", "Log EPFO contribution — " + h.name(),
+                "Add " + month + "'s contribution (employee " + orZero(employee).toPlainString() + ", employer "
+                        + orZero(employer).toPlainString() + " " + h.currency() + ") to this holding's balance by "
+                        + YearMonth.from(today).atEndOfMonth() + ".",
+                h.id(), h.name(), h.broker(), YearMonth.from(today).atEndOfMonth(), null, period, null,
+                ActionItemResponse.keyOf(kind, h.id(), period));
+    }
+
+    private static BigDecimal orZero(BigDecimal amount) {
+        return amount == null ? BigDecimal.ZERO : amount;
     }
 
     /** One task per holding per year: the period is the year, so marking it done only clears that year's. */

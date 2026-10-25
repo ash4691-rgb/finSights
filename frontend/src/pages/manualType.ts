@@ -16,6 +16,7 @@ export const manualFormFrom = (holding: Holding): ManualForm => {
     purchaseUnitPrice: text(m.purchaseUnitPrice), currentUnitPrice: text(m.currentUnitPrice),
     employeeContribution: text(m.employeeContribution), employerContribution: text(m.employerContribution),
     interestAccumulated: text(m.interestAccumulated),
+    monthlyEmployeeContribution: text(m.monthlyEmployeeContribution), monthlyEmployerContribution: text(m.monthlyEmployerContribution),
     expectedInterestRate: m.expectedInterestRate != null ? String(+(m.expectedInterestRate * 100).toFixed(4)) : '',
   }
 }
@@ -67,6 +68,7 @@ function epfoPayload(f: ManualForm): ManualDetails {
   return {
     employeeContribution: optional(f.employeeContribution), employerContribution: optional(f.employerContribution),
     interestAccumulated: optional(f.interestAccumulated),
+    monthlyEmployeeContribution: optional(f.monthlyEmployeeContribution), monthlyEmployerContribution: optional(f.monthlyEmployerContribution),
     expectedInterestRate: f.expectedInterestRate === '' ? undefined : numeric(f.expectedInterestRate) / 100,
   }
 }

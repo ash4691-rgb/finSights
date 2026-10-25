@@ -31,6 +31,7 @@ public class ActionDismissalService {
             Map.entry("EMI_DUE", "EMI due"), Map.entry("EMI_OVERDUE", "EMI overdue"),
             Map.entry("INTEREST_DUE", "Interest due"), Map.entry("INTEREST_OVERDUE", "Interest overdue"),
             Map.entry("FIXED_RATE_MATURED", "Matured deposit"), Map.entry("EPFO_INTEREST_CHECK", "EPFO interest check"),
+            Map.entry("EPFO_CONTRIBUTION", "EPFO contribution"),
             Map.entry("PRICE_UNAVAILABLE", "No live price"),
             Map.entry("DQ_NO_VALUE", "No current value"), Map.entry("DQ_NO_BROKER", "No broker"),
             Map.entry("DQ_FOREIGN_CURRENCY", "Foreign currency"), Map.entry("DQ_NO_INVESTED", "No invested amount"));

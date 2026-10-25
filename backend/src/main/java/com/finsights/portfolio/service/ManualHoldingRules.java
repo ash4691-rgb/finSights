@@ -50,12 +50,14 @@ final class ManualHoldingRules {
         requireNotNegative(details.employeeContribution(), "Employee contribution");
         requireNotNegative(details.employerContribution(), "Employer contribution");
         requireNotNegative(details.interestAccumulated(), "Interest accumulated");
+        requireNotNegative(details.monthlyEmployeeContribution(), "Monthly employee contribution");
+        requireNotNegative(details.monthlyEmployerContribution(), "Monthly employer contribution");
         requireRate(details.expectedInterestRate());
         BigDecimal balance = currentBalance(request, details);
         BigDecimal interest = details.interestAccumulated() == null ? BigDecimal.ZERO : details.interestAccumulated();
         if (interest.compareTo(balance) > 0) throw bad("Interest accumulated can't be more than the current balance");
         ManualDetails resolved = new ManualDetails(null, null, details.employeeContribution(), details.employerContribution(),
-                interest, details.expectedInterestRate());
+                interest, details.expectedInterestRate(), details.monthlyEmployeeContribution(), details.monthlyEmployerContribution());
         return withValues(request, resolved, money(balance.subtract(interest)), money(balance));
     }
 

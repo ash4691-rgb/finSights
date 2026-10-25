@@ -77,7 +77,7 @@ export const blankManualForm = () => ({
   manualType: 'DEFAULT' as ManualType,
   purchaseUnitPrice: '', currentUnitPrice: '',
   employeeContribution: '', employerContribution: '', interestAccumulated: '',
-  expectedInterestRate: '',
+  expectedInterestRate: '', monthlyEmployeeContribution: '', monthlyEmployerContribution: '',
 })
 export type ManualForm = ReturnType<typeof blankManualForm>
 export const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '', allowedValuationMethods: [] as ValuationMethod[], realEstate: false })
