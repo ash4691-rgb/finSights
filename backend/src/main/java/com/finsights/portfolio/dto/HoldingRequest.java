@@ -2,6 +2,7 @@ package com.finsights.portfolio.dto;
 
 import com.finsights.portfolio.domain.AreaUnit;
 import com.finsights.portfolio.domain.CompoundingFrequency;
+import com.finsights.portfolio.domain.ManualType;
 import com.finsights.portfolio.domain.RepaymentFrequency;
 import com.finsights.portfolio.domain.ValuationMethod;
 import jakarta.validation.constraints.Max;
@@ -40,5 +41,23 @@ public record HoldingRequest(
         @Size(max = 1024, message = "Description must be 1024 characters or fewer") String description,
         String notes,
         @Size(max = 30, message = "A holding can have at most 30 tags")
-        Set<@Size(min = 1, max = 48, message = "Each tag must be 1–48 characters") String> tags
-) { }
+        Set<@Size(min = 1, max = 48, message = "Each tag must be 1–48 characters") String> tags,
+        /** MANUAL holdings only; null means a plain manual holding. */
+        ManualType manualType,
+        ManualDetails manual
+) {
+    /** A plain request with no manual sub-type — what every caller before manual types sends. */
+    public HoldingRequest(String categoryId, String name, ValuationMethod valuationMethod, String tickerSymbol,
+                          String broker, String currency, BigDecimal quantity, BigDecimal area, AreaUnit areaUnit,
+                          BigDecimal investedValue, BigDecimal currentValue, BigDecimal fixedAnnualRate,
+                          CompoundingFrequency compoundingFrequency, LocalDate fixedRateStartDate,
+                          LocalDate fixedRateEndDate, RepaymentFrequency repaymentFrequency, BigDecimal emiAmount,
+                          Integer emiDayOfMonth, Integer loanTermMonths, LocalDate repaymentDueDate,
+                          Boolean liquidWithinSevenDays, Boolean blocked, String description, String notes,
+                          Set<String> tags) {
+        this(categoryId, name, valuationMethod, tickerSymbol, broker, currency, quantity, area, areaUnit,
+                investedValue, currentValue, fixedAnnualRate, compoundingFrequency, fixedRateStartDate,
+                fixedRateEndDate, repaymentFrequency, emiAmount, emiDayOfMonth, loanTermMonths, repaymentDueDate,
+                liquidWithinSevenDays, blocked, description, notes, tags, null, null);
+    }
+}

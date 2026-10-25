@@ -7,8 +7,10 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.finsights.portfolio.domain.HoldingKind;
+import com.finsights.portfolio.domain.ManualType;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.HoldingResponse;
+import com.finsights.portfolio.dto.ManualDetails;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -97,5 +99,40 @@ class FxRateServiceTest {
 
         assertThat(result.currency()).isEqualTo("INR");
         assertThat(result.defaultCurrency()).isEqualTo("INR");
+    }
+
+    @Test
+    void convertingAHoldingConvertsItsManualMoneyFieldsButKeepsTheRate() {
+        HoldingResponse base = holding("USD");
+        ManualDetails manual = new ManualDetails(new BigDecimal("10"), null, new BigDecimal("20"), null,
+                new BigDecimal("5"), new BigDecimal("0.0825"), 3, 31);
+        HoldingResponse withManual = new HoldingResponse(base.id(), base.holdingId(), base.categoryId(), base.categoryName(),
+                base.name(), base.kind(), base.valuationMethod(), null, base.broker(), "USD", "USD", base.investedValue(),
+                base.currentValue(), base.profitLoss(), base.profitLossPercentage(), base.realisedProfitLoss(),
+                base.accruedIncome(), null, null, null, null, null, null, null, null, null, null, null, null,
+                false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null,
+                ManualType.EPFO, manual);
+
+        HoldingResponse converted = fx.convert(withManual, "INR");
+
+        assertThat(converted.manualType()).isEqualTo(ManualType.EPFO);
+        assertThat(converted.manual().purchaseUnitPrice()).isEqualByComparingTo("885.00");
+        assertThat(converted.manual().currentUnitPrice()).isNull();
+        assertThat(converted.manual().employeeContribution()).isEqualByComparingTo("1770.00");
+        assertThat(converted.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
+        assertThat(converted.manual().interestCreditDay()).isEqualTo(31);
+    }
+
+    @Test
+    void convertingAHoldingWithoutManualDetailsKeepsThemNull() {
+        HoldingResponse base = holding("USD");
+        HoldingResponse noManual = new HoldingResponse(base.id(), base.holdingId(), base.categoryId(), base.categoryName(),
+                base.name(), base.kind(), base.valuationMethod(), null, base.broker(), "USD", "USD", base.investedValue(),
+                base.currentValue(), base.profitLoss(), base.profitLossPercentage(), base.realisedProfitLoss(),
+                base.accruedIncome(), null, null, null, null, null, null, null, null, null, null, null, null,
+                false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null,
+                ManualType.DEFAULT, null);
+
+        assertThat(fx.convert(noManual, "INR").manual()).isNull();
     }
 }

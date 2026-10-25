@@ -26,8 +26,29 @@ public record HoldingResponse(
         /** True when this holding's stored data is incomplete or inconsistent and a computed
          *  figure (valuation, currency conversion, …) had to fall back to a safe default instead
          *  of failing the whole request. {@code dataIssueMessage} explains what to fix. */
-        boolean dataIssue, String dataIssueMessage
+        boolean dataIssue, String dataIssueMessage,
+        /** Never null — DEFAULT for a plain holding. */
+        ManualType manualType, ManualDetails manual
 ) {
+    /** A response with no manual sub-type, for callers that build one from converted figures only. */
+    public HoldingResponse(String id, String holdingId, String categoryId, String categoryName, String name, HoldingKind kind,
+                           ValuationMethod valuationMethod, String tickerSymbol, String broker, String currency,
+                           String defaultCurrency, BigDecimal investedValue, BigDecimal currentValue, BigDecimal profitLoss,
+                           BigDecimal profitLossPercentage, BigDecimal realisedProfitLoss, BigDecimal accruedIncome,
+                           BigDecimal quantity, BigDecimal area, AreaUnit areaUnit, BigDecimal fixedAnnualRate,
+                           CompoundingFrequency compoundingFrequency, LocalDate fixedRateStartDate, LocalDate fixedRateEndDate,
+                           RepaymentFrequency repaymentFrequency, BigDecimal emiAmount, Integer emiDayOfMonth,
+                           Integer loanTermMonths, LocalDate repaymentDueDate, Boolean liquidWithinSevenDays, Boolean blocked,
+                           String description, String notes, Set<String> tags, Instant createdAt, Instant updatedAt,
+                           Instant priceUpdatedAt, boolean dataIssue, String dataIssueMessage) {
+        this(id, holdingId, categoryId, categoryName, name, kind, valuationMethod, tickerSymbol, broker, currency,
+                defaultCurrency, investedValue, currentValue, profitLoss, profitLossPercentage, realisedProfitLoss,
+                accruedIncome, quantity, area, areaUnit, fixedAnnualRate, compoundingFrequency, fixedRateStartDate,
+                fixedRateEndDate, repaymentFrequency, emiAmount, emiDayOfMonth, loanTermMonths, repaymentDueDate,
+                liquidWithinSevenDays, blocked, description, notes, tags, createdAt, updatedAt, priceUpdatedAt,
+                dataIssue, dataIssueMessage, ManualType.DEFAULT, ManualDetails.NONE);
+    }
+
     /** Flags this response with a data-issue message, keeping the first one found if already flagged. */
     public HoldingResponse withDataIssue(String message) {
         if (dataIssue) return this;
@@ -36,6 +57,6 @@ public record HoldingResponse(
                 realisedProfitLoss, accruedIncome, quantity, area, areaUnit, fixedAnnualRate, compoundingFrequency,
                 fixedRateStartDate, fixedRateEndDate, repaymentFrequency, emiAmount, emiDayOfMonth,
                 loanTermMonths, repaymentDueDate, liquidWithinSevenDays, blocked, description, notes, tags,
-                createdAt, updatedAt, priceUpdatedAt, true, message);
+                createdAt, updatedAt, priceUpdatedAt, true, message, manualType, manual);
     }
 }

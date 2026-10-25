@@ -13,11 +13,13 @@ import static org.mockito.Mockito.when;
 import com.finsights.portfolio.domain.Category;
 import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.HoldingKind;
+import com.finsights.portfolio.domain.ManualType;
 import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.Transaction;
 import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.UserAccount;
 import com.finsights.portfolio.domain.ValuationMethod;
+import com.finsights.portfolio.dto.ManualDetails;
 import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.HoldingRequest;
 import com.finsights.portfolio.dto.HoldingResponse;
@@ -508,14 +510,18 @@ class HoldingServiceTest {
         // syncFromTransactions() re-derives quantity from this, same as it would against a real DB.
         when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
                 txn(TransactionType.BUY, "5000000", "1")));
-        HoldingRequest request = new HoldingRequest("cat-1", "2BHK Flat", ValuationMethod.MANUAL, null, "Self", "INR",
-                new BigDecimal("99"), new BigDecimal("1200"), com.finsights.portfolio.domain.AreaUnit.SQ_FT,
-                new BigDecimal("5000000"), new BigDecimal("6000000"), null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null);
+        HoldingRequest request = realEstateRequest(new BigDecimal("1200"), new BigDecimal("4000"), null);
 
         HoldingResponse response = service.create(request);
 
         assertThat(response.quantity()).isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(response.manualType()).isEqualTo(ManualType.REAL_ESTATE);
+        ArgumentCaptor<Holding> saved = ArgumentCaptor.forClass(Holding.class);
+        verify(holdings, times(2)).save(saved.capture());
+        Holding stored = saved.getAllValues().get(0);
+        assertThat(openingAmount()).isEqualByComparingTo("4800000");
+        assertThat(stored.getCurrentValue()).isEqualByComparingTo("4800000");
+        assertThat(stored.getCurrentUnitPrice()).isEqualByComparingTo("4000");
         assertThat(response.area()).isEqualByComparingTo("1200");
         assertThat(response.areaUnit()).isEqualTo(com.finsights.portfolio.domain.AreaUnit.SQ_FT);
     }
@@ -524,15 +530,10 @@ class HoldingServiceTest {
     void createRealEstateHoldingWithoutAreaIsRejected() {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
-        category.setRealEstate(true);
         UserAccount user = new UserAccount("demo@finsights.local", "Demo");
         when(currentUser.currentUser()).thenReturn(user);
         when(categories.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(category));
-        when(holdings.findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(any(), any(), any())).thenReturn(Optional.empty());
-        when(fx.supports(any())).thenReturn(true);
-        HoldingRequest request = new HoldingRequest("cat-1", "2BHK Flat", ValuationMethod.MANUAL, null, "Self", "INR",
-                null, null, null, new BigDecimal("5000000"), new BigDecimal("6000000"), null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null);
+        HoldingRequest request = realEstateRequest(null, new BigDecimal("4000"), null);
 
         assertThatThrownBy(() -> service.create(request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -555,5 +556,101 @@ class HoldingServiceTest {
         verify(holdings, times(2)).save(captor.capture());
         assertThat(captor.getAllValues().get(0).getArea()).isNull();
         assertThat(captor.getAllValues().get(0).getAreaUnit()).isNull();
+    }
+
+    /** The invested value the holding was opened with — the ledger owns it afterwards, so read the opening transaction. */
+    private BigDecimal openingAmount() {
+        ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactions).save(captor.capture());
+        return captor.getValue().getAmount();
+    }
+
+    private HoldingRequest realEstateRequest(BigDecimal area, BigDecimal purchasePrice, BigDecimal currentPrice) {
+        ManualDetails details = new ManualDetails(purchasePrice, currentPrice, null, null, null, null, null, null);
+        return new HoldingRequest("cat-1", "2BHK Flat", ValuationMethod.MANUAL, null, "Self", "INR",
+                new BigDecimal("99"), area, com.finsights.portfolio.domain.AreaUnit.SQ_FT,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                ManualType.REAL_ESTATE, details);
+    }
+
+    private HoldingRequest epfoRequest(BigDecimal total, ManualDetails details) {
+        return new HoldingRequest("cat-1", "EPF", ValuationMethod.MANUAL, null, "EPFO", "INR",
+                null, null, null, total, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                ManualType.EPFO, details);
+    }
+
+    @Test
+    void createEpfoHoldingStoresContributionsAndDerivesCurrentValue() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForCreate(category);
+        ManualDetails details = new ManualDetails(null, null, new BigDecimal("100000"), new BigDecimal("60000"),
+                new BigDecimal("12000"), new BigDecimal("0.0825"), 3, 31);
+
+        HoldingResponse response = service.create(epfoRequest(null, details));
+
+        ArgumentCaptor<Holding> saved = ArgumentCaptor.forClass(Holding.class);
+        verify(holdings, times(2)).save(saved.capture());
+        Holding stored = saved.getAllValues().get(0);
+        assertThat(stored.getManualType()).isEqualTo(ManualType.EPFO);
+        assertThat(openingAmount()).isEqualByComparingTo("160000");
+        assertThat(stored.getCurrentValue()).isEqualByComparingTo("172000");
+        assertThat(stored.getQuantity()).isNull();
+        assertThat(stored.getArea()).isNull();
+        assertThat(stored.getInterestCreditMonth()).isEqualTo(3);
+        assertThat(response.manualType()).isEqualTo(ManualType.EPFO);
+    }
+
+    @Test
+    void createPlainHoldingDropsManualDetails() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForCreate(category);
+        ManualDetails details = new ManualDetails(new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"), null, null, null, null, null);
+        HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
+                null, null, null, new BigDecimal("10000"), new BigDecimal("12000"), null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, details);
+
+        service.create(request);
+
+        ArgumentCaptor<Holding> saved = ArgumentCaptor.forClass(Holding.class);
+        verify(holdings, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().get(0).getManualType()).isNull();
+        assertThat(saved.getAllValues().get(0).getPurchaseUnitPrice()).isNull();
+        assertThat(saved.getAllValues().get(0).getEmployeeContribution()).isNull();
+    }
+
+    @Test
+    void createRealEstateHoldingInLiabilityCategoryIsRejected() {
+        Category category = new Category();
+        category.setKind(HoldingKind.LIABILITY);
+        UserAccount user = new UserAccount("demo@finsights.local", "Demo");
+        when(currentUser.currentUser()).thenReturn(user);
+        when(categories.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(category));
+
+        assertThatThrownBy(() -> service.create(realEstateRequest(new BigDecimal("10"), new BigDecimal("5"), null)))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("liability");
+    }
+
+    @Test
+    void editingRealEstateUnitPriceRecalculatesValuesAndBooksAnAdjustment() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForUpdate(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setManualType(ManualType.REAL_ESTATE);
+        holding.setInvestedValue(new BigDecimal("4800000.00"));
+        holding.setCurrentValue(new BigDecimal("4800000.00"));
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(
+                txn(TransactionType.BUY, "4800000", "1"), txn(TransactionType.ADJUSTMENT, "120000", null)));
+
+        service.update("h-1", realEstateRequest(new BigDecimal("1200"), new BigDecimal("4100"), new BigDecimal("5000")));
+
+        ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
+        verify(transactions).save(captor.capture());
+        assertThat(captor.getValue().getAmount()).isEqualByComparingTo("120000.00");
+        assertThat(holding.getCurrentValue()).isEqualByComparingTo("6000000.00");
+        assertThat(holding.getPurchaseUnitPrice()).isEqualByComparingTo("4100");
     }
 }

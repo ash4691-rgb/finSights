@@ -42,6 +42,25 @@ public class Holding {
     private BigDecimal area;
     @Enumerated(EnumType.STRING) @Column(length = 16)
     private AreaUnit areaUnit;
+    /** Sub-type of a MANUAL holding; null for a plain one. Drives which of the fields below apply. */
+    @Enumerated(EnumType.STRING) @Column(length = 16)
+    private ManualType manualType;
+    /** REAL_ESTATE: price per {@link #areaUnit} when bought / today; invested and current value are area x price. */
+    @Column(precision = 20, scale = 4)
+    private BigDecimal purchaseUnitPrice;
+    @Column(precision = 20, scale = 4)
+    private BigDecimal currentUnitPrice;
+    /** EPFO: contribution split, interest credited so far, expected rate (fraction), and the month/day to nudge for the yearly credit. */
+    @Column(precision = 20, scale = 2)
+    private BigDecimal employeeContribution;
+    @Column(precision = 20, scale = 2)
+    private BigDecimal employerContribution;
+    @Column(precision = 20, scale = 2)
+    private BigDecimal interestAccumulated;
+    @Column(precision = 10, scale = 6)
+    private BigDecimal expectedInterestRate;
+    private Integer interestCreditMonth;
+    private Integer interestCreditDay;
     /** Remaining cost basis after average-cost SELLs; the ledger owns this (see HoldingService). */
     @Column(precision = 20, scale = 2)
     private BigDecimal investedValue = BigDecimal.ZERO;
@@ -128,6 +147,24 @@ public class Holding {
     public void setArea(BigDecimal area) { this.area = area; }
     public AreaUnit getAreaUnit() { return areaUnit; }
     public void setAreaUnit(AreaUnit areaUnit) { this.areaUnit = areaUnit; }
+    public ManualType getManualType() { return manualType; }
+    public void setManualType(ManualType manualType) { this.manualType = manualType; }
+    public BigDecimal getPurchaseUnitPrice() { return purchaseUnitPrice; }
+    public void setPurchaseUnitPrice(BigDecimal purchaseUnitPrice) { this.purchaseUnitPrice = purchaseUnitPrice; }
+    public BigDecimal getCurrentUnitPrice() { return currentUnitPrice; }
+    public void setCurrentUnitPrice(BigDecimal currentUnitPrice) { this.currentUnitPrice = currentUnitPrice; }
+    public BigDecimal getEmployeeContribution() { return employeeContribution; }
+    public void setEmployeeContribution(BigDecimal employeeContribution) { this.employeeContribution = employeeContribution; }
+    public BigDecimal getEmployerContribution() { return employerContribution; }
+    public void setEmployerContribution(BigDecimal employerContribution) { this.employerContribution = employerContribution; }
+    public BigDecimal getInterestAccumulated() { return interestAccumulated; }
+    public void setInterestAccumulated(BigDecimal interestAccumulated) { this.interestAccumulated = interestAccumulated; }
+    public BigDecimal getExpectedInterestRate() { return expectedInterestRate; }
+    public void setExpectedInterestRate(BigDecimal expectedInterestRate) { this.expectedInterestRate = expectedInterestRate; }
+    public Integer getInterestCreditMonth() { return interestCreditMonth; }
+    public void setInterestCreditMonth(Integer interestCreditMonth) { this.interestCreditMonth = interestCreditMonth; }
+    public Integer getInterestCreditDay() { return interestCreditDay; }
+    public void setInterestCreditDay(Integer interestCreditDay) { this.interestCreditDay = interestCreditDay; }
     public BigDecimal getInvestedValue() { return investedValue; }
     public void setInvestedValue(BigDecimal investedValue) { this.investedValue = investedValue; }
     public BigDecimal getRealisedProfitLoss() { return realisedProfitLoss; }

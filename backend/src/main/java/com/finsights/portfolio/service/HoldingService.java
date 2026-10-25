@@ -3,6 +3,7 @@ package com.finsights.portfolio.service;
 import com.finsights.portfolio.domain.Category;
 import com.finsights.portfolio.domain.Holding;
 import com.finsights.portfolio.domain.HoldingKind;
+import com.finsights.portfolio.domain.ManualType;
 import com.finsights.portfolio.domain.RepaymentFrequency;
 import com.finsights.portfolio.domain.SnapshotSubject;
 import com.finsights.portfolio.domain.Transaction;
@@ -10,6 +11,7 @@ import com.finsights.portfolio.domain.TransactionType;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.HoldingRequest;
 import com.finsights.portfolio.dto.HoldingResponse;
+import com.finsights.portfolio.dto.ManualDetails;
 import com.finsights.portfolio.dto.MarketHistoryResponse;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import com.finsights.portfolio.repository.CategoryRepository;
@@ -247,8 +249,9 @@ public class HoldingService {
     }
 
     @Transactional
-    public HoldingResponse create(HoldingRequest request) {
+    public HoldingResponse create(HoldingRequest rawRequest) {
         String userId = currentUser.currentUser().getId();
+        HoldingRequest request = resolveManual(rawRequest);
         if (request.valuationMethod() == ValuationMethod.MARKET_PRICE
                 && (request.quantity() == null || request.quantity().signum() <= 0)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A market-linked holding needs a quantity");
@@ -305,8 +308,9 @@ public class HoldingService {
     }
 
     @Transactional
-    public HoldingResponse update(String id, HoldingRequest request) {
+    public HoldingResponse update(String id, HoldingRequest rawRequest) {
         Holding holding = findOwned(id);
+        HoldingRequest request = resolveManual(rawRequest);
         ValuationMethod oldMethod = holding.getValuationMethod();
         BigDecimal oldValue = holding.getCurrentValue();
         // Invested value is normally ledger-derived (below), not user-editable — but a manual
@@ -548,7 +552,8 @@ public class HoldingService {
                     holding.getRepaymentFrequency(), holding.getEmiAmount(), holding.getEmiDayOfMonth(),
                     holding.getLoanTermMonths(), holding.getRepaymentDueDate(), holding.getLiquidWithinSevenDays(),
                     holding.getBlocked(), holding.getDescription(), holding.getNotes(), Set.copyOf(holding.getTags()),
-                    holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt(), false, null);
+                    holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt(), false, null,
+                    manualTypeOf(holding), manualDetailsOf(holding));
             if (valuations.isFixedRateIncomplete(holding)) {
                 response = response.withDataIssue("Fixed-rate details are incomplete — edit this holding to set "
                         + "its rate, interest payout frequency, and start date.");
@@ -576,7 +581,25 @@ public class HoldingService {
                 holding.getEmiAmount(), holding.getEmiDayOfMonth(), holding.getLoanTermMonths(), holding.getRepaymentDueDate(),
                 holding.getLiquidWithinSevenDays(), holding.getBlocked(), holding.getDescription(), holding.getNotes(),
                 Set.copyOf(holding.getTags()), holding.getCreatedAt(), holding.getUpdatedAt(), holding.getPriceUpdatedAt(),
-                true, message);
+                true, message, manualTypeOf(holding), manualDetailsOf(holding));
+    }
+
+    private ManualType manualTypeOf(Holding holding) {
+        return ManualHoldingRules.effectiveType(holding.getManualType());
+    }
+
+    private ManualDetails manualDetailsOf(Holding holding) {
+        return new ManualDetails(holding.getPurchaseUnitPrice(), holding.getCurrentUnitPrice(),
+                holding.getEmployeeContribution(), holding.getEmployerContribution(), holding.getInterestAccumulated(),
+                holding.getExpectedInterestRate(), holding.getInterestCreditMonth(), holding.getInterestCreditDay());
+    }
+
+    /** Validates a real-estate/EPFO request and derives its invested and current value from the inputs. */
+    private HoldingRequest resolveManual(HoldingRequest request) {
+        if (ManualHoldingRules.effectiveType(request.manualType()) == ManualType.DEFAULT) return request;
+        boolean liability = categories.findByIdAndUser_Id(request.categoryId(), currentUser.currentUser().getId())
+                .map(c -> c.getKind() == HoldingKind.LIABILITY).orElse(false);
+        return ManualHoldingRules.resolve(request, liability);
     }
 
     private Holding findOwned(String id) {
@@ -620,10 +643,8 @@ public class HoldingService {
         if (!liability && method == ValuationMethod.MANUAL && source.currentValue() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A manually-valued holding needs a current value");
         }
-        boolean realEstate = !liability && category.isRealEstate();
-        if (realEstate && (source.area() == null || source.area().signum() <= 0 || source.areaUnit() == null)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A real-estate holding needs an area and a unit");
-        }
+        ManualType manualType = liability ? ManualType.DEFAULT : ManualHoldingRules.effectiveType(source.manualType());
+        boolean realEstate = manualType == ManualType.REAL_ESTATE;
         if (liability) validateLiability(source);
 
         target.setCategory(category);
@@ -632,7 +653,8 @@ public class HoldingService {
         target.setTickerSymbol(liability ? null : clean(source.tickerSymbol()));
         target.setBroker(clean(source.broker()));
         target.setCurrency(source.currency() == null || source.currency().isBlank() ? "INR" : source.currency().trim().toUpperCase());
-        target.setQuantity(liability ? null : realEstate ? BigDecimal.ONE : source.quantity());
+        target.setQuantity(quantityFor(source, liability, manualType));
+        applyManualType(manualType, source.manual(), target);
         target.setArea(realEstate ? source.area() : null);
         target.setAreaUnit(realEstate ? source.areaUnit() : null);
         target.setInvestedValue(zeroIfNull(source.investedValue()));
@@ -653,6 +675,28 @@ public class HoldingService {
         target.setDescription(clean(source.description()));
         target.setNotes(clean(source.notes()));
         target.setTags(cleanTags(source.tags()));
+    }
+
+    private BigDecimal quantityFor(HoldingRequest source, boolean liability, ManualType manualType) {
+        if (liability || manualType == ManualType.EPFO) return null;
+        if (manualType == ManualType.REAL_ESTATE) return BigDecimal.ONE;
+        return source.quantity();
+    }
+
+    /** Stores the manual sub-type and only the detail fields that belong to it; everything else is cleared. */
+    private void applyManualType(ManualType type, ManualDetails details, Holding target) {
+        ManualDetails d = details == null ? ManualDetails.NONE : details;
+        boolean realEstate = type == ManualType.REAL_ESTATE;
+        boolean epfo = type == ManualType.EPFO;
+        target.setManualType(type == ManualType.DEFAULT ? null : type);
+        target.setPurchaseUnitPrice(realEstate ? d.purchaseUnitPrice() : null);
+        target.setCurrentUnitPrice(realEstate ? d.currentUnitPrice() : null);
+        target.setEmployeeContribution(epfo ? d.employeeContribution() : null);
+        target.setEmployerContribution(epfo ? d.employerContribution() : null);
+        target.setInterestAccumulated(epfo ? d.interestAccumulated() : null);
+        target.setExpectedInterestRate(epfo ? d.expectedInterestRate() : null);
+        target.setInterestCreditMonth(epfo ? d.interestCreditMonth() : null);
+        target.setInterestCreditDay(epfo ? d.interestCreditDay() : null);
     }
 
     private Set<String> cleanTags(Set<String> tags) {
