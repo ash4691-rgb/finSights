@@ -593,8 +593,8 @@ class HoldingServiceTest {
         verify(holdings, times(2)).save(saved.capture());
         Holding stored = saved.getAllValues().get(0);
         assertThat(stored.getManualType()).isEqualTo(ManualType.EPFO);
-        assertThat(openingAmount()).isEqualByComparingTo("160000");
-        assertThat(stored.getCurrentValue()).isEqualByComparingTo("172000");
+        assertThat(openingAmount()).isEqualByComparingTo("148000");
+        assertThat(stored.getCurrentValue()).isEqualByComparingTo("160000");
         assertThat(stored.getQuantity()).isNull();
         assertThat(stored.getArea()).isNull();
         assertThat(stored.getInterestCreditMonth()).isEqualTo(3);

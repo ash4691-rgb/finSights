@@ -52,19 +52,20 @@ final class ManualHoldingRules {
         requireNotNegative(details.interestAccumulated(), "Interest accumulated");
         requireRate(details.expectedInterestRate());
         requireCreditDate(details.interestCreditMonth(), details.interestCreditDay());
-        BigDecimal contributions = totalContributions(request, details);
+        BigDecimal balance = currentBalance(request, details);
         BigDecimal interest = details.interestAccumulated() == null ? BigDecimal.ZERO : details.interestAccumulated();
+        if (interest.compareTo(balance) > 0) throw bad("Interest accumulated can't be more than the current balance");
         ManualDetails resolved = new ManualDetails(null, null, details.employeeContribution(), details.employerContribution(),
                 interest, details.expectedInterestRate(), details.interestCreditMonth(), details.interestCreditDay());
-        return withValues(request, resolved, money(contributions), money(contributions.add(interest)));
+        return withValues(request, resolved, money(balance.subtract(interest)), money(balance));
     }
 
-    /** Employee + employer when either is given; otherwise the single "total contributions" figure. */
-    private static BigDecimal totalContributions(HoldingRequest request, ManualDetails details) {
+    /** The passbook balance (interest included): employee + employer when either is given, otherwise the single total. */
+    private static BigDecimal currentBalance(HoldingRequest request, ManualDetails details) {
         boolean split = details.employeeContribution() != null || details.employerContribution() != null;
         if (split) return orZero(details.employeeContribution()).add(orZero(details.employerContribution()));
-        requireNotNegative(request.investedValue(), "Total contributions");
-        if (request.investedValue() == null) throw bad("An EPFO holding needs its total contributions");
+        requireNotNegative(request.investedValue(), "Total balance");
+        if (request.investedValue() == null) throw bad("An EPFO holding needs its total balance");
         return request.investedValue();
     }
 

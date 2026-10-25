@@ -6,7 +6,7 @@ import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, fre
 import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
 import { TransactionModal } from './TransactionsView'
 import { ManualTypeFields, ManualFacts } from './ManualTypeFields'
-import { manualTypes, manualTypeLabel, manualFormFrom, defaultsForCategory, deriveManualValues, manualPayload, creditDateIncomplete } from './manualType'
+import { manualTypes, manualTypeLabel, manualFormFrom, defaultsForCategory, deriveManualValues, manualPayload } from './manualType'
 import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
@@ -365,7 +365,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || moneyLoading || !form.categoryId || !form.name.trim()
         || (isMarket && !form.tickerSymbol.trim())
         || (isMarket && !isEdit && !form.quantity)
-        || (isTypedManual && (!derived || creditDateIncomplete(form)))
+        || (isTypedManual && !derived)
         || (!isLiability && !isTypedManual && !form.investedValue)
         || (!isLiability && !isTypedManual && form.valuationMethod === 'MANUAL' && !form.currentValue)
         || (isLiability && (!form.investedValue || !form.currentValue || (isOneTime ? !form.repaymentDueDate : (!form.emiDayOfMonth || (!form.emiAmount && !form.loanTermMonths)))))

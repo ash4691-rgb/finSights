@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest'
 import { blankManualForm } from '../util'
-import { creditDateIncomplete, defaultsForCategory, deriveManualValues, manualFormFrom, manualPayload, manualTypeLabel } from './manualType'
+import { defaultsForCategory, deriveManualValues, manualFormFrom, manualPayload, manualTypeLabel } from './manualType'
 import type { Category, Holding } from '../types'
 
 const form = (overrides: Partial<ReturnType<typeof blankManualForm>> & { area?: string; investedValue?: string }) =>
@@ -19,15 +19,16 @@ describe('deriveManualValues', () => {
     expect(deriveManualValues('REAL_ESTATE', form({ area: '5', purchaseUnitPrice: '5', currentUnitPrice: '0' }))).toBeNull()
   })
 
-  test('EPFO uses the split when given, otherwise the total, and adds interest', () => {
+  test('EPFO current is the employee + employer balance (or one total) and invested is current minus interest', () => {
     expect(deriveManualValues('EPFO', form({ employeeContribution: '100', employerContribution: '50', interestAccumulated: '10' })))
-      .toEqual({ invested: 150, current: 160 })
+      .toEqual({ invested: 140, current: 150 })
     expect(deriveManualValues('EPFO', form({ employerContribution: '70' }))).toEqual({ invested: 70, current: 70 })
-    expect(deriveManualValues('EPFO', form({ investedValue: '200', interestAccumulated: '20' }))).toEqual({ invested: 200, current: 220 })
+    expect(deriveManualValues('EPFO', form({ investedValue: '200', interestAccumulated: '20' }))).toEqual({ invested: 180, current: 200 })
   })
 
-  test('EPFO with no contributions, and the default type, derive nothing', () => {
+  test('EPFO with no balance, or interest above the balance, and the default type, derive nothing', () => {
     expect(deriveManualValues('EPFO', form({}))).toBeNull()
+    expect(deriveManualValues('EPFO', form({ investedValue: '5', interestAccumulated: '6' }))).toBeNull()
     expect(deriveManualValues('DEFAULT', form({ area: '5', purchaseUnitPrice: '5' }))).toBeNull()
   })
 })
@@ -38,10 +39,10 @@ describe('manualPayload', () => {
     expect(manualPayload('REAL_ESTATE', form({ purchaseUnitPrice: '4000', currentUnitPrice: '4500' }))).toMatchObject({ currentUnitPrice: 4500 })
   })
 
-  test('EPFO converts the rate to a fraction and sends the credit date only as a pair', () => {
-    expect(manualPayload('EPFO', form({ expectedInterestRate: '8.25', interestCreditMonth: '3', interestCreditDay: '31' })))
+  test('EPFO converts the rate to a fraction and splits the single credit date into month and day', () => {
+    expect(manualPayload('EPFO', form({ expectedInterestRate: '8.25', interestCreditDate: '2026-03-31' })))
       .toMatchObject({ expectedInterestRate: 0.0825, interestCreditMonth: 3, interestCreditDay: 31 })
-    expect(manualPayload('EPFO', form({ interestCreditMonth: '3' }))).toMatchObject({ interestCreditMonth: undefined, interestCreditDay: undefined })
+    expect(manualPayload('EPFO', form({}))).toMatchObject({ interestCreditMonth: undefined, interestCreditDay: undefined })
   })
 
   test('the default type sends no manual block', () => {
@@ -53,18 +54,11 @@ describe('form helpers', () => {
   const base = { id: 'h', manualType: 'EPFO', manual: { employeeContribution: 5, expectedInterestRate: 0.0825, interestCreditMonth: 3, interestCreditDay: 31 } } as Holding
 
   test('manualFormFrom restores a saved holding, rate as a percentage', () => {
-    expect(manualFormFrom(base)).toMatchObject({ manualType: 'EPFO', employeeContribution: '5', expectedInterestRate: '8.25', interestCreditMonth: '3', interestCreditDay: '31', purchaseUnitPrice: '' })
+    expect(manualFormFrom(base)).toMatchObject({ manualType: 'EPFO', employeeContribution: '5', expectedInterestRate: '8.25', interestCreditDate: `${new Date().getFullYear()}-03-31`, purchaseUnitPrice: '' })
   })
 
   test('manualFormFrom falls back to the default type with empty fields', () => {
     expect(manualFormFrom({ id: 'h' } as Holding)).toEqual(blankManualForm())
-  })
-
-  test('only a half-filled credit date counts as incomplete', () => {
-    expect(creditDateIncomplete(form({ interestCreditMonth: '3' }))).toBe(true)
-    expect(creditDateIncomplete(form({ interestCreditDay: '3' }))).toBe(true)
-    expect(creditDateIncomplete(form({ interestCreditMonth: '3', interestCreditDay: '3' }))).toBe(false)
-    expect(creditDateIncomplete(form({}))).toBe(false)
   })
 
   test('a real-estate asset category defaults to manual real estate, anything else to default', () => {

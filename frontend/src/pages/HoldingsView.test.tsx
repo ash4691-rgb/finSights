@@ -278,40 +278,38 @@ describe('HoldingModal — manual types', () => {
     fireEvent.change(screen.getByLabelText(/^Employer contribution/), { target: { value: '60000' } })
     fireEvent.change(screen.getByLabelText(/^Interest accumulated/), { target: { value: '12000' } })
 
-    expect(screen.getByLabelText(/^Total contributions/)).toBeDisabled()
-    expect(screen.getByLabelText('Invested value (calculated)')).toHaveValue('160000')
-    expect(screen.getByLabelText('Current value (calculated)')).toHaveValue('172000')
+    expect(screen.getByLabelText(/^Total balance/)).toBeDisabled()
+    expect(screen.getByLabelText('Invested value (calculated)')).toHaveValue('148000')
+    expect(screen.getByLabelText('Current value (calculated)')).toHaveValue('160000')
     expect(screen.queryByLabelText('Quantity')).not.toBeInTheDocument()
   })
 
-  test('submits an EPFO holding with rate as a fraction and the credit date', async () => {
+  test('submits an EPFO holding with current = balance, invested = balance - interest, rate as a fraction and the credit date', async () => {
     const onSaved = renderNew(equityCategory)
 
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'EPFO' } })
-    fireEvent.change(screen.getByLabelText(/^Total contributions/), { target: { value: '200000' } })
+    fireEvent.change(screen.getByLabelText(/^Total balance/), { target: { value: '200000' } })
     fireEvent.change(screen.getByLabelText(/^Interest accumulated/), { target: { value: '10000' } })
     fireEvent.change(screen.getByLabelText(/^Expected interest rate/), { target: { value: '8.25' } })
-    fireEvent.change(screen.getByLabelText(/^Interest credit month/), { target: { value: '3' } })
-    fireEvent.change(screen.getByLabelText(/^Interest credit day/), { target: { value: '31' } })
+    fireEvent.change(screen.getByLabelText(/^Interest credit date/), { target: { value: '2026-03-31' } })
     fillBasics('EPF - Acme')
     fireEvent.click(screen.getByRole('button', { name: 'Add holding' }))
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(posted).toMatchObject({
-      manualType: 'EPFO', quantity: null, area: null, investedValue: 200000, currentValue: 210000,
+      manualType: 'EPFO', quantity: null, area: null, investedValue: 190000, currentValue: 200000,
       manual: { interestAccumulated: 10000, expectedInterestRate: 0.0825, interestCreditMonth: 3, interestCreditDay: 31 },
     })
   })
 
-  test('an EPFO credit date with only the month set blocks saving', async () => {
+  test('an EPFO balance with interest above it blocks saving', async () => {
     renderNew(equityCategory)
 
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'EPFO' } })
-    fireEvent.change(screen.getByLabelText(/^Total contributions/), { target: { value: '5000' } })
-    fireEvent.change(screen.getByLabelText(/^Interest credit month/), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText(/^Total balance/), { target: { value: '5000' } })
+    fireEvent.change(screen.getByLabelText(/^Interest accumulated/), { target: { value: '6000' } })
     fillBasics('EPF')
 
-    expect(screen.getByText(/Set both the month and the day/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add holding' })).toBeDisabled()
   })
 

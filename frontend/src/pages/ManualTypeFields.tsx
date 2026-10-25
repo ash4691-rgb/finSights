@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Field } from '../ui'
 import { areaUnits, areaUnitLabel, money, percent } from '../util'
 import type { ManualForm } from '../util'
-import { creditDateIncomplete, hasContributionSplit, monthNames } from './manualType'
+import { hasContributionSplit, monthNames } from './manualType'
 import type { AreaUnit, Holding, ManualType } from '../types'
 
 type FormFields = ManualForm & { area: string; areaUnit: AreaUnit; investedValue: string; currency: string }
@@ -39,9 +39,9 @@ function RealEstateFields({ form, set, derived, disabled }: Omit<FieldsProps, 't
 function EpfoFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>) {
   const split = hasContributionSplit(form)
   return <>
-    <Field label="Total contributions" required={!split} wide>
-      {number(split ? String(derived?.invested ?? '') : form.investedValue, v => set('investedValue', v), { required: !split, disabled: split || disabled, placeholder: split ? 'Employee + employer' : 'Everything contributed so far' })}
-      {split && <p className="hint">Employee + employer contributions below.</p>}
+    <Field label="Total balance" required={!split} wide>
+      {number(split ? String(derived?.current ?? '') : form.investedValue, v => set('investedValue', v), { required: !split, disabled: split || disabled, placeholder: split ? 'Employee + employer' : 'Balance shown in your EPFO passbook' })}
+      <p className="hint">{split ? 'Employee + employer contributions below.' : 'EPFO reports employee + employer share including interest.'}</p>
     </Field>
     <div className="field-pair">
       <Field label="Employee contribution">{number(form.employeeContribution, v => set('employeeContribution', v), { disabled })}</Field>
@@ -51,15 +51,7 @@ function EpfoFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>)
       <Field label="Interest accumulated">{number(form.interestAccumulated, v => set('interestAccumulated', v), { placeholder: '0', disabled })}</Field>
       <Field label="Expected interest rate (% p.a.)">{number(form.expectedInterestRate, v => set('expectedInterestRate', v), { max: '100', placeholder: 'e.g. 8.25' })}</Field>
     </div>
-    <div className="field-pair">
-      <Field label="Interest credit month">
-        <select value={form.interestCreditMonth} onChange={e => set('interestCreditMonth', e.target.value)}>
-          <option value="">Not set</option>{monthNames.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
-        </select>
-      </Field>
-      <Field label="Interest credit day">{number(form.interestCreditDay, v => set('interestCreditDay', v), { min: '1', max: '31', step: '1', placeholder: '1–31' })}</Field>
-    </div>
-    {creditDateIncomplete(form) && <p className="form-error">Set both the month and the day, or clear them.</p>}
+    <Field label="Interest credit date (repeats yearly)"><input type="date" value={form.interestCreditDate} onChange={e => set('interestCreditDate', e.target.value)} /></Field>
     <CalculatedValues form={form} derived={derived} disabled={disabled} />
   </>
 }

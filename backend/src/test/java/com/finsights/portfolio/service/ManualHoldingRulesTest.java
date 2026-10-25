@@ -91,12 +91,12 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void epfoSumsSplitContributionsAndAddsInterest() {
+    void epfoCurrentIsTheEmployeePlusEmployerBalanceAndInvestedExcludesInterest() {
         HoldingRequest resolved = ManualHoldingRules.resolve(
                 epfo(null, epfoDetails("100", "50", "10", "0.0825", 3, 31)), false);
 
-        assertThat(resolved.investedValue()).isEqualByComparingTo("150");
-        assertThat(resolved.currentValue()).isEqualByComparingTo("160");
+        assertThat(resolved.investedValue()).isEqualByComparingTo("140");
+        assertThat(resolved.currentValue()).isEqualByComparingTo("150");
         assertThat(resolved.manual().interestCreditDay()).isEqualTo(31);
     }
 
@@ -110,21 +110,22 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void epfoUsesTotalContributionsWhenNoSplitIsGiven() {
+    void epfoUsesTheSingleTotalBalanceWhenNoSplitIsGiven() {
         HoldingRequest resolved = ManualHoldingRules.resolve(epfo(n("200"), epfoDetails(null, null, "20", null, null, null)), false);
 
-        assertThat(resolved.investedValue()).isEqualByComparingTo("200");
-        assertThat(resolved.currentValue()).isEqualByComparingTo("220");
+        assertThat(resolved.investedValue()).isEqualByComparingTo("180");
+        assertThat(resolved.currentValue()).isEqualByComparingTo("200");
     }
 
     @Test
     void epfoWithoutAnyContributionIsRejected() {
-        assertRejected(epfo(null, null), "total contributions");
+        assertRejected(epfo(null, null), "total balance");
     }
 
     @Test
     void epfoValidationRejectsBadValues() {
-        assertRejected(epfo(n("-1"), null), "Total contributions");
+        assertRejected(epfo(n("-1"), null), "Total balance");
+        assertRejected(epfo(n("5"), epfoDetails(null, null, "6", null, null, null)), "more than the current balance");
         assertRejected(epfo(null, epfoDetails("-1", null, null, null, null, null)), "Employee contribution");
         assertRejected(epfo(null, epfoDetails(null, "-1", null, null, null, null)), "Employer contribution");
         assertRejected(epfo(n("5"), epfoDetails(null, null, "-1", null, null, null)), "Interest accumulated");
