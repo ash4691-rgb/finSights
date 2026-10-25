@@ -4,17 +4,10 @@ import type { Category, Holding, ManualDetails, ManualType, ValuationMethod } fr
 
 export const manualTypes: ManualType[] = ['DEFAULT', 'REAL_ESTATE', 'EPFO']
 export const manualTypeLabel = (t: ManualType) => t === 'REAL_ESTATE' ? 'Real estate' : t === 'EPFO' ? 'EPFO' : 'Default'
-export const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 type DerivationInput = ManualForm & { area: string; investedValue: string }
 
 const text = (n?: number) => n != null ? String(n) : ''
-const pad2 = (n: number) => String(n).padStart(2, '0')
-
-// The nudge is stored as a month + day that repeats yearly; the form edits it as one date, shown in the current year.
-const creditDateFrom = (month?: number, day?: number) =>
-  month != null && day != null ? `${new Date().getFullYear()}-${pad2(month)}-${pad2(day)}` : ''
-
 // Edit form values for a holding that already carries a manual type.
 export const manualFormFrom = (holding: Holding): ManualForm => {
   const m: ManualDetails = holding.manual ?? {}
@@ -24,7 +17,6 @@ export const manualFormFrom = (holding: Holding): ManualForm => {
     employeeContribution: text(m.employeeContribution), employerContribution: text(m.employerContribution),
     interestAccumulated: text(m.interestAccumulated),
     expectedInterestRate: m.expectedInterestRate != null ? String(+(m.expectedInterestRate * 100).toFixed(4)) : '',
-    interestCreditDate: creditDateFrom(m.interestCreditMonth, m.interestCreditDay),
   }
 }
 
@@ -72,13 +64,9 @@ export function manualPayload(type: ManualType, f: ManualForm): ManualDetails | 
 const optional = (value: string) => value === '' ? undefined : numeric(value)
 
 function epfoPayload(f: ManualForm): ManualDetails {
-  const [, month, day] = f.interestCreditDate.split('-')
-  const hasDate = f.interestCreditDate !== ''
   return {
     employeeContribution: optional(f.employeeContribution), employerContribution: optional(f.employerContribution),
     interestAccumulated: optional(f.interestAccumulated),
     expectedInterestRate: f.expectedInterestRate === '' ? undefined : numeric(f.expectedInterestRate) / 100,
-    interestCreditMonth: hasDate ? Number(month) : undefined,
-    interestCreditDay: hasDate ? Number(day) : undefined,
   }
 }

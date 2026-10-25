@@ -28,16 +28,16 @@ class ManualHoldingRulesTest {
 
     private ManualDetails prices(String purchase, String current) {
         return new ManualDetails(purchase == null ? null : n(purchase), current == null ? null : n(current),
-                null, null, null, null, null, null);
+                null, null, null, null);
     }
 
     private HoldingRequest epfo(BigDecimal invested, ManualDetails details) {
         return request(ManualType.EPFO, ValuationMethod.MANUAL, "INR", null, null, invested, details);
     }
 
-    private ManualDetails epfoDetails(String emp, String er, String interest, String rate, Integer month, Integer day) {
+    private ManualDetails epfoDetails(String emp, String er, String interest, String rate) {
         return new ManualDetails(null, null, emp == null ? null : n(emp), er == null ? null : n(er),
-                interest == null ? null : n(interest), rate == null ? null : n(rate), month, day);
+                interest == null ? null : n(interest), rate == null ? null : n(rate));
     }
 
     private void assertRejected(HoldingRequest request, String message) {
@@ -93,16 +93,16 @@ class ManualHoldingRulesTest {
     @Test
     void epfoCurrentIsTheEmployeePlusEmployerBalanceAndInvestedExcludesInterest() {
         HoldingRequest resolved = ManualHoldingRules.resolve(
-                epfo(null, epfoDetails("100", "50", "10", "0.0825", 3, 31)), false);
+                epfo(null, epfoDetails("100", "50", "10", "0.0825")), false);
 
         assertThat(resolved.investedValue()).isEqualByComparingTo("140");
         assertThat(resolved.currentValue()).isEqualByComparingTo("150");
-        assertThat(resolved.manual().interestCreditDay()).isEqualTo(31);
+        assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
     }
 
     @Test
     void epfoWithOnlyOneContributionTreatsTheOtherAsZero() {
-        HoldingRequest resolved = ManualHoldingRules.resolve(epfo(null, epfoDetails(null, "70", null, null, null, null)), false);
+        HoldingRequest resolved = ManualHoldingRules.resolve(epfo(null, epfoDetails(null, "70", null, null)), false);
 
         assertThat(resolved.investedValue()).isEqualByComparingTo("70");
         assertThat(resolved.currentValue()).isEqualByComparingTo("70");
@@ -111,7 +111,7 @@ class ManualHoldingRulesTest {
 
     @Test
     void epfoUsesTheSingleTotalBalanceWhenNoSplitIsGiven() {
-        HoldingRequest resolved = ManualHoldingRules.resolve(epfo(n("200"), epfoDetails(null, null, "20", null, null, null)), false);
+        HoldingRequest resolved = ManualHoldingRules.resolve(epfo(n("200"), epfoDetails(null, null, "20", null)), false);
 
         assertThat(resolved.investedValue()).isEqualByComparingTo("180");
         assertThat(resolved.currentValue()).isEqualByComparingTo("200");
@@ -125,17 +125,11 @@ class ManualHoldingRulesTest {
     @Test
     void epfoValidationRejectsBadValues() {
         assertRejected(epfo(n("-1"), null), "Total balance");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, "6", null, null, null)), "more than the current balance");
-        assertRejected(epfo(null, epfoDetails("-1", null, null, null, null, null)), "Employee contribution");
-        assertRejected(epfo(null, epfoDetails(null, "-1", null, null, null, null)), "Employer contribution");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, "-1", null, null, null)), "Interest accumulated");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, "1.5", null, null)), "between 0% and 100%");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, "-0.1", null, null)), "between 0% and 100%");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, null, 3, null)), "both the month and the day");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, null, null, 3)), "both the month and the day");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, null, 13, 1)), "valid day");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, null, 0, 1)), "valid day");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, null, 1, 32)), "valid day");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, null, 1, 0)), "valid day");
+        assertRejected(epfo(n("5"), epfoDetails(null, null, "6", null)), "more than the current balance");
+        assertRejected(epfo(null, epfoDetails("-1", null, null, null)), "Employee contribution");
+        assertRejected(epfo(null, epfoDetails(null, "-1", null, null)), "Employer contribution");
+        assertRejected(epfo(n("5"), epfoDetails(null, null, "-1", null)), "Interest accumulated");
+        assertRejected(epfo(n("5"), epfoDetails(null, null, null, "1.5")), "between 0% and 100%");
+        assertRejected(epfo(n("5"), epfoDetails(null, null, null, "-0.1")), "between 0% and 100%");
     }
 }

@@ -1,10 +1,12 @@
 package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.domain.HoldingKind;
+import com.finsights.portfolio.domain.ManualType;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.ActionItemResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
 import java.time.LocalDate;
+import java.time.Month;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -19,6 +21,10 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class ActionCentreService {
+
+    /** EPFO credits a year's interest around the financial year end; the yearly check falls due on 31 October. */
+    static final Month EPFO_CHECK_MONTH = Month.OCTOBER;
+    static final int EPFO_CHECK_DAY = 31;
 
     private final EmiService emis;
     private final InterestPayoutService interestPayouts;
@@ -37,8 +43,11 @@ public class ActionCentreService {
     }
 
     public List<ActionItemResponse> actions(List<HoldingResponse> holdings, boolean converted) {
+        return actions(holdings, converted, LocalDate.now());
+    }
+
+    List<ActionItemResponse> actions(List<HoldingResponse> holdings, boolean converted, LocalDate today) {
         String baseCurrency = currentUser.currentUser().getBaseCurrency();
-        LocalDate today = LocalDate.now();
         List<ActionItemResponse> items = new ArrayList<>(emis.dueItems());
         items.addAll(interestPayouts.dueItems());
         items.addAll(pendingBrokerHoldings.actionItems());
@@ -52,6 +61,7 @@ public class ActionCentreService {
                                 + ". Confirm the payout and record what happened to the proceeds.",
                         h));
             }
+            if (isEpfoCheckDue(h, today)) items.add(epfoInterestCheck(h, today));
             if (h.valuationMethod() == ValuationMethod.MARKET_PRICE
                     && h.tickerSymbol() != null && !h.tickerSymbol().isBlank() && h.priceUpdatedAt() == null) {
                 items.add(item("PRICE_UNAVAILABLE", "WARN",
@@ -100,6 +110,22 @@ public class ActionCentreService {
                 .filter(a -> !suppressed.contains(a.key()))
                 .sorted(Comparator.comparing(ActionItemResponse::dueDate))
                 .toList();
+    }
+
+    /** The yearly EPFO interest check appears from 1 October and stays until it is done or deferred. */
+    private static boolean isEpfoCheckDue(HoldingResponse h, LocalDate today) {
+        return h.manualType() == ManualType.EPFO && today.getMonthValue() >= EPFO_CHECK_MONTH.getValue();
+    }
+
+    /** One task per holding per year: the period is the year, so marking it done only clears that year's. */
+    private static ActionItemResponse epfoInterestCheck(HoldingResponse h, LocalDate today) {
+        String kind = "EPFO_INTEREST_CHECK";
+        String period = String.valueOf(today.getYear());
+        LocalDate due = LocalDate.of(today.getYear(), EPFO_CHECK_MONTH, EPFO_CHECK_DAY);
+        return new ActionItemResponse(kind, "WARN", "Check EPFO interest — " + h.name(),
+                "EPFO credits interest yearly. Compare your passbook with the interest recorded here and update this "
+                        + "holding's balance and interest accumulated by " + due + ".",
+                h.id(), h.name(), h.broker(), due, null, period, null, ActionItemResponse.keyOf(kind, h.id(), period));
     }
 
     private static ActionItemResponse item(String kind, String severity, String title, String detail, HoldingResponse h) {

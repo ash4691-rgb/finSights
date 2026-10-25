@@ -284,21 +284,20 @@ describe('HoldingModal — manual types', () => {
     expect(screen.queryByLabelText('Quantity')).not.toBeInTheDocument()
   })
 
-  test('submits an EPFO holding with current = balance, invested = balance - interest, rate as a fraction and the credit date', async () => {
+  test('submits an EPFO holding with current = balance, invested = balance - interest and the rate as a fraction', async () => {
     const onSaved = renderNew(equityCategory)
 
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'EPFO' } })
     fireEvent.change(screen.getByLabelText(/^Total balance/), { target: { value: '200000' } })
     fireEvent.change(screen.getByLabelText(/^Interest accumulated/), { target: { value: '10000' } })
     fireEvent.change(screen.getByLabelText(/^Expected interest rate/), { target: { value: '8.25' } })
-    fireEvent.change(screen.getByLabelText(/^Interest credit date/), { target: { value: '2026-03-31' } })
     fillBasics('EPF - Acme')
     fireEvent.click(screen.getByRole('button', { name: 'Add holding' }))
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(posted).toMatchObject({
       manualType: 'EPFO', quantity: null, area: null, investedValue: 190000, currentValue: 200000,
-      manual: { interestAccumulated: 10000, expectedInterestRate: 0.0825, interestCreditMonth: 3, interestCreditDay: 31 },
+      manual: { interestAccumulated: 10000, expectedInterestRate: 0.0825 },
     })
   })
 
@@ -350,10 +349,10 @@ describe('manual type display', () => {
 
   const epfoHolding: Holding = {
     ...holding, id: 'h-epf', name: 'EPF', manualType: 'EPFO',
-    manual: { employeeContribution: 100000, employerContribution: 60000, interestAccumulated: 12000, expectedInterestRate: 0.0825, interestCreditMonth: 3, interestCreditDay: 31 },
+    manual: { employeeContribution: 100000, employerContribution: 60000, interestAccumulated: 12000, expectedInterestRate: 0.0825 },
   }
 
-  test('the drawer shows the EPFO contributions, rate and credit date', () => {
+  test('the drawer shows the EPFO contributions and rate', () => {
     render(<HoldingDrawer holding={epfoHolding} displayCurrency="INR" fxRatesToBase={{}}
       onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
 
@@ -361,7 +360,6 @@ describe('manual type display', () => {
     expect(screen.getByText('Employer contribution')).toBeInTheDocument()
     expect(screen.getByText('Interest accumulated')).toBeInTheDocument()
     expect(screen.getByText('Expected rate')).toBeInTheDocument()
-    expect(screen.getByText('March 31')).toBeInTheDocument()
     expect(screen.queryByText('Quantity')).not.toBeInTheDocument()
   })
 
@@ -371,7 +369,6 @@ describe('manual type display', () => {
 
     expect(screen.getByText('Manual type')).toBeInTheDocument()
     expect(screen.queryByText('Employee contribution')).not.toBeInTheDocument()
-    expect(screen.queryByText('Interest credit')).not.toBeInTheDocument()
   })
 
   test('a plain holding shows no manual facts', () => {

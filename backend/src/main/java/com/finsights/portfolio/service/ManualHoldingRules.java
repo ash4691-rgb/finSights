@@ -41,7 +41,7 @@ final class ManualHoldingRules {
         if (purchase == null || purchase.signum() <= 0) throw bad("A real-estate holding needs a purchase unit price greater than zero");
         BigDecimal current = details.currentUnitPrice() == null ? purchase : details.currentUnitPrice();
         if (current.signum() <= 0) throw bad("The current unit price must be greater than zero");
-        ManualDetails resolved = new ManualDetails(purchase, current, null, null, null, null, null, null);
+        ManualDetails resolved = new ManualDetails(purchase, current, null, null, null, null);
         return withValues(request, resolved, money(request.area().multiply(purchase)), money(request.area().multiply(current)));
     }
 
@@ -51,12 +51,11 @@ final class ManualHoldingRules {
         requireNotNegative(details.employerContribution(), "Employer contribution");
         requireNotNegative(details.interestAccumulated(), "Interest accumulated");
         requireRate(details.expectedInterestRate());
-        requireCreditDate(details.interestCreditMonth(), details.interestCreditDay());
         BigDecimal balance = currentBalance(request, details);
         BigDecimal interest = details.interestAccumulated() == null ? BigDecimal.ZERO : details.interestAccumulated();
         if (interest.compareTo(balance) > 0) throw bad("Interest accumulated can't be more than the current balance");
         ManualDetails resolved = new ManualDetails(null, null, details.employeeContribution(), details.employerContribution(),
-                interest, details.expectedInterestRate(), details.interestCreditMonth(), details.interestCreditDay());
+                interest, details.expectedInterestRate());
         return withValues(request, resolved, money(balance.subtract(interest)), money(balance));
     }
 
@@ -72,12 +71,6 @@ final class ManualHoldingRules {
     private static void requireRate(BigDecimal rate) {
         if (rate == null) return;
         if (rate.signum() < 0 || rate.compareTo(BigDecimal.ONE) > 0) throw bad("The expected interest rate must be between 0% and 100%");
-    }
-
-    private static void requireCreditDate(Integer month, Integer day) {
-        if (month == null && day == null) return;
-        if (month == null || day == null) throw bad("Set both the month and the day for the interest credit reminder");
-        if (month < 1 || month > 12 || day < 1 || day > 31) throw bad("The interest credit date is not a valid day of the year");
     }
 
     private static void requireNotNegative(BigDecimal value, String label) {

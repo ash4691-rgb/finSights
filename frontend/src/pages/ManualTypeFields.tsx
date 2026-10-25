@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Field } from '../ui'
 import { areaUnits, areaUnitLabel, money, percent } from '../util'
 import type { ManualForm } from '../util'
-import { hasContributionSplit, monthNames } from './manualType'
+import { hasContributionSplit } from './manualType'
 import type { AreaUnit, Holding, ManualType } from '../types'
 
 type FormFields = ManualForm & { area: string; areaUnit: AreaUnit; investedValue: string; currency: string }
@@ -51,7 +51,6 @@ function EpfoFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>)
       <Field label="Interest accumulated">{number(form.interestAccumulated, v => set('interestAccumulated', v), { placeholder: '0', disabled })}</Field>
       <Field label="Expected interest rate (% p.a.)">{number(form.expectedInterestRate, v => set('expectedInterestRate', v), { max: '100', placeholder: 'e.g. 8.25' })}</Field>
     </div>
-    <Field label="Interest credit date (repeats yearly)"><input type="date" value={form.interestCreditDate} onChange={e => set('interestCreditDate', e.target.value)} /></Field>
     <CalculatedValues form={form} derived={derived} disabled={disabled} />
   </>
 }
@@ -76,13 +75,11 @@ function realEstateFacts(holding: Holding) {
 
 function epfoFacts(holding: Holding) {
   const m = holding.manual ?? {}
-  const credit = m.interestCreditMonth != null && m.interestCreditDay != null ? `${monthNames[m.interestCreditMonth - 1]} ${m.interestCreditDay}` : null
   return [
     m.employeeContribution != null ? fact('Employee contribution', money(m.employeeContribution, holding.currency)) : null,
     m.employerContribution != null ? fact('Employer contribution', money(m.employerContribution, holding.currency)) : null,
     m.interestAccumulated != null ? fact('Interest accumulated', money(m.interestAccumulated, holding.currency)) : null,
     m.expectedInterestRate != null ? fact('Expected rate', `${percent(m.expectedInterestRate * 100)} p.a.`) : null,
-    credit ? fact('Interest credit', credit) : null,
   ]
 }
 

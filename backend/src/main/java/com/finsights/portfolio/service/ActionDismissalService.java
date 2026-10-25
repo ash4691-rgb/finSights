@@ -27,12 +27,13 @@ public class ActionDismissalService {
     // "<kind>" prefix of an action key (see ActionItemResponse.keyOf) -> a short, display-friendly
     // label — just enough to reconstruct a deferred row's text without re-deriving the full Action
     // Centre logic that originally built it.
-    private static final Map<String, String> KIND_LABELS = Map.of(
-            "EMI_DUE", "EMI due", "EMI_OVERDUE", "EMI overdue",
-            "INTEREST_DUE", "Interest due", "INTEREST_OVERDUE", "Interest overdue",
-            "FIXED_RATE_MATURED", "Matured deposit", "PRICE_UNAVAILABLE", "No live price",
-            "DQ_NO_VALUE", "No current value", "DQ_NO_BROKER", "No broker",
-            "DQ_FOREIGN_CURRENCY", "Foreign currency", "DQ_NO_INVESTED", "No invested amount");
+    private static final Map<String, String> KIND_LABELS = Map.ofEntries(
+            Map.entry("EMI_DUE", "EMI due"), Map.entry("EMI_OVERDUE", "EMI overdue"),
+            Map.entry("INTEREST_DUE", "Interest due"), Map.entry("INTEREST_OVERDUE", "Interest overdue"),
+            Map.entry("FIXED_RATE_MATURED", "Matured deposit"), Map.entry("EPFO_INTEREST_CHECK", "EPFO interest check"),
+            Map.entry("PRICE_UNAVAILABLE", "No live price"),
+            Map.entry("DQ_NO_VALUE", "No current value"), Map.entry("DQ_NO_BROKER", "No broker"),
+            Map.entry("DQ_FOREIGN_CURRENCY", "Foreign currency"), Map.entry("DQ_NO_INVESTED", "No invested amount"));
 
     private final ActionDismissalRepository repo;
     private final HoldingRepository holdings;

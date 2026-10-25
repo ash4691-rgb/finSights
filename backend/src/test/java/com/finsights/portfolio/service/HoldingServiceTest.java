@@ -566,7 +566,7 @@ class HoldingServiceTest {
     }
 
     private HoldingRequest realEstateRequest(BigDecimal area, BigDecimal purchasePrice, BigDecimal currentPrice) {
-        ManualDetails details = new ManualDetails(purchasePrice, currentPrice, null, null, null, null, null, null);
+        ManualDetails details = new ManualDetails(purchasePrice, currentPrice, null, null, null, null);
         return new HoldingRequest("cat-1", "2BHK Flat", ValuationMethod.MANUAL, null, "Self", "INR",
                 new BigDecimal("99"), area, com.finsights.portfolio.domain.AreaUnit.SQ_FT,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
@@ -585,7 +585,7 @@ class HoldingServiceTest {
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
         ManualDetails details = new ManualDetails(null, null, new BigDecimal("100000"), new BigDecimal("60000"),
-                new BigDecimal("12000"), new BigDecimal("0.0825"), 3, 31);
+                new BigDecimal("12000"), new BigDecimal("0.0825"));
 
         HoldingResponse response = service.create(epfoRequest(null, details));
 
@@ -597,7 +597,7 @@ class HoldingServiceTest {
         assertThat(stored.getCurrentValue()).isEqualByComparingTo("160000");
         assertThat(stored.getQuantity()).isNull();
         assertThat(stored.getArea()).isNull();
-        assertThat(stored.getInterestCreditMonth()).isEqualTo(3);
+        assertThat(stored.getExpectedInterestRate()).isEqualByComparingTo("0.0825");
         assertThat(response.manualType()).isEqualTo(ManualType.EPFO);
     }
 
@@ -606,7 +606,7 @@ class HoldingServiceTest {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
-        ManualDetails details = new ManualDetails(new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"), null, null, null, null, null);
+        ManualDetails details = new ManualDetails(new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"), null, null, null);
         HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
                 null, null, null, new BigDecimal("10000"), new BigDecimal("12000"), null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, details);

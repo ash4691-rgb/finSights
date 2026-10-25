@@ -50,7 +50,7 @@ public class Holding {
     private BigDecimal purchaseUnitPrice;
     @Column(precision = 20, scale = 4)
     private BigDecimal currentUnitPrice;
-    /** EPFO: contribution split, interest credited so far, expected rate (fraction), and the month/day to nudge for the yearly credit. */
+    /** EPFO: contribution split, interest credited so far, and expected rate (fraction). */
     @Column(precision = 20, scale = 2)
     private BigDecimal employeeContribution;
     @Column(precision = 20, scale = 2)
@@ -59,8 +59,6 @@ public class Holding {
     private BigDecimal interestAccumulated;
     @Column(precision = 10, scale = 6)
     private BigDecimal expectedInterestRate;
-    private Integer interestCreditMonth;
-    private Integer interestCreditDay;
     /** Remaining cost basis after average-cost SELLs; the ledger owns this (see HoldingService). */
     @Column(precision = 20, scale = 2)
     private BigDecimal investedValue = BigDecimal.ZERO;
@@ -161,10 +159,6 @@ public class Holding {
     public void setInterestAccumulated(BigDecimal interestAccumulated) { this.interestAccumulated = interestAccumulated; }
     public BigDecimal getExpectedInterestRate() { return expectedInterestRate; }
     public void setExpectedInterestRate(BigDecimal expectedInterestRate) { this.expectedInterestRate = expectedInterestRate; }
-    public Integer getInterestCreditMonth() { return interestCreditMonth; }
-    public void setInterestCreditMonth(Integer interestCreditMonth) { this.interestCreditMonth = interestCreditMonth; }
-    public Integer getInterestCreditDay() { return interestCreditDay; }
-    public void setInterestCreditDay(Integer interestCreditDay) { this.interestCreditDay = interestCreditDay; }
     public BigDecimal getInvestedValue() { return investedValue; }
     public void setInvestedValue(BigDecimal investedValue) { this.investedValue = investedValue; }
     public BigDecimal getRealisedProfitLoss() { return realisedProfitLoss; }
