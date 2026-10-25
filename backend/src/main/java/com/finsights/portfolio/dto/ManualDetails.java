@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 
 /**
  * Extra inputs for a typed manual holding. Real estate uses the two unit prices (with the
- * holding's own area/areaUnit); EPFO uses the contributions, interest and expected rate.
+ * holding's own area/areaUnit); provident fund uses the contributions, interest and expected rate.
  * Fields that don't belong to the holding's manual type are ignored and stored as null.
  */
 public record ManualDetails(
@@ -15,7 +15,7 @@ public record ManualDetails(
         BigDecimal interestAccumulated,
         /** Expected annual rate as a fraction (0.0825 = 8.25%). */
         BigDecimal expectedInterestRate,
-        /** EPFO: what is contributed each month; drives the monthly "log last month's contribution" task. */
+        /** Provident fund: what is contributed each month; drives the monthly "log last month's contribution" task. */
         BigDecimal monthlyEmployeeContribution,
         BigDecimal monthlyEmployerContribution
 ) {

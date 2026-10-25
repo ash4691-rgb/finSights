@@ -2,8 +2,9 @@ import { numeric } from '../util'
 import type { ManualForm } from '../util'
 import type { Category, Holding, ManualDetails, ManualType, ValuationMethod } from '../types'
 
-export const manualTypes: ManualType[] = ['DEFAULT', 'REAL_ESTATE', 'EPFO']
-export const manualTypeLabel = (t: ManualType) => t === 'REAL_ESTATE' ? 'Real estate' : t === 'EPFO' ? 'EPFO' : 'Default'
+export const manualTypes: ManualType[] = ['DEFAULT', 'REAL_ESTATE', 'PROVIDENT_FUND']
+const manualTypeLabels: Record<ManualType, string> = { DEFAULT: 'Default', REAL_ESTATE: 'Real estate', PROVIDENT_FUND: 'Provident fund' }
+export const manualTypeLabel = (t: ManualType) => manualTypeLabels[t]
 
 type DerivationInput = ManualForm & { area: string; investedValue: string }
 
@@ -30,7 +31,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 // Mirrors the server's calculation so the form can show the values it will save; null until the inputs are complete.
 export function deriveManualValues(type: ManualType, f: DerivationInput): { invested: number; current: number } | null {
   if (type === 'REAL_ESTATE') return deriveRealEstate(f)
-  if (type === 'EPFO') return deriveEpfo(f)
+  if (type === 'PROVIDENT_FUND') return deriveProvidentFund(f)
   return null
 }
 
@@ -46,7 +47,7 @@ function deriveRealEstate(f: DerivationInput) {
 export const hasContributionSplit = (f: ManualForm) => f.employeeContribution !== '' || f.employerContribution !== ''
 
 // The balance EPFO reports already includes interest: current = employee + employer (or one total), invested = current - interest.
-function deriveEpfo(f: DerivationInput) {
+function deriveProvidentFund(f: DerivationInput) {
   const current = hasContributionSplit(f) ? numeric(f.employeeContribution) + numeric(f.employerContribution) : numeric(f.investedValue)
   const interest = numeric(f.interestAccumulated)
   if (current <= 0 || interest > current) return null
@@ -58,17 +59,16 @@ export function manualPayload(type: ManualType, f: ManualForm): ManualDetails | 
   if (type === 'REAL_ESTATE') {
     return { purchaseUnitPrice: numeric(f.purchaseUnitPrice), currentUnitPrice: f.currentUnitPrice === '' ? undefined : numeric(f.currentUnitPrice) }
   }
-  if (type === 'EPFO') return epfoPayload(f)
+  if (type === 'PROVIDENT_FUND') return providentFundPayload(f)
   return null
 }
 
 const optional = (value: string) => value === '' ? undefined : numeric(value)
 
-function epfoPayload(f: ManualForm): ManualDetails {
+function providentFundPayload(f: ManualForm): ManualDetails {
   return {
     employeeContribution: optional(f.employeeContribution), employerContribution: optional(f.employerContribution),
     interestAccumulated: optional(f.interestAccumulated),
     monthlyEmployeeContribution: optional(f.monthlyEmployeeContribution), monthlyEmployerContribution: optional(f.monthlyEmployerContribution),
-    expectedInterestRate: f.expectedInterestRate === '' ? undefined : numeric(f.expectedInterestRate) / 100,
   }
 }

@@ -573,26 +573,26 @@ class HoldingServiceTest {
                 ManualType.REAL_ESTATE, details);
     }
 
-    private HoldingRequest epfoRequest(BigDecimal total, ManualDetails details) {
+    private HoldingRequest providentFundRequest(BigDecimal total, ManualDetails details) {
         return new HoldingRequest("cat-1", "EPF", ValuationMethod.MANUAL, null, "EPFO", "INR",
                 null, null, null, total, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                ManualType.EPFO, details);
+                ManualType.PROVIDENT_FUND, details);
     }
 
     @Test
-    void createEpfoHoldingStoresContributionsAndDerivesCurrentValue() {
+    void createProvidentFundHoldingStoresContributionsAndDerivesCurrentValue() {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
         ManualDetails details = new ManualDetails(null, null, new BigDecimal("100000"), new BigDecimal("60000"),
                 new BigDecimal("12000"), new BigDecimal("0.0825"), new BigDecimal("1800"), new BigDecimal("1800"));
 
-        HoldingResponse response = service.create(epfoRequest(null, details));
+        HoldingResponse response = service.create(providentFundRequest(null, details));
 
         ArgumentCaptor<Holding> saved = ArgumentCaptor.forClass(Holding.class);
         verify(holdings, times(2)).save(saved.capture());
         Holding stored = saved.getAllValues().get(0);
-        assertThat(stored.getManualType()).isEqualTo(ManualType.EPFO);
+        assertThat(stored.getManualType()).isEqualTo(ManualType.PROVIDENT_FUND);
         assertThat(openingAmount()).isEqualByComparingTo("148000");
         assertThat(stored.getCurrentValue()).isEqualByComparingTo("160000");
         assertThat(stored.getQuantity()).isNull();
@@ -600,7 +600,40 @@ class HoldingServiceTest {
         assertThat(stored.getExpectedInterestRate()).isEqualByComparingTo("0.0825");
         assertThat(stored.getMonthlyEmployeeContribution()).isEqualByComparingTo("1800");
         assertThat(response.manual().monthlyEmployerContribution()).isEqualByComparingTo("1800");
-        assertThat(response.manualType()).isEqualTo(ManualType.EPFO);
+        assertThat(response.manualType()).isEqualTo(ManualType.PROVIDENT_FUND);
+        assertThat(stored.getLastContributionMonth()).isEqualTo(java.time.YearMonth.now().toString());
+    }
+
+    @Test
+    void providentFundWithoutMonthlyAmountsIsNotTrackedForContributions() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForCreate(category);
+        ManualDetails details = new ManualDetails(null, null, null, null, null, null, BigDecimal.ZERO, null);
+
+        service.create(providentFundRequest(new BigDecimal("1000"), details));
+
+        ArgumentCaptor<Holding> saved = ArgumentCaptor.forClass(Holding.class);
+        verify(holdings, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().get(0).getLastContributionMonth()).isNull();
+    }
+
+    @Test
+    void editingKeepsTheContributionStartMonthWhileMonthlyAmountsRemain() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForUpdate(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setManualType(ManualType.PROVIDENT_FUND);
+        holding.setLastContributionMonth("2026-01");
+        holding.setInvestedValue(new BigDecimal("1000"));
+        holding.setCurrentValue(new BigDecimal("1000"));
+        when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(txn(TransactionType.BUY, "1000", null)));
+        ManualDetails details = new ManualDetails(null, null, null, null, null, null, new BigDecimal("500"), null);
+
+        service.update("h-1", providentFundRequest(new BigDecimal("1000"), details));
+
+        assertThat(holding.getLastContributionMonth()).isEqualTo("2026-01");
     }
 
     @Test

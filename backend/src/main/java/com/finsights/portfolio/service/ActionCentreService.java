@@ -6,11 +6,7 @@ import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.ActionItemResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
 import java.time.LocalDate;
-import java.math.BigDecimal;
 import java.time.Month;
-import java.time.YearMonth;
-import java.time.format.TextStyle;
-import java.util.Locale;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -26,21 +22,24 @@ import org.springframework.stereotype.Service;
 @Service
 public class ActionCentreService {
 
-    /** EPFO credits a year's interest around the financial year end; the yearly check falls due on 31 October. */
-    static final Month EPFO_CHECK_MONTH = Month.OCTOBER;
-    static final int EPFO_CHECK_DAY = 31;
+    /** EPF credits a year's interest around the financial year end; the yearly check falls due on 31 October. */
+    static final Month PROVIDENT_FUND_CHECK_MONTH = Month.OCTOBER;
+    static final int PROVIDENT_FUND_CHECK_DAY = 31;
 
     private final EmiService emis;
     private final InterestPayoutService interestPayouts;
+    private final ProvidentFundContributionService providentFundContributions;
     private final PendingBrokerHoldingService pendingBrokerHoldings;
     private final ActionDismissalService dismissals;
     private final CurrentUserService currentUser;
 
     public ActionCentreService(EmiService emis, InterestPayoutService interestPayouts,
+                               ProvidentFundContributionService providentFundContributions,
                                PendingBrokerHoldingService pendingBrokerHoldings,
                                ActionDismissalService dismissals, CurrentUserService currentUser) {
         this.emis = emis;
         this.interestPayouts = interestPayouts;
+        this.providentFundContributions = providentFundContributions;
         this.pendingBrokerHoldings = pendingBrokerHoldings;
         this.dismissals = dismissals;
         this.currentUser = currentUser;
@@ -54,6 +53,7 @@ public class ActionCentreService {
         String baseCurrency = currentUser.currentUser().getBaseCurrency();
         List<ActionItemResponse> items = new ArrayList<>(emis.dueItems());
         items.addAll(interestPayouts.dueItems());
+        items.addAll(providentFundContributions.dueItems(today));
         items.addAll(pendingBrokerHoldings.actionItems());
 
         for (HoldingResponse h : holdings) {
@@ -65,8 +65,7 @@ public class ActionCentreService {
                                 + ". Confirm the payout and record what happened to the proceeds.",
                         h));
             }
-            if (isEpfoCheckDue(h, today)) items.add(epfoInterestCheck(h, today));
-            if (hasMonthlyEpfoContribution(h)) items.add(epfoMonthlyContribution(h, today));
+            if (isProvidentFundCheckDue(h, today)) items.add(providentFundInterestCheck(h, today));
             if (h.valuationMethod() == ValuationMethod.MARKET_PRICE
                     && h.tickerSymbol() != null && !h.tickerSymbol().isBlank() && h.priceUpdatedAt() == null) {
                 items.add(item("PRICE_UNAVAILABLE", "WARN",
@@ -117,47 +116,18 @@ public class ActionCentreService {
                 .toList();
     }
 
-    /** The yearly EPFO interest check appears from 1 October and stays until it is done or deferred. */
-    private static boolean isEpfoCheckDue(HoldingResponse h, LocalDate today) {
-        return h.manualType() == ManualType.EPFO && today.getMonthValue() >= EPFO_CHECK_MONTH.getValue();
-    }
-
-    private static boolean hasMonthlyEpfoContribution(HoldingResponse h) {
-        if (h.manualType() != ManualType.EPFO || h.manual() == null) return false;
-        return positive(h.manual().monthlyEmployeeContribution()) || positive(h.manual().monthlyEmployerContribution());
-    }
-
-    private static boolean positive(BigDecimal amount) {
-        return amount != null && amount.signum() > 0;
-    }
-
-    /** From the 1st of a month, a task to log the previous month's contribution, due that month's last day. */
-    private static ActionItemResponse epfoMonthlyContribution(HoldingResponse h, LocalDate today) {
-        String kind = "EPFO_CONTRIBUTION";
-        YearMonth last = YearMonth.from(today).minusMonths(1);
-        String period = last.toString();
-        String month = last.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " " + last.getYear();
-        BigDecimal employee = h.manual().monthlyEmployeeContribution();
-        BigDecimal employer = h.manual().monthlyEmployerContribution();
-        return new ActionItemResponse(kind, "INFO", "Log EPFO contribution — " + h.name(),
-                "Add " + month + "'s contribution (employee " + orZero(employee).toPlainString() + ", employer "
-                        + orZero(employer).toPlainString() + " " + h.currency() + ") to this holding's balance by "
-                        + YearMonth.from(today).atEndOfMonth() + ".",
-                h.id(), h.name(), h.broker(), YearMonth.from(today).atEndOfMonth(), null, period, null,
-                ActionItemResponse.keyOf(kind, h.id(), period));
-    }
-
-    private static BigDecimal orZero(BigDecimal amount) {
-        return amount == null ? BigDecimal.ZERO : amount;
+    /** The yearly provident fund interest check appears from 1 October and stays until it is done or deferred. */
+    private static boolean isProvidentFundCheckDue(HoldingResponse h, LocalDate today) {
+        return h.manualType() == ManualType.PROVIDENT_FUND && today.getMonthValue() >= PROVIDENT_FUND_CHECK_MONTH.getValue();
     }
 
     /** One task per holding per year: the period is the year, so marking it done only clears that year's. */
-    private static ActionItemResponse epfoInterestCheck(HoldingResponse h, LocalDate today) {
-        String kind = "EPFO_INTEREST_CHECK";
+    private static ActionItemResponse providentFundInterestCheck(HoldingResponse h, LocalDate today) {
+        String kind = "PROVIDENT_FUND_INTEREST_CHECK";
         String period = String.valueOf(today.getYear());
-        LocalDate due = LocalDate.of(today.getYear(), EPFO_CHECK_MONTH, EPFO_CHECK_DAY);
-        return new ActionItemResponse(kind, "WARN", "Check EPFO interest — " + h.name(),
-                "EPFO credits interest yearly. Compare your passbook with the interest recorded here and update this "
+        LocalDate due = LocalDate.of(today.getYear(), PROVIDENT_FUND_CHECK_MONTH, PROVIDENT_FUND_CHECK_DAY);
+        return new ActionItemResponse(kind, "WARN", "Check provident fund interest — " + h.name(),
+                "Provident fund interest is credited yearly. Compare your passbook with the interest recorded here and update this "
                         + "holding's balance and interest accumulated by " + due + ".",
                 h.id(), h.name(), h.broker(), due, null, period, null, ActionItemResponse.keyOf(kind, h.id(), period));
     }

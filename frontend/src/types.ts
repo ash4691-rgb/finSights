@@ -6,8 +6,8 @@ export type RepaymentFrequency = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' |
 export type TransactionType = 'BUY' | 'SELL' | 'SPLIT' | 'INTEREST' | 'ADJUSTMENT' | 'REPAY'
 export type AreaUnit = 'ACRE' | 'HECTARE' | 'SQ_M' | 'SQ_FT'
 // Sub-type of a MANUAL holding; DEFAULT is a plain manual value.
-export type ManualType = 'DEFAULT' | 'REAL_ESTATE' | 'EPFO'
-// Inputs behind a real-estate (unit prices) or EPFO (contributions, interest) holding's calculated values.
+export type ManualType = 'DEFAULT' | 'REAL_ESTATE' | 'PROVIDENT_FUND'
+// Inputs behind a real-estate (unit prices) or provident fund (contributions, interest) holding's calculated values.
 export type ManualDetails = {
   purchaseUnitPrice?: number; currentUnitPrice?: number
   employeeContribution?: number; employerContribution?: number; interestAccumulated?: number

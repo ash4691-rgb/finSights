@@ -111,11 +111,11 @@ class FxRateServiceTest {
                 base.currentValue(), base.profitLoss(), base.profitLossPercentage(), base.realisedProfitLoss(),
                 base.accruedIncome(), null, null, null, null, null, null, null, null, null, null, null, null,
                 false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null,
-                ManualType.EPFO, manual);
+                ManualType.PROVIDENT_FUND, manual);
 
         HoldingResponse converted = fx.convert(withManual, "INR");
 
-        assertThat(converted.manualType()).isEqualTo(ManualType.EPFO);
+        assertThat(converted.manualType()).isEqualTo(ManualType.PROVIDENT_FUND);
         assertThat(converted.manual().purchaseUnitPrice()).isEqualByComparingTo("885.00");
         assertThat(converted.manual().currentUnitPrice()).isNull();
         assertThat(converted.manual().employeeContribution()).isEqualByComparingTo("1770.00");

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Field } from '../ui'
-import { areaUnits, areaUnitLabel, money, percent } from '../util'
+import { areaUnits, areaUnitLabel, money, percent, PROVIDENT_FUND_RATE_PERCENT } from '../util'
 import type { ManualForm } from '../util'
 import { hasContributionSplit } from './manualType'
 import type { AreaUnit, Holding, ManualType } from '../types'
@@ -36,7 +36,7 @@ function RealEstateFields({ form, set, derived, disabled }: Omit<FieldsProps, 't
   </>
 }
 
-function EpfoFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>) {
+function ProvidentFundFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>) {
   const split = hasContributionSplit(form)
   return <>
     <Field label="Total balance" required={!split} wide>
@@ -51,10 +51,19 @@ function EpfoFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>)
       <Field label="Monthly employee contribution">{number(form.monthlyEmployeeContribution, v => set('monthlyEmployeeContribution', v), { disabled, placeholder: 'Per month' })}</Field>
       <Field label="Monthly employer contribution">{number(form.monthlyEmployerContribution, v => set('monthlyEmployerContribution', v), { disabled, placeholder: 'Per month' })}</Field>
     </div>
-    <p className="hint">With a monthly amount set, a task on the 1st of each month asks you to log last month's contribution.</p>
+    <p className="hint">With a monthly amount set, a task on the 1st of each month asks you to confirm last month's contribution — confirming logs the transaction.</p>
+    <Field label="Interest accumulated">{number(form.interestAccumulated, v => set('interestAccumulated', v), { placeholder: '0', disabled })}</Field>
+  </>
+}
+
+// Read-only facts about a provident fund holding, shown at the bottom of the form: the currency and
+// rate are fixed, and the values are calculated from the editable fields above.
+export function ProvidentFundSummary({ form, derived, disabled }: { form: FormFields; derived: FieldsProps['derived']; disabled?: boolean }) {
+  const rate = form.expectedInterestRate === '' ? PROVIDENT_FUND_RATE_PERCENT : form.expectedInterestRate
+  return <>
     <div className="field-pair">
-      <Field label="Interest accumulated">{number(form.interestAccumulated, v => set('interestAccumulated', v), { placeholder: '0', disabled })}</Field>
-      <Field label="Expected interest rate (% p.a.)">{number(form.expectedInterestRate, v => set('expectedInterestRate', v), { max: '100', placeholder: 'e.g. 8.25' })}</Field>
+      <Field label="Currency"><input disabled value="INR" aria-label="Currency" /></Field>
+      <Field label="Interest rate (% p.a.)"><input disabled value={rate} aria-label="Interest rate (% p.a.)" /></Field>
     </div>
     <CalculatedValues form={form} derived={derived} disabled={disabled} />
   </>
@@ -63,7 +72,7 @@ function EpfoFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>)
 // The inputs behind a typed manual holding, shown under the Manual type dropdown.
 export function ManualTypeFields({ type, ...rest }: FieldsProps) {
   if (type === 'REAL_ESTATE') return <RealEstateFields {...rest} />
-  if (type === 'EPFO') return <EpfoFields {...rest} />
+  if (type === 'PROVIDENT_FUND') return <ProvidentFundFields {...rest} />
   return null
 }
 
@@ -78,7 +87,7 @@ function realEstateFacts(holding: Holding) {
   ]
 }
 
-function epfoFacts(holding: Holding) {
+function providentFundFacts(holding: Holding) {
   const m = holding.manual ?? {}
   return [
     m.employeeContribution != null ? fact('Employee contribution', money(m.employeeContribution, holding.currency)) : null,
@@ -93,7 +102,7 @@ function epfoFacts(holding: Holding) {
 // Extra facts for the holding drawer; null for a plain holding.
 export function ManualFacts({ holding }: { holding: Holding }) {
   if (holding.manualType === 'REAL_ESTATE') return <>{realEstateFacts(holding)}</>
-  if (holding.manualType === 'EPFO') return <>{epfoFacts(holding)}</>
+  if (holding.manualType === 'PROVIDENT_FUND') return <>{providentFundFacts(holding)}</>
   return null
 }
 

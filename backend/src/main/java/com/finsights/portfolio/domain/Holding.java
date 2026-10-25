@@ -50,7 +50,7 @@ public class Holding {
     private BigDecimal purchaseUnitPrice;
     @Column(precision = 20, scale = 4)
     private BigDecimal currentUnitPrice;
-    /** EPFO: contribution split, interest credited so far, and expected rate (fraction). */
+    /** Provident fund: contribution split, interest credited so far, and expected rate (fraction). */
     @Column(precision = 20, scale = 2)
     private BigDecimal employeeContribution;
     @Column(precision = 20, scale = 2)
@@ -59,11 +59,14 @@ public class Holding {
     private BigDecimal interestAccumulated;
     @Column(precision = 10, scale = 6)
     private BigDecimal expectedInterestRate;
-    /** EPFO: the regular monthly contribution, used to prompt for each month's entry. */
+    /** Provident fund: the regular monthly contribution, used to prompt for each month's entry. */
     @Column(precision = 20, scale = 2)
     private BigDecimal monthlyEmployeeContribution;
     @Column(precision = 20, scale = 2)
     private BigDecimal monthlyEmployerContribution;
+    /** Last month (yyyy-MM) whose monthly contribution was auto-logged; null until monthly amounts are set. */
+    @Column(length = 7)
+    private String lastContributionMonth;
     /** Remaining cost basis after average-cost SELLs; the ledger owns this (see HoldingService). */
     @Column(precision = 20, scale = 2)
     private BigDecimal investedValue = BigDecimal.ZERO;
@@ -166,6 +169,8 @@ public class Holding {
     public void setMonthlyEmployeeContribution(BigDecimal monthlyEmployeeContribution) { this.monthlyEmployeeContribution = monthlyEmployeeContribution; }
     public BigDecimal getMonthlyEmployerContribution() { return monthlyEmployerContribution; }
     public void setMonthlyEmployerContribution(BigDecimal monthlyEmployerContribution) { this.monthlyEmployerContribution = monthlyEmployerContribution; }
+    public String getLastContributionMonth() { return lastContributionMonth; }
+    public void setLastContributionMonth(String lastContributionMonth) { this.lastContributionMonth = lastContributionMonth; }
     public BigDecimal getExpectedInterestRate() { return expectedInterestRate; }
     public void setExpectedInterestRate(BigDecimal expectedInterestRate) { this.expectedInterestRate = expectedInterestRate; }
     public BigDecimal getInvestedValue() { return investedValue; }

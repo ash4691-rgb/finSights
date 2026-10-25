@@ -19,16 +19,16 @@ describe('deriveManualValues', () => {
     expect(deriveManualValues('REAL_ESTATE', form({ area: '5', purchaseUnitPrice: '5', currentUnitPrice: '0' }))).toBeNull()
   })
 
-  test('EPFO current is the employee + employer balance (or one total) and invested is current minus interest', () => {
-    expect(deriveManualValues('EPFO', form({ employeeContribution: '100', employerContribution: '50', interestAccumulated: '10' })))
+  test('provident fund current is the employee + employer balance (or one total) and invested is current minus interest', () => {
+    expect(deriveManualValues('PROVIDENT_FUND', form({ employeeContribution: '100', employerContribution: '50', interestAccumulated: '10' })))
       .toEqual({ invested: 140, current: 150 })
-    expect(deriveManualValues('EPFO', form({ employerContribution: '70' }))).toEqual({ invested: 70, current: 70 })
-    expect(deriveManualValues('EPFO', form({ investedValue: '200', interestAccumulated: '20' }))).toEqual({ invested: 180, current: 200 })
+    expect(deriveManualValues('PROVIDENT_FUND', form({ employerContribution: '70' }))).toEqual({ invested: 70, current: 70 })
+    expect(deriveManualValues('PROVIDENT_FUND', form({ investedValue: '200', interestAccumulated: '20' }))).toEqual({ invested: 180, current: 200 })
   })
 
-  test('EPFO with no balance, or interest above the balance, and the default type, derive nothing', () => {
-    expect(deriveManualValues('EPFO', form({}))).toBeNull()
-    expect(deriveManualValues('EPFO', form({ investedValue: '5', interestAccumulated: '6' }))).toBeNull()
+  test('provident fund with no balance, or interest above the balance, and the default type, derive nothing', () => {
+    expect(deriveManualValues('PROVIDENT_FUND', form({}))).toBeNull()
+    expect(deriveManualValues('PROVIDENT_FUND', form({ investedValue: '5', interestAccumulated: '6' }))).toBeNull()
     expect(deriveManualValues('DEFAULT', form({ area: '5', purchaseUnitPrice: '5' }))).toBeNull()
   })
 })
@@ -39,11 +39,12 @@ describe('manualPayload', () => {
     expect(manualPayload('REAL_ESTATE', form({ purchaseUnitPrice: '4000', currentUnitPrice: '4500' }))).toMatchObject({ currentUnitPrice: 4500 })
   })
 
-  test('EPFO converts the rate to a fraction and leaves unset fields out', () => {
-    expect(manualPayload('EPFO', form({ expectedInterestRate: '8.25', interestAccumulated: '10' })))
-      .toMatchObject({ expectedInterestRate: 0.0825, interestAccumulated: 10, employeeContribution: undefined })
-    expect(manualPayload('EPFO', form({}))).toMatchObject({ expectedInterestRate: undefined, monthlyEmployeeContribution: undefined })
-    expect(manualPayload('EPFO', form({ monthlyEmployeeContribution: '1800', monthlyEmployerContribution: '1800' })))
+  test('provident fund sends only the entered amounts and never a rate', () => {
+    expect(manualPayload('PROVIDENT_FUND', form({ expectedInterestRate: '8.25', interestAccumulated: '10' })))
+      .toMatchObject({ interestAccumulated: 10, employeeContribution: undefined })
+    expect(manualPayload('PROVIDENT_FUND', form({ expectedInterestRate: '8.25' }))).not.toHaveProperty('expectedInterestRate')
+    expect(manualPayload('PROVIDENT_FUND', form({}))).toMatchObject({ monthlyEmployeeContribution: undefined })
+    expect(manualPayload('PROVIDENT_FUND', form({ monthlyEmployeeContribution: '1800', monthlyEmployerContribution: '1800' })))
       .toMatchObject({ monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 })
   })
 
@@ -53,10 +54,10 @@ describe('manualPayload', () => {
 })
 
 describe('form helpers', () => {
-  const base = { id: 'h', manualType: 'EPFO', manual: { employeeContribution: 5, expectedInterestRate: 0.0825, monthlyEmployerContribution: 1800 } } as Holding
+  const base = { id: 'h', manualType: 'PROVIDENT_FUND', manual: { employeeContribution: 5, expectedInterestRate: 0.0825, monthlyEmployerContribution: 1800 } } as Holding
 
   test('manualFormFrom restores a saved holding, rate as a percentage', () => {
-    expect(manualFormFrom(base)).toMatchObject({ manualType: 'EPFO', employeeContribution: '5', monthlyEmployerContribution: '1800', monthlyEmployeeContribution: '', expectedInterestRate: '8.25', purchaseUnitPrice: '' })
+    expect(manualFormFrom(base)).toMatchObject({ manualType: 'PROVIDENT_FUND', employeeContribution: '5', monthlyEmployerContribution: '1800', monthlyEmployeeContribution: '', expectedInterestRate: '8.25', purchaseUnitPrice: '' })
   })
 
   test('manualFormFrom falls back to the default type with empty fields', () => {
@@ -72,6 +73,6 @@ describe('form helpers', () => {
   })
 
   test('labels', () => {
-    expect([manualTypeLabel('DEFAULT'), manualTypeLabel('REAL_ESTATE'), manualTypeLabel('EPFO')]).toEqual(['Default', 'Real estate', 'EPFO'])
+    expect([manualTypeLabel('DEFAULT'), manualTypeLabel('REAL_ESTATE'), manualTypeLabel('PROVIDENT_FUND')]).toEqual(['Default', 'Real estate', 'Provident fund'])
   })
 })

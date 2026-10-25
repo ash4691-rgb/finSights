@@ -31,11 +31,11 @@ class ManualHoldingRulesTest {
                 null, null, null, null);
     }
 
-    private HoldingRequest epfo(BigDecimal invested, ManualDetails details) {
-        return request(ManualType.EPFO, ValuationMethod.MANUAL, "INR", null, null, invested, details);
+    private HoldingRequest providentFund(BigDecimal invested, ManualDetails details) {
+        return request(ManualType.PROVIDENT_FUND, ValuationMethod.MANUAL, "INR", null, null, invested, details);
     }
 
-    private ManualDetails epfoDetails(String emp, String er, String interest, String rate) {
+    private ManualDetails providentFundDetails(String emp, String er, String interest, String rate) {
         return new ManualDetails(null, null, emp == null ? null : n(emp), er == null ? null : n(er),
                 interest == null ? null : n(interest), rate == null ? null : n(rate));
     }
@@ -56,8 +56,8 @@ class ManualHoldingRulesTest {
 
     @Test
     void typedHoldingMustBeManualAndNotALiability() {
-        assertRejected(request(ManualType.EPFO, ValuationMethod.MARKET_PRICE, "INR", null, null, n("1"), null), "manual valuation");
-        assertThatThrownBy(() -> ManualHoldingRules.resolve(epfo(n("1"), null), true))
+        assertRejected(request(ManualType.PROVIDENT_FUND, ValuationMethod.MARKET_PRICE, "INR", null, null, n("1"), null), "manual valuation");
+        assertThatThrownBy(() -> ManualHoldingRules.resolve(providentFund(n("1"), null), true))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("liability");
     }
 
@@ -91,9 +91,9 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void epfoCurrentIsTheEmployeePlusEmployerBalanceAndInvestedExcludesInterest() {
+    void providentFundCurrentIsTheEmployeePlusEmployerBalanceAndInvestedExcludesInterest() {
         HoldingRequest resolved = ManualHoldingRules.resolve(
-                epfo(null, epfoDetails("100", "50", "10", "0.0825")), false);
+                providentFund(null, providentFundDetails("100", "50", "10", "0.0825")), false);
 
         assertThat(resolved.investedValue()).isEqualByComparingTo("140");
         assertThat(resolved.currentValue()).isEqualByComparingTo("150");
@@ -101,8 +101,8 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void epfoWithOnlyOneContributionTreatsTheOtherAsZero() {
-        HoldingRequest resolved = ManualHoldingRules.resolve(epfo(null, epfoDetails(null, "70", null, null)), false);
+    void providentFundWithOnlyOneContributionTreatsTheOtherAsZero() {
+        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(null, providentFundDetails(null, "70", null, null)), false);
 
         assertThat(resolved.investedValue()).isEqualByComparingTo("70");
         assertThat(resolved.currentValue()).isEqualByComparingTo("70");
@@ -110,37 +110,45 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void epfoUsesTheSingleTotalBalanceWhenNoSplitIsGiven() {
-        HoldingRequest resolved = ManualHoldingRules.resolve(epfo(n("200"), epfoDetails(null, null, "20", null)), false);
+    void providentFundUsesTheSingleTotalBalanceWhenNoSplitIsGiven() {
+        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("200"), providentFundDetails(null, null, "20", null)), false);
 
         assertThat(resolved.investedValue()).isEqualByComparingTo("180");
         assertThat(resolved.currentValue()).isEqualByComparingTo("200");
     }
 
     @Test
-    void epfoKeepsTheMonthlyContributionsAndRejectsNegativeOnes() {
+    void providentFundKeepsTheMonthlyContributionsAndRejectsNegativeOnes() {
         ManualDetails monthly = new ManualDetails(null, null, null, null, null, null, n("1800"), n("1800"));
-        HoldingRequest resolved = ManualHoldingRules.resolve(epfo(n("100"), monthly), false);
+        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("100"), monthly), false);
 
         assertThat(resolved.manual().monthlyEmployeeContribution()).isEqualByComparingTo("1800");
         assertThat(resolved.manual().monthlyEmployerContribution()).isEqualByComparingTo("1800");
-        assertRejected(epfo(n("100"), new ManualDetails(null, null, null, null, null, null, n("-1"), null)), "Monthly employee contribution");
-        assertRejected(epfo(n("100"), new ManualDetails(null, null, null, null, null, null, null, n("-1"))), "Monthly employer contribution");
+        assertRejected(providentFund(n("100"), new ManualDetails(null, null, null, null, null, null, n("-1"), null)), "Monthly employee contribution");
+        assertRejected(providentFund(n("100"), new ManualDetails(null, null, null, null, null, null, null, n("-1"))), "Monthly employer contribution");
     }
 
     @Test
-    void epfoWithoutAnyContributionIsRejected() {
-        assertRejected(epfo(null, null), "total balance");
+    void providentFundAlwaysUsesTheDeclaredRateAndInr() {
+        HoldingRequest resolved = ManualHoldingRules.resolve(new HoldingRequest("c", "Name", ValuationMethod.MANUAL, null, "EPFO", "USD",
+                null, null, null, n("100"), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                ManualType.PROVIDENT_FUND, providentFundDetails(null, null, null, "0.5")), false);
+
+        assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
+        assertThat(resolved.currency()).isEqualTo("INR");
     }
 
     @Test
-    void epfoValidationRejectsBadValues() {
-        assertRejected(epfo(n("-1"), null), "Total balance");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, "6", null)), "more than the current balance");
-        assertRejected(epfo(null, epfoDetails("-1", null, null, null)), "Employee contribution");
-        assertRejected(epfo(null, epfoDetails(null, "-1", null, null)), "Employer contribution");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, "-1", null)), "Interest accumulated");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, "1.5")), "between 0% and 100%");
-        assertRejected(epfo(n("5"), epfoDetails(null, null, null, "-0.1")), "between 0% and 100%");
+    void providentFundWithoutAnyContributionIsRejected() {
+        assertRejected(providentFund(null, null), "total balance");
+    }
+
+    @Test
+    void providentFundValidationRejectsBadValues() {
+        assertRejected(providentFund(n("-1"), null), "Total balance");
+        assertRejected(providentFund(n("5"), providentFundDetails(null, null, "6", null)), "more than the current balance");
+        assertRejected(providentFund(null, providentFundDetails("-1", null, null, null)), "Employee contribution");
+        assertRejected(providentFund(null, providentFundDetails(null, "-1", null, null)), "Employer contribution");
+        assertRejected(providentFund(n("5"), providentFundDetails(null, null, "-1", null)), "Interest accumulated");
     }
 }

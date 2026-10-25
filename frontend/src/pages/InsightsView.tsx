@@ -74,7 +74,7 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
 
   const isPendingAction = (kind: string) =>
     kind === 'EMI_DUE' || kind === 'EMI_OVERDUE' || kind === 'INTEREST_DUE' || kind === 'INTEREST_OVERDUE'
-    || kind === 'BROKER_SYNC_NEW' || kind === 'BROKER_SYNC_CONFLICT' || kind === 'EPFO_INTEREST_CHECK' || kind === 'EPFO_CONTRIBUTION'
+    || kind === 'BROKER_SYNC_NEW' || kind === 'BROKER_SYNC_CONFLICT' || kind === 'PROVIDENT_FUND_INTEREST_CHECK' || kind === 'PROVIDENT_FUND_CONTRIBUTION'
   const pendingActions = (actions ?? []).filter(a => isPendingAction(a.kind))
   const radarItems = (actions ?? []).filter(a => !isPendingAction(a.kind))
   // Dismissing/restoring only ever changes Tasks/Worth-a-look and Snoozed — reload just those two
@@ -133,21 +133,27 @@ export function InsightsView({ displayCurrency, dataVersion, settings, dashboard
   const renderActionRow = (a: ActionItem, neutral?: boolean) => {
     const isEmi = a.kind === 'EMI_DUE' || a.kind === 'EMI_OVERDUE'
     const isInterest = a.kind === 'INTEREST_DUE' || a.kind === 'INTEREST_OVERDUE'
+    const isContribution = a.kind === 'PROVIDENT_FUND_CONTRIBUTION'
     const isBrokerSyncNew = a.kind === 'BROKER_SYNC_NEW'
     const isBrokerSyncConflict = a.kind === 'BROKER_SYNC_CONFLICT'
+    const actionLabels: Record<string, string> = { EMI_DUE: 'Log repayment', EMI_OVERDUE: 'Log repayment', PROVIDENT_FUND_CONTRIBUTION: 'Confirm contribution' }
+    const actionLabel = actionLabels[a.kind] ?? 'Log interest'
     return <div key={a.key} className={`dense-row signal-row${neutral ? '' : ` ${a.severity.toLowerCase()}`}`}>
       {a.broker && <span className="source-chip" title={a.broker}>{initials(a.broker)}</span>}
       <button className="signal-row-body" onClick={() => { if (a.holdingId) onOpen(a.holdingId); else if (isBrokerSyncNew) ensureCategoriesLoaded() }}>
         <strong>{a.title}</strong><span>{a.detail}</span>
       </button>
-      {(isEmi || isInterest) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
+      {(isEmi || isInterest || isContribution) && a.holdingId && a.period && <button className="warning-action" onClick={async e => {
         e.stopPropagation()
-        const url = isEmi
-          ? `/api/emis/${a.holdingId}/pay?dueDate=${a.period}`
-          : `/api/interest-payouts/${a.holdingId}/confirm?dueDate=${a.period}`
+        const urls: Record<string, string> = {
+          EMI_DUE: `/api/emis/${a.holdingId}/pay?dueDate=${a.period}`,
+          EMI_OVERDUE: `/api/emis/${a.holdingId}/pay?dueDate=${a.period}`,
+          PROVIDENT_FUND_CONTRIBUTION: `/api/provident-fund/${a.holdingId}/contributions/confirm?month=${a.period}`,
+        }
+        const url = urls[a.kind] ?? `/api/interest-payouts/${a.holdingId}/confirm?dueDate=${a.period}`
         try { await api(url, { method: 'POST' }); await reload() }
         catch (err) { setError(err instanceof Error ? err.message : 'Could not record that') }
-      }}>{isEmi ? 'Log repayment' : 'Log interest'}</button>}
+      }}>{actionLabel}</button>}
       {isBrokerSyncConflict && a.pendingId && <button className="warning-action" onClick={async e => {
         e.stopPropagation(); await linkPending(a.pendingId!)
       }}>{resolvingPending === a.pendingId ? 'Linking…' : 'Link to this holding'}</button>}

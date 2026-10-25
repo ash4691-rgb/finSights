@@ -22,6 +22,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -594,7 +595,7 @@ public class HoldingService {
                 holding.getExpectedInterestRate(), holding.getMonthlyEmployeeContribution(), holding.getMonthlyEmployerContribution());
     }
 
-    /** Validates a real-estate/EPFO request and derives its invested and current value from the inputs. */
+    /** Validates a real-estate/provident fund request and derives its invested and current value from the inputs. */
     private HoldingRequest resolveManual(HoldingRequest request) {
         if (ManualHoldingRules.effectiveType(request.manualType()) == ManualType.DEFAULT) return request;
         boolean liability = categories.findByIdAndUser_Id(request.categoryId(), currentUser.currentUser().getId())
@@ -678,7 +679,7 @@ public class HoldingService {
     }
 
     private BigDecimal quantityFor(HoldingRequest source, boolean liability, ManualType manualType) {
-        if (liability || manualType == ManualType.EPFO) return null;
+        if (liability || manualType == ManualType.PROVIDENT_FUND) return null;
         if (manualType == ManualType.REAL_ESTATE) return BigDecimal.ONE;
         return source.quantity();
     }
@@ -687,16 +688,31 @@ public class HoldingService {
     private void applyManualType(ManualType type, ManualDetails details, Holding target) {
         ManualDetails d = details == null ? ManualDetails.NONE : details;
         boolean realEstate = type == ManualType.REAL_ESTATE;
-        boolean epfo = type == ManualType.EPFO;
+        boolean providentFund = type == ManualType.PROVIDENT_FUND;
         target.setManualType(type == ManualType.DEFAULT ? null : type);
         target.setPurchaseUnitPrice(realEstate ? d.purchaseUnitPrice() : null);
         target.setCurrentUnitPrice(realEstate ? d.currentUnitPrice() : null);
-        target.setEmployeeContribution(epfo ? d.employeeContribution() : null);
-        target.setEmployerContribution(epfo ? d.employerContribution() : null);
-        target.setInterestAccumulated(epfo ? d.interestAccumulated() : null);
-        target.setExpectedInterestRate(epfo ? d.expectedInterestRate() : null);
-        target.setMonthlyEmployeeContribution(epfo ? d.monthlyEmployeeContribution() : null);
-        target.setMonthlyEmployerContribution(epfo ? d.monthlyEmployerContribution() : null);
+        target.setEmployeeContribution(providentFund ? d.employeeContribution() : null);
+        target.setEmployerContribution(providentFund ? d.employerContribution() : null);
+        target.setInterestAccumulated(providentFund ? d.interestAccumulated() : null);
+        target.setExpectedInterestRate(providentFund ? d.expectedInterestRate() : null);
+        target.setMonthlyEmployeeContribution(providentFund ? d.monthlyEmployeeContribution() : null);
+        target.setMonthlyEmployerContribution(providentFund ? d.monthlyEmployerContribution() : null);
+        startContributionLog(providentFund, d, target);
+    }
+
+    /** Auto-logging starts with the month after the monthly amounts are first set, so earlier months are never double-counted. */
+    private void startContributionLog(boolean providentFund, ManualDetails d, Holding target) {
+        boolean monthly = providentFund && (isPositive(d.monthlyEmployeeContribution()) || isPositive(d.monthlyEmployerContribution()));
+        if (!monthly) {
+            target.setLastContributionMonth(null);
+            return;
+        }
+        if (target.getLastContributionMonth() == null) target.setLastContributionMonth(YearMonth.now().toString());
+    }
+
+    private boolean isPositive(BigDecimal amount) {
+        return amount != null && amount.signum() > 0;
     }
 
     private Set<String> cleanTags(Set<String> tags) {
