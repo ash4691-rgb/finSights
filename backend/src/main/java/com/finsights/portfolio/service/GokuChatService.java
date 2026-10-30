@@ -27,19 +27,21 @@ import org.springframework.web.server.ResponseStatusException;
  * asks for, feeds the results back, and repeats until the model has a final answer (or the round
  * budget below runs out — its own guard against a stuck loop burning API calls forever).
  *
- * <p>Nothing here ever writes anything. The tool set is entirely {@link GokuToolRegistry}'s
- * read-only tools, and every call already runs scoped to the signed-in user via the owning
- * service's own {@link CurrentUserService} lookup — this loop has no user id to pass even if it
- * wanted to.
+ * <p>Every tool — read or write — runs scoped to the signed-in user via the owning service's own
+ * {@link CurrentUserService} lookup: this loop has no user id to pass even if it wanted to, so a
+ * write tool creates only in this user's own account and a read tool only ever sees this user's
+ * own data. There is no tool, and no planned one, that takes a user/email as an argument.
  */
 @Service
 public class GokuChatService {
     private static final Logger log = LoggerFactory.getLogger(GokuChatService.class);
     private static final String ANTHROPIC_VERSION = "2023-06-01";
     private static final URI MESSAGES_URI = URI.create("https://api.anthropic.com/v1/messages");
-    /** Caps how many tool round-trips one chat turn can spend — a cost/latency guard, not just a UX one. */
-    private static final int MAX_TOOL_ROUNDS = 6;
-    private static final int MAX_TOKENS = 1024;
+    /** Caps how many tool round-trips one chat turn can spend — a cost/latency guard, not just a UX
+     *  one. Higher than a read-only assistant would need because a bulk statement import can mean
+     *  one create_holding/create_transaction call per extracted row, in sequence. */
+    private static final int MAX_TOOL_ROUNDS = 20;
+    private static final int MAX_TOKENS = 2048;
 
     private static final String SYSTEM_PROMPT = """
             You are Goku, the chat assistant built into FinSights, a personal portfolio tracker.
@@ -54,9 +56,23 @@ public class GokuChatService {
             Never recommend buying, selling, or reallocating anything, and never predict future prices or \
             returns. If asked for advice, say that's outside what FinSights does, and offer to show the \
             relevant numbers instead.
-            - You can only ever see the signed-in user's own data — there is no tool that can reach anyone \
-            else's.
+            - You can only ever see or change the signed-in user's own data — there is no tool, for reading \
+            or writing, that can reach anyone else's.
             - Keep answers short, concrete, and numbers-first. Name the currency on every money figure.
+
+            Making changes (create_category, create_holding, create_transaction, import_statement):
+            - These take effect immediately and there is no undo tool. Always state exactly what you're \
+            about to create (or, for import_statement, what you're about to read) and get an explicit yes \
+            before calling the tool — never create something because it seemed implied.
+            - A holding needs its category (get_categories first if you don't have the id) and a transaction \
+            needs its holding (get_holdings first) — never guess an id.
+            - import_statement only reads a statement the user attached and reports candidate rows; it saves \
+            nothing. Walk through what it found, flag anything in its `warnings`, and only call \
+            create_holding/create_transaction for rows the user confirms — one tool call per row. Check \
+            get_holdings first for a holding the statement's row might already match, and ask the user rather \
+            than silently creating a duplicate.
+            - If a required detail is missing or ambiguous, ask instead of filling in a plausible-looking \
+            value.
             """;
 
     private final GokuToolRegistry tools;

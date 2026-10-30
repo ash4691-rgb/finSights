@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { useEscToClose } from './ui'
-import type { GokuAccessResult, GokuChatReply, GokuConfig, GokuGroupedByTier, GokuMessage, GokuTier, GokuUserSearchResult } from './types'
+import type { GokuAccessResult, GokuChatReply, GokuConfig, GokuGroupedByTier, GokuMessage, GokuTier, GokuUpload, GokuUserSearchResult } from './types'
+
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 
 // Goku's state + send logic, lifted out of the launcher/panel so both can render as siblings
 // at the top of App.tsx. Conversation lives only in this hook's state; Goku keeps no
@@ -17,6 +19,8 @@ export function useGoku() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [remaining, setRemaining] = useState<number | null>(null)
+  const [attachment, setAttachment] = useState<GokuUpload | null>(null)
+  const [attaching, setAttaching] = useState(false)
 
   useEffect(() => {
     api<GokuConfig>('/api/goku/config')
@@ -24,18 +28,49 @@ export function useGoku() {
       .catch(() => { setAvailable(false); setAdmin(false); setUnavailableReason('') })
   }, [])
 
+  const attachFile = async (file: File) => {
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setError(`That file is larger than ${MAX_ATTACHMENT_BYTES / (1024 * 1024)}MB.`)
+      return
+    }
+    setAttaching(true)
+    setError('')
+    try {
+      const result = await api<GokuUpload>('/api/goku/uploads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': file.name },
+        body: file,
+      })
+      setAttachment(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not attach that file')
+    } finally {
+      setAttaching(false)
+    }
+  }
+
   const send = async () => {
     const text = draft.trim()
-    if (!text || sending) return
-    const next: GokuMessage[] = [...messages, { id: crypto.randomUUID(), role: 'user', content: text }]
+    if ((!text && !attachment) || sending) return
+    const content = text || `Please read the attached file: ${attachment!.filename}`
+    const pendingAttachment = attachment
+    const next: GokuMessage[] = [...messages, { id: crypto.randomUUID(), role: 'user', content, attachmentLabel: pendingAttachment?.filename }]
     setMessages(next)
     setDraft('')
+    setAttachment(null)
     setError('')
     setSending(true)
     try {
       const result = await api<GokuChatReply>('/api/goku/chat', {
         method: 'POST',
-        body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })) }),
+        body: JSON.stringify({
+          messages: next.map((m, i) => ({
+            role: m.role,
+            content: i === next.length - 1 && pendingAttachment
+              ? `${m.content}\n\n[Attached file: ${pendingAttachment.filename} — upload_id: ${pendingAttachment.uploadId}]`
+              : m.content,
+          })),
+        }),
       })
       setMessages(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: result.reply }])
       setRemaining(result.queriesRemainingToday)
@@ -46,7 +81,10 @@ export function useGoku() {
     }
   }
 
-  return { available, admin, unavailableReason, open, setOpen, showAdmin, setShowAdmin, messages, draft, setDraft, sending, error, remaining, send }
+  return {
+    available, admin, unavailableReason, open, setOpen, showAdmin, setShowAdmin, messages, draft, setDraft,
+    sending, error, remaining, send, attachment, setAttachment, attaching, attachFile,
+  }
 }
 
 export type Goku = ReturnType<typeof useGoku>
@@ -74,12 +112,20 @@ export function GokuAdminButton({ goku }: Readonly<{ goku: Goku }>) {
 
 export function GokuPanel({ goku }: Readonly<{ goku: Goku }>) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   useEscToClose(() => goku.setOpen(false), false)
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [goku.messages, goku.sending])
 
   if (!goku.open) return null
+
+  const pickFile = (files: FileList | null) => {
+    const file = files?.[0]
+    if (file) void goku.attachFile(file)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
   return <section className="goku-panel">
     <div className="goku-panel-header">
       <div><p className="eyebrow">GOKU</p><h3>Ask about your portfolio</h3></div>
@@ -88,17 +134,32 @@ export function GokuPanel({ goku }: Readonly<{ goku: Goku }>) {
     <div className="goku-messages" ref={scrollRef}>
       {goku.messages.length === 0 && !goku.sending && <p className="hint goku-empty">
         Ask things like "what's my net worth", "which holding is up the most this month", or "what EMIs are due soon".
-        Goku only answers from your own data — it won't place trades or tell you what to buy or sell.
+        Goku can create categories, holdings and transactions for you, and read a statement you attach — it'll
+        always confirm with you first, and it won't place trades or tell you what to buy or sell.
       </p>}
-      {goku.messages.map(m => <div key={m.id} className={`goku-msg goku-msg-${m.role}`}>{m.content}</div>)}
+      {goku.messages.map(m => <div key={m.id} className={`goku-msg goku-msg-${m.role}`}>
+        {m.attachmentLabel && <span className="goku-attachment-chip">📎 {m.attachmentLabel}</span>}
+        {m.content}
+      </div>)}
       {goku.sending && <div className="goku-msg goku-msg-assistant goku-typing"><span /><span /><span /></div>}
       {goku.error && <div className="goku-msg goku-msg-error">{goku.error}</div>}
     </div>
+    {goku.attachment && <div className="goku-pending-attachment">
+      <span>📎 {goku.attachment.filename}</span>
+      <button type="button" onClick={() => goku.setAttachment(null)} aria-label="Remove attachment">×</button>
+    </div>}
     <div className="goku-input-row">
+      <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.csv,.tsv,.xml,.txt" hidden
+        onChange={e => pickFile(e.target.files)} />
+      <button type="button" className="goku-attach-btn" title="Attach a statement"
+        disabled={goku.sending || goku.attaching} onClick={() => fileRef.current?.click()}>
+        {goku.attaching ? '…' : '📎'}
+      </button>
       <textarea rows={1} value={goku.draft} placeholder="Ask Goku…" disabled={goku.sending}
         onChange={e => goku.setDraft(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void goku.send() } }} />
-      <button type="button" className="primary" onClick={() => void goku.send()} disabled={goku.sending || !goku.draft.trim()}>Send</button>
+      <button type="button" className="primary" onClick={() => void goku.send()}
+        disabled={goku.sending || (!goku.draft.trim() && !goku.attachment)}>Send</button>
     </div>
     {goku.remaining != null && <p className="goku-remaining">{goku.remaining} question{goku.remaining === 1 ? '' : 's'} left today</p>}
   </section>
