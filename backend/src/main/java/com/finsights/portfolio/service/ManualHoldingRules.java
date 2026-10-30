@@ -15,7 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link #resolve} returns the request unchanged for a plain holding.
  */
 final class ManualHoldingRules {
-    /** The rate EPFO declared for the year, shown (not editable) on every provident fund holding; update it when EPFO announces a new one. */
+    /** The rate EPFO declared for the year; the default expected rate for a provident fund holding (editable per holding). */
     static final BigDecimal PROVIDENT_FUND_RATE = new BigDecimal("0.0825");
     static final String PROVIDENT_FUND_CURRENCY = "INR";
 
@@ -51,26 +51,22 @@ final class ManualHoldingRules {
 
     private static HoldingRequest providentFund(HoldingRequest request) {
         ManualDetails details = detailsOf(request);
-        requireNotNegative(details.employeeContribution(), "Employee contribution");
-        requireNotNegative(details.employerContribution(), "Employer contribution");
-        requireNotNegative(details.interestAccumulated(), "Interest accumulated");
+        if (request.investedValue() == null) throw bad("A provident fund holding needs its total balance");
+        requireNotNegative(request.investedValue(), "Total balance");
         requireNotNegative(details.monthlyEmployeeContribution(), "Monthly employee contribution");
         requireNotNegative(details.monthlyEmployerContribution(), "Monthly employer contribution");
-        BigDecimal balance = currentBalance(request, details);
-        BigDecimal interest = details.interestAccumulated() == null ? BigDecimal.ZERO : details.interestAccumulated();
-        if (interest.compareTo(balance) > 0) throw bad("Interest accumulated can't be more than the current balance");
-        ManualDetails resolved = new ManualDetails(null, null, details.employeeContribution(), details.employerContribution(),
-                interest, PROVIDENT_FUND_RATE, details.monthlyEmployeeContribution(), details.monthlyEmployerContribution());
-        return withValues(request, resolved, PROVIDENT_FUND_CURRENCY, money(balance.subtract(interest)), money(balance));
+        BigDecimal rate = expectedRate(details.expectedInterestRate());
+        ManualDetails resolved = new ManualDetails(null, null, null, null, null, rate,
+                details.monthlyEmployeeContribution(), details.monthlyEmployerContribution());
+        BigDecimal balance = money(request.investedValue());
+        return withValues(request, resolved, PROVIDENT_FUND_CURRENCY, balance, balance);
     }
 
-    /** The passbook balance (interest included): employee + employer when either is given, otherwise the single total. */
-    private static BigDecimal currentBalance(HoldingRequest request, ManualDetails details) {
-        boolean split = details.employeeContribution() != null || details.employerContribution() != null;
-        if (split) return orZero(details.employeeContribution()).add(orZero(details.employerContribution()));
-        requireNotNegative(request.investedValue(), "Total balance");
-        if (request.investedValue() == null) throw bad("A provident fund holding needs its total balance");
-        return request.investedValue();
+    /** The expected yearly rate as a fraction; EPFO's declared rate when the client leaves it out. */
+    private static BigDecimal expectedRate(BigDecimal rate) {
+        if (rate == null) return PROVIDENT_FUND_RATE;
+        if (rate.signum() < 0 || rate.compareTo(BigDecimal.ONE) > 0) throw bad("Expected interest rate must be between 0% and 100%");
+        return rate;
     }
 
     private static void requireNotNegative(BigDecimal value, String label) {
@@ -91,10 +87,6 @@ final class ManualHoldingRules {
 
     private static BigDecimal money(BigDecimal value) {
         return value.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private static BigDecimal orZero(BigDecimal value) {
-        return value == null ? BigDecimal.ZERO : value;
     }
 
     private static ResponseStatusException bad(String message) {

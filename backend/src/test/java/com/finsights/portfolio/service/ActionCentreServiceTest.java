@@ -45,7 +45,11 @@ class ActionCentreServiceTest {
     }
 
     private HoldingResponse holding(ManualType type, ManualDetails manual) {
-        return new HoldingResponse("h-1", "epf-1", "c-1", "Provident Fund", "EPF - Acme", HoldingKind.ASSET, ValuationMethod.MANUAL,
+        return holding(type, manual, HoldingKind.ASSET, ValuationMethod.MANUAL);
+    }
+
+    private HoldingResponse holding(ManualType type, ManualDetails manual, HoldingKind kind, ValuationMethod method) {
+        return new HoldingResponse("h-1", "epf-1", "c-1", "Provident Fund", "EPF - Acme", kind, method,
                 null, "EPFO", user().getBaseCurrency(), user().getBaseCurrency(), new BigDecimal("148000"), new BigDecimal("160000"),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null, null, null,
                 null, null, null, null, null, false, false, null, null, Set.of(), Instant.now(), Instant.now(), null, false, null,
@@ -57,16 +61,16 @@ class ActionCentreServiceTest {
     }
 
     @Test
-    void providentFundHoldingGetsAYearlyInterestCheckDueEndOfOctober() {
+    void manualHoldingGetsAYearlyValuationReviewDueEndOfOctober() {
         List<ActionItemResponse> items = service.actions(List.of(holding(ManualType.PROVIDENT_FUND)), true, LocalDate.of(2026, 10, 3));
 
         assertThat(items).hasSize(1);
         ActionItemResponse check = items.get(0);
-        assertThat(check.kind()).isEqualTo("PROVIDENT_FUND_INTEREST_CHECK");
+        assertThat(check.kind()).isEqualTo("MANUAL_VALUATION_REVIEW");
         assertThat(check.severity()).isEqualTo("WARN");
         assertThat(check.dueDate()).isEqualTo(LocalDate.of(2026, 10, 31));
         assertThat(check.period()).isEqualTo("2026");
-        assertThat(check.key()).isEqualTo("PROVIDENT_FUND_INTEREST_CHECK|h-1|2026");
+        assertThat(check.key()).isEqualTo("MANUAL_VALUATION_REVIEW|h-1|2026");
         assertThat(check.title()).contains("EPF - Acme");
     }
 
@@ -75,7 +79,7 @@ class ActionCentreServiceTest {
         assertThat(service.actions(List.of(holding(ManualType.PROVIDENT_FUND)), true, LocalDate.of(2026, 12, 20))).hasSize(1);
         List<ActionItemResponse> nextYear = service.actions(List.of(holding(ManualType.PROVIDENT_FUND)), true, LocalDate.of(2027, 10, 1));
 
-        assertThat(nextYear.get(0).key()).isEqualTo("PROVIDENT_FUND_INTEREST_CHECK|h-1|2027");
+        assertThat(nextYear.get(0).key()).isEqualTo("MANUAL_VALUATION_REVIEW|h-1|2027");
     }
 
     @Test
@@ -84,13 +88,26 @@ class ActionCentreServiceTest {
     }
 
     @Test
-    void noCheckForNonProvidentFundHoldings() {
-        assertThat(service.actions(List.of(holding(ManualType.DEFAULT), holding(ManualType.REAL_ESTATE)), true, LocalDate.of(2026, 10, 15))).isEmpty();
+    void noReviewForNonManualOrLiabilityHoldings() {
+        LocalDate day = LocalDate.of(2026, 10, 15);
+        HoldingResponse liability = holding(ManualType.DEFAULT, ManualDetails.NONE, HoldingKind.LIABILITY, ValuationMethod.MANUAL);
+        HoldingResponse fixedRate = holding(ManualType.DEFAULT, ManualDetails.NONE, HoldingKind.ASSET, ValuationMethod.FIXED_RATE);
+
+        assertThat(service.actions(List.of(liability, fixedRate), true, day)).extracting(ActionItemResponse::kind)
+                .doesNotContain("MANUAL_VALUATION_REVIEW");
+    }
+
+    @Test
+    void everyManualAssetTypeGetsTheReview() {
+        LocalDate day = LocalDate.of(2026, 10, 15);
+
+        assertThat(service.actions(List.of(holding(ManualType.DEFAULT)), true, day)).hasSize(1);
+        assertThat(service.actions(List.of(holding(ManualType.REAL_ESTATE)), true, day)).hasSize(1);
     }
 
     @Test
     void aDismissedCheckIsHiddenForThatYearOnly() {
-        when(dismissals.suppressedKeys()).thenReturn(Set.of("PROVIDENT_FUND_INTEREST_CHECK|h-1|2026"));
+        when(dismissals.suppressedKeys()).thenReturn(Set.of("MANUAL_VALUATION_REVIEW|h-1|2026"));
 
         assertThat(service.actions(List.of(holding(ManualType.PROVIDENT_FUND)), true, LocalDate.of(2026, 10, 15))).isEmpty();
         assertThat(service.actions(List.of(holding(ManualType.PROVIDENT_FUND)), true, LocalDate.of(2027, 10, 15))).hasSize(1);

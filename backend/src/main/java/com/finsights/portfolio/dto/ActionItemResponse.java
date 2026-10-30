@@ -10,7 +10,7 @@ import java.time.LocalDate;
  * is a stable identifier the client echoes back to mark the row done / deferred / deleted.
  */
 public record ActionItemResponse(
-        String kind,          // EMI_DUE, EMI_OVERDUE, INTEREST_DUE, FIXED_RATE_MATURED, PROVIDENT_FUND_INTEREST_CHECK, PROVIDENT_FUND_CONTRIBUTION, PRICE_UNAVAILABLE, DQ_*, BROKER_SYNC_*
+        String kind,          // EMI_DUE, EMI_OVERDUE, INTEREST_DUE, FIXED_RATE_MATURED, MANUAL_VALUATION_REVIEW, PROVIDENT_FUND_CONTRIBUTION, PRICE_UNAVAILABLE, DQ_*, BROKER_SYNC_*
         String severity,      // WARN | INFO
         String title,
         String detail,

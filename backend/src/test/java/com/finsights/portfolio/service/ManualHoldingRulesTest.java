@@ -35,9 +35,8 @@ class ManualHoldingRulesTest {
         return request(ManualType.PROVIDENT_FUND, ValuationMethod.MANUAL, "INR", null, null, invested, details);
     }
 
-    private ManualDetails providentFundDetails(String emp, String er, String interest, String rate) {
-        return new ManualDetails(null, null, emp == null ? null : n(emp), er == null ? null : n(er),
-                interest == null ? null : n(interest), rate == null ? null : n(rate));
+    private ManualDetails rateOnly(String rate) {
+        return new ManualDetails(null, null, null, null, null, rate == null ? null : n(rate));
     }
 
     private void assertRejected(HoldingRequest request, String message) {
@@ -91,30 +90,21 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void providentFundCurrentIsTheEmployeePlusEmployerBalanceAndInvestedExcludesInterest() {
-        HoldingRequest resolved = ManualHoldingRules.resolve(
-                providentFund(null, providentFundDetails("100", "50", "10", "0.0825")), false);
+    void providentFundInvestedAndCurrentAreTheTotalBalanceAndTheRateIsKept() {
+        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("200"), rateOnly("0.09")), false);
 
-        assertThat(resolved.investedValue()).isEqualByComparingTo("140");
-        assertThat(resolved.currentValue()).isEqualByComparingTo("150");
-        assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
-    }
-
-    @Test
-    void providentFundWithOnlyOneContributionTreatsTheOtherAsZero() {
-        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(null, providentFundDetails(null, "70", null, null)), false);
-
-        assertThat(resolved.investedValue()).isEqualByComparingTo("70");
-        assertThat(resolved.currentValue()).isEqualByComparingTo("70");
-        assertThat(resolved.manual().interestAccumulated()).isEqualByComparingTo("0");
-    }
-
-    @Test
-    void providentFundUsesTheSingleTotalBalanceWhenNoSplitIsGiven() {
-        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("200"), providentFundDetails(null, null, "20", null)), false);
-
-        assertThat(resolved.investedValue()).isEqualByComparingTo("180");
+        assertThat(resolved.investedValue()).isEqualByComparingTo("200");
         assertThat(resolved.currentValue()).isEqualByComparingTo("200");
+        assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.09");
+        assertThat(resolved.manual().interestAccumulated()).isNull();
+        assertThat(resolved.manual().employeeContribution()).isNull();
+    }
+
+    @Test
+    void providentFundRateDefaultsToTheDeclaredOneWhenLeftOut() {
+        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("200"), null), false);
+
+        assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
     }
 
     @Test
@@ -129,26 +119,23 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void providentFundAlwaysUsesTheDeclaredRateAndInr() {
+    void providentFundIsAlwaysInr() {
         HoldingRequest resolved = ManualHoldingRules.resolve(new HoldingRequest("c", "Name", ValuationMethod.MANUAL, null, "EPFO", "USD",
                 null, null, null, n("100"), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                ManualType.PROVIDENT_FUND, providentFundDetails(null, null, null, "0.5")), false);
+                ManualType.PROVIDENT_FUND, null), false);
 
-        assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
         assertThat(resolved.currency()).isEqualTo("INR");
     }
 
     @Test
-    void providentFundWithoutAnyContributionIsRejected() {
+    void providentFundWithoutATotalBalanceIsRejected() {
         assertRejected(providentFund(null, null), "total balance");
     }
 
     @Test
     void providentFundValidationRejectsBadValues() {
         assertRejected(providentFund(n("-1"), null), "Total balance");
-        assertRejected(providentFund(n("5"), providentFundDetails(null, null, "6", null)), "more than the current balance");
-        assertRejected(providentFund(null, providentFundDetails("-1", null, null, null)), "Employee contribution");
-        assertRejected(providentFund(null, providentFundDetails(null, "-1", null, null)), "Employer contribution");
-        assertRejected(providentFund(n("5"), providentFundDetails(null, null, "-1", null)), "Interest accumulated");
+        assertRejected(providentFund(n("5"), rateOnly("-0.01")), "between 0% and 100%");
+        assertRejected(providentFund(n("5"), rateOnly("1.5")), "between 0% and 100%");
     }
 }

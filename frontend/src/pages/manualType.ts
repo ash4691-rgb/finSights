@@ -15,8 +15,6 @@ export const manualFormFrom = (holding: Holding): ManualForm => {
   return {
     manualType: holding.manualType ?? 'DEFAULT',
     purchaseUnitPrice: text(m.purchaseUnitPrice), currentUnitPrice: text(m.currentUnitPrice),
-    employeeContribution: text(m.employeeContribution), employerContribution: text(m.employerContribution),
-    interestAccumulated: text(m.interestAccumulated),
     monthlyEmployeeContribution: text(m.monthlyEmployeeContribution), monthlyEmployerContribution: text(m.monthlyEmployerContribution),
     expectedInterestRate: m.expectedInterestRate != null ? String(+(m.expectedInterestRate * 100).toFixed(4)) : '',
   }
@@ -44,14 +42,11 @@ function deriveRealEstate(f: DerivationInput) {
   return { invested: round2(area * purchase), current: round2(area * current) }
 }
 
-export const hasContributionSplit = (f: ManualForm) => f.employeeContribution !== '' || f.employerContribution !== ''
-
-// The balance EPFO reports already includes interest: current = employee + employer (or one total), invested = current - interest.
+// A provident fund is tracked by its total balance, so invested and current value are both that balance.
 function deriveProvidentFund(f: DerivationInput) {
-  const current = hasContributionSplit(f) ? numeric(f.employeeContribution) + numeric(f.employerContribution) : numeric(f.investedValue)
-  const interest = numeric(f.interestAccumulated)
-  if (current <= 0 || interest > current) return null
-  return { invested: round2(current - interest), current: round2(current) }
+  const balance = numeric(f.investedValue)
+  if (balance <= 0) return null
+  return { invested: round2(balance), current: round2(balance) }
 }
 
 // The request's `manual` block; only the fields that belong to the chosen type are sent.
@@ -67,8 +62,7 @@ const optional = (value: string) => value === '' ? undefined : numeric(value)
 
 function providentFundPayload(f: ManualForm): ManualDetails {
   return {
-    employeeContribution: optional(f.employeeContribution), employerContribution: optional(f.employerContribution),
-    interestAccumulated: optional(f.interestAccumulated),
+    expectedInterestRate: f.expectedInterestRate === '' ? undefined : numeric(f.expectedInterestRate) / 100,
     monthlyEmployeeContribution: optional(f.monthlyEmployeeContribution), monthlyEmployerContribution: optional(f.monthlyEmployerContribution),
   }
 }

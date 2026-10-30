@@ -270,56 +270,46 @@ describe('HoldingModal — manual types', () => {
     expect(screen.getByRole('button', { name: 'Add holding' })).toBeDisabled()
   })
 
-  test('choosing Provident fund swaps in the contribution fields and sums the split into the calculated values', async () => {
+  test('choosing Provident fund asks only for balance, monthly amounts and rate, with the currency fixed to INR', async () => {
     renderNew(equityCategory)
 
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
-    fireEvent.change(screen.getByLabelText(/^Employee contribution/), { target: { value: '100000' } })
-    fireEvent.change(screen.getByLabelText(/^Employer contribution/), { target: { value: '60000' } })
-    fireEvent.change(screen.getByLabelText(/^Interest accumulated/), { target: { value: '12000' } })
 
-    expect(screen.getByLabelText(/^Total balance/)).toBeDisabled()
-    expect(screen.getByLabelText('Invested value (calculated)')).toHaveValue('148000')
-    expect(screen.getByLabelText('Current value (calculated)')).toHaveValue('160000')
+    expect(screen.getByLabelText(/^Total balance/)).toBeEnabled()
+    expect(screen.getByLabelText(/^Monthly employee contribution/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Monthly employer contribution/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Expected interest rate/)).toBeEnabled()
+    expect(screen.queryByLabelText(/^Interest accumulated/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Employee contribution/)).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Quantity')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Currency')).toBeDisabled()
+    expect(screen.getByLabelText('Currency')).toHaveValue('INR')
+    expect(screen.getByLabelText(/Liquid within 7 days/)).not.toBeChecked()
   })
 
-  test('submits a provident fund holding with current = balance, invested = balance - interest and the rate as a fraction', async () => {
+  test('submits a provident fund holding with the balance as invested and current and the rate as a fraction', async () => {
     const onSaved = renderNew(equityCategory)
 
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
     fireEvent.change(screen.getByLabelText(/^Total balance/), { target: { value: '200000' } })
-    fireEvent.change(screen.getByLabelText(/^Interest accumulated/), { target: { value: '10000' } })
     fireEvent.change(screen.getByLabelText(/^Monthly employee contribution/), { target: { value: '1800' } })
     fireEvent.change(screen.getByLabelText(/^Monthly employer contribution/), { target: { value: '1800' } })
+    fireEvent.change(screen.getByLabelText(/^Expected interest rate/), { target: { value: '8.25' } })
     fillBasics('EPF - Acme')
     fireEvent.click(screen.getByRole('button', { name: 'Add holding' }))
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(posted).toMatchObject({
-      manualType: 'PROVIDENT_FUND', currency: 'INR', quantity: null, area: null, investedValue: 190000, currentValue: 200000,
-      manual: { interestAccumulated: 10000, monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 },
+      manualType: 'PROVIDENT_FUND', currency: 'INR', quantity: null, area: null, investedValue: 200000, currentValue: 200000,
+      liquidWithinSevenDays: false,
+      manual: { expectedInterestRate: 0.0825, monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 },
     })
   })
 
-  test('the provident fund form ends with read-only currency, rate and calculated values', async () => {
+  test('a provident fund without a balance blocks saving', async () => {
     renderNew(equityCategory)
 
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
-
-    expect(screen.getByLabelText('Currency')).toBeDisabled()
-    expect(screen.getByLabelText('Currency')).toHaveValue('INR')
-    expect(screen.getByLabelText('Interest rate (% p.a.)')).toBeDisabled()
-    expect(screen.getByLabelText('Interest rate (% p.a.)')).toHaveValue('8.25')
-    expect(screen.queryByLabelText(/^Expected interest rate/)).not.toBeInTheDocument()
-  })
-
-  test('a provident fund balance with interest above it blocks saving', async () => {
-    renderNew(equityCategory)
-
-    fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
-    fireEvent.change(screen.getByLabelText(/^Total balance/), { target: { value: '5000' } })
-    fireEvent.change(screen.getByLabelText(/^Interest accumulated/), { target: { value: '6000' } })
     fillBasics('EPF')
 
     expect(screen.getByRole('button', { name: 'Add holding' })).toBeDisabled()
@@ -362,16 +352,13 @@ describe('manual type display', () => {
 
   const providentFundHolding: Holding = {
     ...holding, id: 'h-epf', name: 'EPF', manualType: 'PROVIDENT_FUND',
-    manual: { employeeContribution: 100000, employerContribution: 60000, interestAccumulated: 12000, expectedInterestRate: 0.0825, monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 },
+    manual: { expectedInterestRate: 0.0825, monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 },
   }
 
-  test('the drawer shows the provident fund contributions and rate', () => {
+  test('the drawer shows the provident fund monthly contributions and rate', () => {
     render(<HoldingDrawer holding={providentFundHolding} displayCurrency="INR" fxRatesToBase={{}}
       onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
 
-    expect(screen.getByText('Employee contribution')).toBeInTheDocument()
-    expect(screen.getByText('Employer contribution')).toBeInTheDocument()
-    expect(screen.getByText('Interest accumulated')).toBeInTheDocument()
     expect(screen.getByText('Expected rate')).toBeInTheDocument()
     expect(screen.getByText('Monthly employee contribution')).toBeInTheDocument()
     expect(screen.queryByText('Quantity')).not.toBeInTheDocument()
@@ -382,7 +369,7 @@ describe('manual type display', () => {
       onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
 
     expect(screen.getByText('Manual type')).toBeInTheDocument()
-    expect(screen.queryByText('Employee contribution')).not.toBeInTheDocument()
+    expect(screen.queryByText('Expected rate')).not.toBeInTheDocument()
   })
 
   test('a plain holding shows no manual facts', () => {

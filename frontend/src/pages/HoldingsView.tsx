@@ -349,7 +349,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
           <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => { setDirty(true); setForm(current => ({ ...current, tags: next })) }} />
         </Field>
         <Field label="Notes" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
-        {isProvidentFund && <ProvidentFundSummary form={form} derived={derived} disabled={moneyLoading} />}
+        {isProvidentFund && <ProvidentFundSummary />}
       </div>
       {isEdit && !isLiability && <div className="form-callout"><span className="form-callout-dot">i</span>
         <ul className="audit-list">

@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { Field } from '../ui'
 import { areaUnits, areaUnitLabel, money, percent, PROVIDENT_FUND_RATE_PERCENT } from '../util'
 import type { ManualForm } from '../util'
-import { hasContributionSplit } from './manualType'
 import type { AreaUnit, Holding, ManualType } from '../types'
 
 type FormFields = ManualForm & { area: string; areaUnit: AreaUnit; investedValue: string; currency: string }
@@ -36,37 +35,23 @@ function RealEstateFields({ form, set, derived, disabled }: Omit<FieldsProps, 't
   </>
 }
 
-function ProvidentFundFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>) {
-  const split = hasContributionSplit(form)
+function ProvidentFundFields({ form, set, disabled }: Omit<FieldsProps, 'type'>) {
   return <>
-    <Field label="Total balance" required={!split} wide>
-      {number(split ? String(derived?.current ?? '') : form.investedValue, v => set('investedValue', v), { required: !split, disabled: split || disabled, placeholder: split ? 'Employee + employer' : 'Balance shown in your EPFO passbook' })}
-      <p className="hint">{split ? 'Employee + employer contributions below.' : 'EPFO reports employee + employer share including interest.'}</p>
+    <Field label="Total balance" required wide>
+      {number(form.investedValue, v => set('investedValue', v), { required: true, disabled, placeholder: 'Balance shown in your EPFO passbook' })}
     </Field>
-    <div className="field-pair">
-      <Field label="Employee contribution">{number(form.employeeContribution, v => set('employeeContribution', v), { disabled })}</Field>
-      <Field label="Employer contribution">{number(form.employerContribution, v => set('employerContribution', v), { disabled })}</Field>
-    </div>
     <div className="field-pair">
       <Field label="Monthly employee contribution">{number(form.monthlyEmployeeContribution, v => set('monthlyEmployeeContribution', v), { disabled, placeholder: 'Per month' })}</Field>
       <Field label="Monthly employer contribution">{number(form.monthlyEmployerContribution, v => set('monthlyEmployerContribution', v), { disabled, placeholder: 'Per month' })}</Field>
     </div>
+    <Field label="Expected interest rate (% p.a.)" wide>{number(form.expectedInterestRate, v => set('expectedInterestRate', v), { max: '100', disabled, placeholder: `${PROVIDENT_FUND_RATE_PERCENT} (EPFO's declared rate)` })}</Field>
     <p className="hint">With a monthly amount set, a task on the 1st of each month asks you to confirm last month's contribution — confirming logs the transaction.</p>
-    <Field label="Interest accumulated">{number(form.interestAccumulated, v => set('interestAccumulated', v), { placeholder: '0', disabled })}</Field>
   </>
 }
 
-// Read-only facts about a provident fund holding, shown at the bottom of the form: the currency and
-// rate are fixed, and the values are calculated from the editable fields above.
-export function ProvidentFundSummary({ form, derived, disabled }: { form: FormFields; derived: FieldsProps['derived']; disabled?: boolean }) {
-  const rate = form.expectedInterestRate === '' ? PROVIDENT_FUND_RATE_PERCENT : form.expectedInterestRate
-  return <>
-    <div className="field-pair">
-      <Field label="Currency"><input disabled value="INR" aria-label="Currency" /></Field>
-      <Field label="Interest rate (% p.a.)"><input disabled value={rate} aria-label="Interest rate (% p.a.)" /></Field>
-    </div>
-    <CalculatedValues form={form} derived={derived} disabled={disabled} />
-  </>
+// Read-only fact shown at the bottom of the provident fund form: it is always held in INR.
+export function ProvidentFundSummary() {
+  return <Field label="Currency"><input disabled value="INR" aria-label="Currency" /></Field>
 }
 
 // The inputs behind a typed manual holding, shown under the Manual type dropdown.
@@ -90,11 +75,8 @@ function realEstateFacts(holding: Holding) {
 function providentFundFacts(holding: Holding) {
   const m = holding.manual ?? {}
   return [
-    m.employeeContribution != null ? fact('Employee contribution', money(m.employeeContribution, holding.currency)) : null,
-    m.employerContribution != null ? fact('Employer contribution', money(m.employerContribution, holding.currency)) : null,
     m.monthlyEmployeeContribution != null ? fact('Monthly employee contribution', money(m.monthlyEmployeeContribution, holding.currency)) : null,
     m.monthlyEmployerContribution != null ? fact('Monthly employer contribution', money(m.monthlyEmployerContribution, holding.currency)) : null,
-    m.interestAccumulated != null ? fact('Interest accumulated', money(m.interestAccumulated, holding.currency)) : null,
     m.expectedInterestRate != null ? fact('Expected rate', `${percent(m.expectedInterestRate * 100)} p.a.`) : null,
   ]
 }

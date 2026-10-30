@@ -8,6 +8,11 @@ const contribution: ActionItem = {
   holdingId: 'h-epf', period: '2026-01', key: 'PROVIDENT_FUND_CONTRIBUTION|h-epf|2026-01',
 }
 
+const review: ActionItem = {
+  kind: 'MANUAL_VALUATION_REVIEW', severity: 'WARN', title: 'Review valuation — Flat', detail: 'Consider updating its balance or valuation by 2026-10-31.',
+  holdingId: 'h-flat', period: '2026', key: 'MANUAL_VALUATION_REVIEW|h-flat|2026',
+}
+
 describe('InsightsView — provident fund contribution task', () => {
   const calls: { url: string; method?: string }[] = []
 
@@ -15,7 +20,7 @@ describe('InsightsView — provident fund contribution task', () => {
     calls.length = 0
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
       calls.push({ url, method: init?.method })
-      const body = url.includes('/insights/actions') ? [contribution] : []
+      const body = url.includes('/insights/actions') ? [contribution, review] : []
       return Promise.resolve({ ok: true, status: url.includes('/confirm') ? 204 : 200, json: () => Promise.resolve(body) } as Response)
     }))
   })
@@ -33,5 +38,12 @@ describe('InsightsView — provident fund contribution task', () => {
 
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
     expect(calls).toContainEqual({ url: 'http://localhost:8080/api/provident-fund/h-epf/contributions/confirm?month=2026-01', method: 'POST' })
+  })
+
+  test('the yearly valuation review is listed as a task without a confirm button of its own', async () => {
+    renderView()
+
+    expect(await screen.findByText('Review valuation — Flat')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Confirm contribution' })).toHaveLength(1)
   })
 })

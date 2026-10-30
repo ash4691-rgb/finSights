@@ -580,20 +580,20 @@ class HoldingServiceTest {
     }
 
     @Test
-    void createProvidentFundHoldingStoresContributionsAndDerivesCurrentValue() {
+    void createProvidentFundHoldingStoresTotalBalanceRateAndMonthlyAmounts() {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
-        ManualDetails details = new ManualDetails(null, null, new BigDecimal("100000"), new BigDecimal("60000"),
-                new BigDecimal("12000"), new BigDecimal("0.0825"), new BigDecimal("1800"), new BigDecimal("1800"));
+        ManualDetails details = new ManualDetails(null, null, null, null, null, new BigDecimal("0.0825"),
+                new BigDecimal("1800"), new BigDecimal("1800"));
 
-        HoldingResponse response = service.create(providentFundRequest(null, details));
+        HoldingResponse response = service.create(providentFundRequest(new BigDecimal("160000"), details));
 
         ArgumentCaptor<Holding> saved = ArgumentCaptor.forClass(Holding.class);
         verify(holdings, times(2)).save(saved.capture());
         Holding stored = saved.getAllValues().get(0);
         assertThat(stored.getManualType()).isEqualTo(ManualType.PROVIDENT_FUND);
-        assertThat(openingAmount()).isEqualByComparingTo("148000");
+        assertThat(openingAmount()).isEqualByComparingTo("160000");
         assertThat(stored.getCurrentValue()).isEqualByComparingTo("160000");
         assertThat(stored.getQuantity()).isNull();
         assertThat(stored.getArea()).isNull();

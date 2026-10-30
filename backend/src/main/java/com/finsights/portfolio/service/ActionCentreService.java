@@ -23,8 +23,8 @@ import org.springframework.stereotype.Service;
 public class ActionCentreService {
 
     /** EPF credits a year's interest around the financial year end; the yearly check falls due on 31 October. */
-    static final Month PROVIDENT_FUND_CHECK_MONTH = Month.OCTOBER;
-    static final int PROVIDENT_FUND_CHECK_DAY = 31;
+    static final Month MANUAL_REVIEW_MONTH = Month.OCTOBER;
+    static final int MANUAL_REVIEW_DAY = 31;
 
     private final EmiService emis;
     private final InterestPayoutService interestPayouts;
@@ -65,7 +65,7 @@ public class ActionCentreService {
                                 + ". Confirm the payout and record what happened to the proceeds.",
                         h));
             }
-            if (isProvidentFundCheckDue(h, today)) items.add(providentFundInterestCheck(h, today));
+            if (isManualReviewDue(h, today)) items.add(manualValuationReview(h, today));
             if (h.valuationMethod() == ValuationMethod.MARKET_PRICE
                     && h.tickerSymbol() != null && !h.tickerSymbol().isBlank() && h.priceUpdatedAt() == null) {
                 items.add(item("PRICE_UNAVAILABLE", "WARN",
@@ -116,19 +116,19 @@ public class ActionCentreService {
                 .toList();
     }
 
-    /** The yearly provident fund interest check appears from 1 October and stays until it is done or deferred. */
-    private static boolean isProvidentFundCheckDue(HoldingResponse h, LocalDate today) {
-        return h.manualType() == ManualType.PROVIDENT_FUND && today.getMonthValue() >= PROVIDENT_FUND_CHECK_MONTH.getValue();
+    /** The yearly valuation review appears from 1 October for every manual-valued asset and stays until it is done or deferred. */
+    private static boolean isManualReviewDue(HoldingResponse h, LocalDate today) {
+        boolean manualAsset = h.valuationMethod() == ValuationMethod.MANUAL && h.kind() == HoldingKind.ASSET;
+        return manualAsset && today.getMonthValue() >= MANUAL_REVIEW_MONTH.getValue();
     }
 
     /** One task per holding per year: the period is the year, so marking it done only clears that year's. */
-    private static ActionItemResponse providentFundInterestCheck(HoldingResponse h, LocalDate today) {
-        String kind = "PROVIDENT_FUND_INTEREST_CHECK";
+    private static ActionItemResponse manualValuationReview(HoldingResponse h, LocalDate today) {
+        String kind = "MANUAL_VALUATION_REVIEW";
         String period = String.valueOf(today.getYear());
-        LocalDate due = LocalDate.of(today.getYear(), PROVIDENT_FUND_CHECK_MONTH, PROVIDENT_FUND_CHECK_DAY);
-        return new ActionItemResponse(kind, "WARN", "Check provident fund interest — " + h.name(),
-                "Provident fund interest is credited yearly. Compare your passbook with the interest recorded here and update this "
-                        + "holding's balance and interest accumulated by " + due + ".",
+        LocalDate due = LocalDate.of(today.getYear(), MANUAL_REVIEW_MONTH, MANUAL_REVIEW_DAY);
+        return new ActionItemResponse(kind, "WARN", "Review valuation — " + h.name(),
+                "This value is tracked by hand. Consider updating its balance or valuation by " + due + ".",
                 h.id(), h.name(), h.broker(), due, null, period, null, ActionItemResponse.keyOf(kind, h.id(), period));
     }
 

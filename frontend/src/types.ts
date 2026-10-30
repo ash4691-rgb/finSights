@@ -10,7 +10,6 @@ export type ManualType = 'DEFAULT' | 'REAL_ESTATE' | 'PROVIDENT_FUND'
 // Inputs behind a real-estate (unit prices) or provident fund (contributions, interest) holding's calculated values.
 export type ManualDetails = {
   purchaseUnitPrice?: number; currentUnitPrice?: number
-  employeeContribution?: number; employerContribution?: number; interestAccumulated?: number
   expectedInterestRate?: number; monthlyEmployeeContribution?: number; monthlyEmployerContribution?: number
 }
 export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
