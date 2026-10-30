@@ -5,9 +5,9 @@ import { api } from '../api'
 import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel, checkLoanTerm, areaUnitLabel } from '../util'
 import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
 import { TransactionModal } from './TransactionsView'
-import { ManualTypeFields, ManualFacts, ProvidentFundSummary } from './ManualTypeFields'
+import { ManualTypeFields, ManualFacts } from './ManualTypeFields'
 import { manualTypes, manualTypeLabel, manualFormFrom, defaultsForCategory, deriveManualValues, manualPayload } from './manualType'
-import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
+import type { Holding, ManualType, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
 // ---------------------------------------------------------------------------
@@ -150,7 +150,6 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
   const manualType = !isLiability && form.valuationMethod === 'MANUAL' ? form.manualType : 'DEFAULT'
   const isTypedManual = manualType !== 'DEFAULT'
   const isRealEstate = manualType === 'REAL_ESTATE'
-  const isProvidentFund = manualType === 'PROVIDENT_FUND'
   const derived = deriveManualValues(manualType, form)
   const isFixedRate = !isLiability && form.valuationMethod === 'FIXED_RATE'
   const isMarket = !isLiability && form.valuationMethod === 'MARKET_PRICE'
@@ -160,6 +159,13 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
   const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
   useEscToClose(onClose, dirty)
   // A new holding follows its category's default (real estate pre-selects Manual + Real estate); an edit keeps its own type.
+  // A typed manual holding is asked for its currency, which starts as the one the user is viewing in.
+  const changeManualType = (value: string) => {
+    setDirty(true)
+    const currency = !isEdit && value !== 'DEFAULT' ? { currency: displayCurrency } : {}
+    setForm(current => ({ ...current, manualType: value as ManualType, ...currency }))
+  }
+
   const changeCategory = (categoryId: string) => {
     setDirty(true)
     const defaults = isEdit ? {} : defaultsForCategory(categories.find(c => c.id === categoryId))
@@ -250,7 +256,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
       categoryId: form.categoryId, name: form.name,
       valuationMethod: isLiability ? 'MANUAL' : form.valuationMethod,
       tickerSymbol: isLiability ? null : (form.tickerSymbol || null), broker: form.broker.trim(),
-      currency: isProvidentFund ? 'INR' : form.currency, quantity: isLiability || isTypedManual ? null : (form.quantity ? numeric(form.quantity) : null),
+      currency: form.currency, quantity: isLiability || isTypedManual ? null : (form.quantity ? numeric(form.quantity) : null),
       area: isRealEstate && form.area ? numeric(form.area) : null, areaUnit: isRealEstate ? form.areaUnit : null,
       manualType, manual: manualPayload(manualType, form),
       investedValue: derived ? derived.invested : numeric(form.investedValue),
@@ -293,7 +299,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
           {methodOptions.length < selectableValuationMethods.length && <p className="hint">Restricted by {selectedCategory?.name}'s allowed valuation methods.</p>}
         </Field>}
         {!isLiability && form.valuationMethod === 'MANUAL' && <Field label="Manual type" required>
-          <select value={form.manualType} onChange={e => set('manualType', e.target.value)}>{manualTypes.map(t => <option key={t} value={t}>{manualTypeLabel(t)}</option>)}</select>
+          <select value={form.manualType} onChange={e => changeManualType(e.target.value)}>{manualTypes.map(t => <option key={t} value={t}>{manualTypeLabel(t)}</option>)}</select>
         </Field>}
         {isMarket && <Field label="Ticker symbol" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
         {isEdit
@@ -335,7 +341,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
                 {!isEdit && liabilityMathError && <p className="form-error">{liabilityMathError}</p>}
               </>}
         </>}
-        {!isLiability && isRealEstate && <Field label="Currency" required><select disabled={isEdit} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>}
+        {!isLiability && isTypedManual && <Field label="Currency" required><select disabled={isEdit} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>}
         {!isLiability && !isTypedManual && <div className="field-pair">
           <Field label="Currency"><select disabled={isEdit || isMarket} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
           <Field label={isFixedRate ? 'Current value (computed)' : isMarket ? 'Current value (live price)' : 'Current value'} required={!isFixedRate && !isMarket}><input required={!isFixedRate && !isMarket} type="number" min="0" step="0.01" disabled={isFixedRate || isMarket || moneyLoading} value={isFixedRate || isMarket || !moneyLoading ? form.currentValue : ''} onChange={e => set('currentValue', e.target.value)} placeholder={isMarket ? 'Priced after saving' : isFixedRate ? 'Computed after saving' : moneyLoading ? 'Loading…' : ''} /></Field>
@@ -349,7 +355,6 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
           <TagInput tags={form.tags} suggestions={tagIdeas} onChange={next => { setDirty(true); setForm(current => ({ ...current, tags: next })) }} />
         </Field>
         <Field label="Notes" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Holdings table" maxLength={1024} /></Field>
-        {isProvidentFund && <ProvidentFundSummary />}
       </div>
       {isEdit && !isLiability && <div className="form-callout"><span className="form-callout-dot">i</span>
         <ul className="audit-list">

@@ -104,8 +104,7 @@ class FxRateServiceTest {
     @Test
     void convertingAHoldingConvertsItsManualMoneyFieldsButKeepsTheRate() {
         HoldingResponse base = holding("USD");
-        ManualDetails manual = new ManualDetails(new BigDecimal("10"), null, new BigDecimal("20"), null,
-                new BigDecimal("5"), new BigDecimal("0.0825"), new BigDecimal("1"), null);
+        ManualDetails manual = new ManualDetails(new BigDecimal("10"), null, new BigDecimal("0.0825"), new BigDecimal("1"));
         HoldingResponse withManual = new HoldingResponse(base.id(), base.holdingId(), base.categoryId(), base.categoryName(),
                 base.name(), base.kind(), base.valuationMethod(), null, base.broker(), "USD", "USD", base.investedValue(),
                 base.currentValue(), base.profitLoss(), base.profitLossPercentage(), base.realisedProfitLoss(),
@@ -118,9 +117,7 @@ class FxRateServiceTest {
         assertThat(converted.manualType()).isEqualTo(ManualType.PROVIDENT_FUND);
         assertThat(converted.manual().purchaseUnitPrice()).isEqualByComparingTo("885.00");
         assertThat(converted.manual().currentUnitPrice()).isNull();
-        assertThat(converted.manual().employeeContribution()).isEqualByComparingTo("1770.00");
-        assertThat(converted.manual().monthlyEmployeeContribution()).isEqualByComparingTo("88.50");
-        assertThat(converted.manual().monthlyEmployerContribution()).isNull();
+        assertThat(converted.manual().monthlyContribution()).isEqualByComparingTo("88.50");
         assertThat(converted.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
     }
 

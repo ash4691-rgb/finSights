@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Field } from '../ui'
-import { areaUnits, areaUnitLabel, money, percent, PROVIDENT_FUND_RATE_PERCENT } from '../util'
+import { areaUnits, areaUnitLabel, money, percent } from '../util'
 import type { ManualForm } from '../util'
 import type { AreaUnit, Holding, ManualType } from '../types'
 
@@ -38,20 +38,14 @@ function RealEstateFields({ form, set, derived, disabled }: Omit<FieldsProps, 't
 function ProvidentFundFields({ form, set, disabled }: Omit<FieldsProps, 'type'>) {
   return <>
     <Field label="Total balance" required wide>
-      {number(form.investedValue, v => set('investedValue', v), { required: true, disabled, placeholder: 'Balance shown in your EPFO passbook' })}
+      {number(form.investedValue, v => set('investedValue', v), { required: true, disabled, placeholder: 'Current balance of the fund' })}
     </Field>
     <div className="field-pair">
-      <Field label="Monthly employee contribution">{number(form.monthlyEmployeeContribution, v => set('monthlyEmployeeContribution', v), { disabled, placeholder: 'Per month' })}</Field>
-      <Field label="Monthly employer contribution">{number(form.monthlyEmployerContribution, v => set('monthlyEmployerContribution', v), { disabled, placeholder: 'Per month' })}</Field>
+      <Field label="Monthly contribution">{number(form.monthlyContribution, v => set('monthlyContribution', v), { disabled, placeholder: 'Employee + employer, per month' })}</Field>
+      <Field label="Expected interest rate (% p.a.)">{number(form.expectedInterestRate, v => set('expectedInterestRate', v), { max: '100', disabled, placeholder: 'e.g. 8.25' })}</Field>
     </div>
-    <Field label="Expected interest rate (% p.a.)" wide>{number(form.expectedInterestRate, v => set('expectedInterestRate', v), { max: '100', disabled, placeholder: `${PROVIDENT_FUND_RATE_PERCENT} (EPFO's declared rate)` })}</Field>
-    <p className="hint">With a monthly amount set, a task on the 1st of each month asks you to confirm last month's contribution — confirming logs the transaction.</p>
+    <p className="hint">With a monthly contribution set, a task on the 1st of each month asks you to confirm last month's contribution — confirming logs the transaction.</p>
   </>
-}
-
-// Read-only fact shown at the bottom of the provident fund form: it is always held in INR.
-export function ProvidentFundSummary() {
-  return <Field label="Currency"><input disabled value="INR" aria-label="Currency" /></Field>
 }
 
 // The inputs behind a typed manual holding, shown under the Manual type dropdown.
@@ -75,8 +69,7 @@ function realEstateFacts(holding: Holding) {
 function providentFundFacts(holding: Holding) {
   const m = holding.manual ?? {}
   return [
-    m.monthlyEmployeeContribution != null ? fact('Monthly employee contribution', money(m.monthlyEmployeeContribution, holding.currency)) : null,
-    m.monthlyEmployerContribution != null ? fact('Monthly employer contribution', money(m.monthlyEmployerContribution, holding.currency)) : null,
+    m.monthlyContribution != null ? fact('Monthly contribution', money(m.monthlyContribution, holding.currency)) : null,
     m.expectedInterestRate != null ? fact('Expected rate', `${percent(m.expectedInterestRate * 100)} p.a.`) : null,
   ]
 }

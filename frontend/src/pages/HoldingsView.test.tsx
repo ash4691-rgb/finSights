@@ -193,10 +193,10 @@ describe('HoldingModal — manual types', () => {
       return tagSuggestionsOk()
     }))
   }
-  const renderNew = (category: Category, onSaved = vi.fn()) => {
+  const renderNew = (category: Category, onSaved = vi.fn(), displayCurrency = 'INR') => {
     stubFetch()
     render(<HoldingModal holding={null} category={category} categories={[realEstateCategory, equityCategory]} holdings={[]}
-      displayCurrency="INR" onClose={vi.fn()} onSaved={onSaved} />)
+      displayCurrency={displayCurrency} onClose={vi.fn()} onSaved={onSaved} />)
     return onSaved
   }
   const fillBasics = (name: string) => {
@@ -270,21 +270,28 @@ describe('HoldingModal — manual types', () => {
     expect(screen.getByRole('button', { name: 'Add holding' })).toBeDisabled()
   })
 
-  test('choosing Provident fund asks only for balance, monthly amounts and rate, with the currency fixed to INR', async () => {
+  test('choosing Provident fund asks for balance, one monthly contribution, rate and currency', async () => {
     renderNew(equityCategory)
 
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
 
     expect(screen.getByLabelText(/^Total balance/)).toBeEnabled()
-    expect(screen.getByLabelText(/^Monthly employee contribution/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/^Monthly employer contribution/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Monthly contribution/)).toBeInTheDocument()
     expect(screen.getByLabelText(/^Expected interest rate/)).toBeEnabled()
+    expect(screen.getByLabelText(/^Currency/)).toBeEnabled()
+    expect(screen.queryByLabelText(/employee|employer/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/^Interest accumulated/)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/^Employee contribution/)).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Quantity')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Currency')).toBeDisabled()
-    expect(screen.getByLabelText('Currency')).toHaveValue('INR')
     expect(screen.getByLabelText(/Liquid within 7 days/)).not.toBeChecked()
+  })
+
+  test('the currency of a new typed holding starts as the display currency', async () => {
+    renderNew(equityCategory, vi.fn(), 'USD')
+
+    expect(screen.getByLabelText(/^Currency/)).toHaveValue('INR')
+    fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
+
+    expect(screen.getByLabelText(/^Currency/)).toHaveValue('USD')
   })
 
   test('submits a provident fund holding with the balance as invested and current and the rate as a fraction', async () => {
@@ -292,8 +299,7 @@ describe('HoldingModal — manual types', () => {
 
     fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
     fireEvent.change(screen.getByLabelText(/^Total balance/), { target: { value: '200000' } })
-    fireEvent.change(screen.getByLabelText(/^Monthly employee contribution/), { target: { value: '1800' } })
-    fireEvent.change(screen.getByLabelText(/^Monthly employer contribution/), { target: { value: '1800' } })
+    fireEvent.change(screen.getByLabelText(/^Monthly contribution/), { target: { value: '3600' } })
     fireEvent.change(screen.getByLabelText(/^Expected interest rate/), { target: { value: '8.25' } })
     fillBasics('EPF - Acme')
     fireEvent.click(screen.getByRole('button', { name: 'Add holding' }))
@@ -302,7 +308,7 @@ describe('HoldingModal — manual types', () => {
     expect(posted).toMatchObject({
       manualType: 'PROVIDENT_FUND', currency: 'INR', quantity: null, area: null, investedValue: 200000, currentValue: 200000,
       liquidWithinSevenDays: false,
-      manual: { expectedInterestRate: 0.0825, monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 },
+      manual: { expectedInterestRate: 0.0825, monthlyContribution: 3600 },
     })
   })
 
@@ -352,7 +358,7 @@ describe('manual type display', () => {
 
   const providentFundHolding: Holding = {
     ...holding, id: 'h-epf', name: 'EPF', manualType: 'PROVIDENT_FUND',
-    manual: { expectedInterestRate: 0.0825, monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 },
+    manual: { expectedInterestRate: 0.0825, monthlyContribution: 3600 },
   }
 
   test('the drawer shows the provident fund monthly contributions and rate', () => {
@@ -360,7 +366,7 @@ describe('manual type display', () => {
       onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
 
     expect(screen.getByText('Expected rate')).toBeInTheDocument()
-    expect(screen.getByText('Monthly employee contribution')).toBeInTheDocument()
+    expect(screen.getByText('Monthly contribution')).toBeInTheDocument()
     expect(screen.queryByText('Quantity')).not.toBeInTheDocument()
   })
 

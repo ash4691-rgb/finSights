@@ -50,20 +50,12 @@ public class Holding {
     private BigDecimal purchaseUnitPrice;
     @Column(precision = 20, scale = 4)
     private BigDecimal currentUnitPrice;
-    /** Provident fund: contribution split, interest credited so far, and expected rate (fraction). */
-    @Column(precision = 20, scale = 2)
-    private BigDecimal employeeContribution;
-    @Column(precision = 20, scale = 2)
-    private BigDecimal employerContribution;
-    @Column(precision = 20, scale = 2)
-    private BigDecimal interestAccumulated;
+    /** Provident fund: expected rate (fraction). */
     @Column(precision = 10, scale = 6)
     private BigDecimal expectedInterestRate;
     /** Provident fund: the regular monthly contribution, used to prompt for each month's entry. */
     @Column(precision = 20, scale = 2)
-    private BigDecimal monthlyEmployeeContribution;
-    @Column(precision = 20, scale = 2)
-    private BigDecimal monthlyEmployerContribution;
+    private BigDecimal monthlyContribution;
     /** Last month (yyyy-MM) whose monthly contribution was auto-logged; null until monthly amounts are set. */
     @Column(length = 7)
     private String lastContributionMonth;
@@ -159,18 +151,10 @@ public class Holding {
     public void setPurchaseUnitPrice(BigDecimal purchaseUnitPrice) { this.purchaseUnitPrice = purchaseUnitPrice; }
     public BigDecimal getCurrentUnitPrice() { return currentUnitPrice; }
     public void setCurrentUnitPrice(BigDecimal currentUnitPrice) { this.currentUnitPrice = currentUnitPrice; }
-    public BigDecimal getEmployeeContribution() { return employeeContribution; }
-    public void setEmployeeContribution(BigDecimal employeeContribution) { this.employeeContribution = employeeContribution; }
-    public BigDecimal getEmployerContribution() { return employerContribution; }
-    public void setEmployerContribution(BigDecimal employerContribution) { this.employerContribution = employerContribution; }
-    public BigDecimal getInterestAccumulated() { return interestAccumulated; }
-    public void setInterestAccumulated(BigDecimal interestAccumulated) { this.interestAccumulated = interestAccumulated; }
-    public BigDecimal getMonthlyEmployeeContribution() { return monthlyEmployeeContribution; }
-    public void setMonthlyEmployeeContribution(BigDecimal monthlyEmployeeContribution) { this.monthlyEmployeeContribution = monthlyEmployeeContribution; }
-    public BigDecimal getMonthlyEmployerContribution() { return monthlyEmployerContribution; }
-    public void setMonthlyEmployerContribution(BigDecimal monthlyEmployerContribution) { this.monthlyEmployerContribution = monthlyEmployerContribution; }
     public String getLastContributionMonth() { return lastContributionMonth; }
     public void setLastContributionMonth(String lastContributionMonth) { this.lastContributionMonth = lastContributionMonth; }
+    public BigDecimal getMonthlyContribution() { return monthlyContribution; }
+    public void setMonthlyContribution(BigDecimal monthlyContribution) { this.monthlyContribution = monthlyContribution; }
     public BigDecimal getExpectedInterestRate() { return expectedInterestRate; }
     public void setExpectedInterestRate(BigDecimal expectedInterestRate) { this.expectedInterestRate = expectedInterestRate; }
     public BigDecimal getInvestedValue() { return investedValue; }

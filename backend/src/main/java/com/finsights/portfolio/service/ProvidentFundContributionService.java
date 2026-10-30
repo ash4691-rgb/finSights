@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Monthly contributions for provident fund holdings. From the 1st of each month an Action Centre task
  * asks the user to confirm the previous month's contribution (due that month's last day); confirming
- * it logs an ADJUSTMENT transaction and adds the amounts to the balance. Months are confirmed in
+ * it logs an ADJUSTMENT transaction and adds the amount to the balance. Months are confirmed in
  * order, so nothing is skipped or counted twice.
  */
 @Service
@@ -75,30 +75,19 @@ public class ProvidentFundContributionService {
     }
 
     private void book(Holding holding, YearMonth month) {
-        BigDecimal employee = orZero(holding.getMonthlyEmployeeContribution());
-        BigDecimal employer = orZero(holding.getMonthlyEmployerContribution());
-        BigDecimal total = employee.add(employer);
+        BigDecimal amount = orZero(holding.getMonthlyContribution());
         holdingService.ensureOpeningTransaction(holding); // before invested changes, so the opening position is the pre-contribution one
         Transaction adjustment = new Transaction();
         adjustment.setUser(holding.getUser());
         adjustment.setHolding(holding);
         adjustment.setType(TransactionType.ADJUSTMENT);
-        adjustment.setAmount(total);
+        adjustment.setAmount(amount);
         adjustment.setDate(month.atEndOfMonth());
-        adjustment.setNotes("Provident fund contribution for " + label(month) + " (employee " + employee.toPlainString()
-                + ", employer " + employer.toPlainString() + ")");
+        adjustment.setNotes("Provident fund contribution for " + label(month));
         transactions.save(adjustment);
-        holding.setCurrentValue(orZero(holding.getCurrentValue()).add(total));
-        addToSplit(holding, employee, employer);
+        holding.setCurrentValue(orZero(holding.getCurrentValue()).add(amount));
         holding.setLastContributionMonth(month.toString());
         holdingService.syncFromTransactions(holding);
-    }
-
-    /** Keeps the employee/employer totals in step when the holding tracks them separately. */
-    private void addToSplit(Holding holding, BigDecimal employee, BigDecimal employer) {
-        if (holding.getEmployeeContribution() == null && holding.getEmployerContribution() == null) return;
-        holding.setEmployeeContribution(orZero(holding.getEmployeeContribution()).add(employee));
-        holding.setEmployerContribution(orZero(holding.getEmployerContribution()).add(employer));
     }
 
     private List<ActionItemResponse> pendingItems(Holding h, LocalDate today) {
@@ -113,14 +102,12 @@ public class ProvidentFundContributionService {
     }
 
     private ActionItemResponse item(Holding h, YearMonth month, LocalDate today) {
-        BigDecimal employee = orZero(h.getMonthlyEmployeeContribution());
-        BigDecimal employer = orZero(h.getMonthlyEmployerContribution());
+        BigDecimal amount = orZero(h.getMonthlyContribution());
         LocalDate due = month.plusMonths(1).atEndOfMonth();
         String severity = due.isBefore(today) ? "WARN" : "INFO";
-        String detail = "Confirm " + label(month) + "'s contribution — employee " + employee.toPlainString() + ", employer "
-                + employer.toPlainString() + " " + h.getCurrency() + " — to add it to the balance. Due " + due + ".";
+        String detail = "Confirm " + label(month) + "'s contribution of " + amount.toPlainString() + " " + h.getCurrency() + " to add it to the balance. Due " + due + ".";
         return new ActionItemResponse(KIND, severity, "Confirm provident fund contribution — " + h.getName(), detail,
-                h.getId(), h.getName(), h.getBroker(), due, employee.add(employer), month.toString(), null,
+                h.getId(), h.getName(), h.getBroker(), due, amount, month.toString(), null,
                 ActionItemResponse.keyOf(KIND, h.getId(), month.toString()));
     }
 

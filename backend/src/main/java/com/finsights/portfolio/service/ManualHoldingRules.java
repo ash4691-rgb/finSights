@@ -15,10 +15,6 @@ import org.springframework.web.server.ResponseStatusException;
  * {@link #resolve} returns the request unchanged for a plain holding.
  */
 final class ManualHoldingRules {
-    /** The rate EPFO declared for the year; the default expected rate for a provident fund holding (editable per holding). */
-    static final BigDecimal PROVIDENT_FUND_RATE = new BigDecimal("0.0825");
-    static final String PROVIDENT_FUND_CURRENCY = "INR";
-
     private ManualHoldingRules() { }
 
     static HoldingRequest resolve(HoldingRequest request, boolean liability) {
@@ -45,28 +41,25 @@ final class ManualHoldingRules {
         if (purchase == null || purchase.signum() <= 0) throw bad("A real-estate holding needs a purchase unit price greater than zero");
         BigDecimal current = details.currentUnitPrice() == null ? purchase : details.currentUnitPrice();
         if (current.signum() <= 0) throw bad("The current unit price must be greater than zero");
-        ManualDetails resolved = new ManualDetails(purchase, current, null, null, null, null);
+        ManualDetails resolved = new ManualDetails(purchase, current, null, null);
         return withValues(request, resolved, request.currency(), money(request.area().multiply(purchase)), money(request.area().multiply(current)));
     }
 
     private static HoldingRequest providentFund(HoldingRequest request) {
-        ManualDetails details = detailsOf(request);
+        if (request.currency() == null || request.currency().isBlank()) throw bad("A provident fund holding needs a currency");
         if (request.investedValue() == null) throw bad("A provident fund holding needs its total balance");
+        ManualDetails details = detailsOf(request);
         requireNotNegative(request.investedValue(), "Total balance");
-        requireNotNegative(details.monthlyEmployeeContribution(), "Monthly employee contribution");
-        requireNotNegative(details.monthlyEmployerContribution(), "Monthly employer contribution");
-        BigDecimal rate = expectedRate(details.expectedInterestRate());
-        ManualDetails resolved = new ManualDetails(null, null, null, null, null, rate,
-                details.monthlyEmployeeContribution(), details.monthlyEmployerContribution());
+        requireNotNegative(details.monthlyContribution(), "Monthly contribution");
+        validateRate(details.expectedInterestRate());
+        ManualDetails resolved = new ManualDetails(null, null, details.expectedInterestRate(), details.monthlyContribution());
         BigDecimal balance = money(request.investedValue());
-        return withValues(request, resolved, PROVIDENT_FUND_CURRENCY, balance, balance);
+        return withValues(request, resolved, request.currency(), balance, balance);
     }
 
-    /** The expected yearly rate as a fraction; EPFO's declared rate when the client leaves it out. */
-    private static BigDecimal expectedRate(BigDecimal rate) {
-        if (rate == null) return PROVIDENT_FUND_RATE;
+    private static void validateRate(BigDecimal rate) {
+        if (rate == null) return;
         if (rate.signum() < 0 || rate.compareTo(BigDecimal.ONE) > 0) throw bad("Expected interest rate must be between 0% and 100%");
-        return rate;
     }
 
     private static void requireNotNegative(BigDecimal value, String label) {

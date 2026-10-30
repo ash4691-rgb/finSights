@@ -15,7 +15,7 @@ export const manualFormFrom = (holding: Holding): ManualForm => {
   return {
     manualType: holding.manualType ?? 'DEFAULT',
     purchaseUnitPrice: text(m.purchaseUnitPrice), currentUnitPrice: text(m.currentUnitPrice),
-    monthlyEmployeeContribution: text(m.monthlyEmployeeContribution), monthlyEmployerContribution: text(m.monthlyEmployerContribution),
+    monthlyContribution: text(m.monthlyContribution),
     expectedInterestRate: m.expectedInterestRate != null ? String(+(m.expectedInterestRate * 100).toFixed(4)) : '',
   }
 }
@@ -63,6 +63,6 @@ const optional = (value: string) => value === '' ? undefined : numeric(value)
 function providentFundPayload(f: ManualForm): ManualDetails {
   return {
     expectedInterestRate: f.expectedInterestRate === '' ? undefined : numeric(f.expectedInterestRate) / 100,
-    monthlyEmployeeContribution: optional(f.monthlyEmployeeContribution), monthlyEmployerContribution: optional(f.monthlyEmployerContribution),
+    monthlyContribution: optional(f.monthlyContribution),
   }
 }

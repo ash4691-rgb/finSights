@@ -591,8 +591,7 @@ public class HoldingService {
 
     private ManualDetails manualDetailsOf(Holding holding) {
         return new ManualDetails(holding.getPurchaseUnitPrice(), holding.getCurrentUnitPrice(),
-                holding.getEmployeeContribution(), holding.getEmployerContribution(), holding.getInterestAccumulated(),
-                holding.getExpectedInterestRate(), holding.getMonthlyEmployeeContribution(), holding.getMonthlyEmployerContribution());
+                holding.getExpectedInterestRate(), holding.getMonthlyContribution());
     }
 
     /** Validates a real-estate/provident fund request and derives its invested and current value from the inputs. */
@@ -692,18 +691,14 @@ public class HoldingService {
         target.setManualType(type == ManualType.DEFAULT ? null : type);
         target.setPurchaseUnitPrice(realEstate ? d.purchaseUnitPrice() : null);
         target.setCurrentUnitPrice(realEstate ? d.currentUnitPrice() : null);
-        target.setEmployeeContribution(providentFund ? d.employeeContribution() : null);
-        target.setEmployerContribution(providentFund ? d.employerContribution() : null);
-        target.setInterestAccumulated(providentFund ? d.interestAccumulated() : null);
         target.setExpectedInterestRate(providentFund ? d.expectedInterestRate() : null);
-        target.setMonthlyEmployeeContribution(providentFund ? d.monthlyEmployeeContribution() : null);
-        target.setMonthlyEmployerContribution(providentFund ? d.monthlyEmployerContribution() : null);
+        target.setMonthlyContribution(providentFund ? d.monthlyContribution() : null);
         startContributionLog(providentFund, d, target);
     }
 
     /** Auto-logging starts with the month after the monthly amounts are first set, so earlier months are never double-counted. */
     private void startContributionLog(boolean providentFund, ManualDetails d, Holding target) {
-        boolean monthly = providentFund && (isPositive(d.monthlyEmployeeContribution()) || isPositive(d.monthlyEmployerContribution()));
+        boolean monthly = providentFund && isPositive(d.monthlyContribution());
         if (!monthly) {
             target.setLastContributionMonth(null);
             return;

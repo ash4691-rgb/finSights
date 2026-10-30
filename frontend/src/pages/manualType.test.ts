@@ -35,11 +35,10 @@ describe('manualPayload', () => {
     expect(manualPayload('REAL_ESTATE', form({ purchaseUnitPrice: '4000', currentUnitPrice: '4500' }))).toMatchObject({ currentUnitPrice: 4500 })
   })
 
-  test('provident fund sends the monthly amounts and the rate as a fraction, leaving unset fields out', () => {
-    expect(manualPayload('PROVIDENT_FUND', form({ expectedInterestRate: '8.25' }))).toMatchObject({ expectedInterestRate: 0.0825, monthlyEmployeeContribution: undefined })
+  test('provident fund sends the monthly contribution and the rate as a fraction, leaving unset fields out', () => {
+    expect(manualPayload('PROVIDENT_FUND', form({ expectedInterestRate: '8.25' }))).toMatchObject({ expectedInterestRate: 0.0825, monthlyContribution: undefined })
     expect(manualPayload('PROVIDENT_FUND', form({}))).toMatchObject({ expectedInterestRate: undefined })
-    expect(manualPayload('PROVIDENT_FUND', form({ monthlyEmployeeContribution: '1800', monthlyEmployerContribution: '1800' })))
-      .toMatchObject({ monthlyEmployeeContribution: 1800, monthlyEmployerContribution: 1800 })
+    expect(manualPayload('PROVIDENT_FUND', form({ monthlyContribution: '3600' }))).toMatchObject({ monthlyContribution: 3600 })
   })
 
   test('the default type sends no manual block', () => {
@@ -48,10 +47,10 @@ describe('manualPayload', () => {
 })
 
 describe('form helpers', () => {
-  const base = { id: 'h', manualType: 'PROVIDENT_FUND', manual: { expectedInterestRate: 0.0825, monthlyEmployerContribution: 1800 } } as Holding
+  const base = { id: 'h', manualType: 'PROVIDENT_FUND', manual: { expectedInterestRate: 0.0825, monthlyContribution: 1800 } } as Holding
 
   test('manualFormFrom restores a saved holding, rate as a percentage', () => {
-    expect(manualFormFrom(base)).toMatchObject({ manualType: 'PROVIDENT_FUND', monthlyEmployerContribution: '1800', monthlyEmployeeContribution: '', expectedInterestRate: '8.25', purchaseUnitPrice: '' })
+    expect(manualFormFrom(base)).toMatchObject({ manualType: 'PROVIDENT_FUND', monthlyContribution: '1800', expectedInterestRate: '8.25', purchaseUnitPrice: '' })
   })
 
   test('manualFormFrom falls back to the default type with empty fields', () => {

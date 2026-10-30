@@ -28,7 +28,7 @@ class ManualHoldingRulesTest {
 
     private ManualDetails prices(String purchase, String current) {
         return new ManualDetails(purchase == null ? null : n(purchase), current == null ? null : n(current),
-                null, null, null, null);
+                null, null);
     }
 
     private HoldingRequest providentFund(BigDecimal invested, ManualDetails details) {
@@ -36,7 +36,7 @@ class ManualHoldingRulesTest {
     }
 
     private ManualDetails rateOnly(String rate) {
-        return new ManualDetails(null, null, null, null, null, rate == null ? null : n(rate));
+        return new ManualDetails(null, null, rate == null ? null : n(rate), null);
     }
 
     private void assertRejected(HoldingRequest request, String message) {
@@ -96,35 +96,31 @@ class ManualHoldingRulesTest {
         assertThat(resolved.investedValue()).isEqualByComparingTo("200");
         assertThat(resolved.currentValue()).isEqualByComparingTo("200");
         assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.09");
-        assertThat(resolved.manual().interestAccumulated()).isNull();
-        assertThat(resolved.manual().employeeContribution()).isNull();
     }
 
     @Test
-    void providentFundRateDefaultsToTheDeclaredOneWhenLeftOut() {
+    void providentFundRateStaysEmptyWhenLeftOut() {
         HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("200"), null), false);
 
-        assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
+        assertThat(resolved.manual().expectedInterestRate()).isNull();
     }
 
     @Test
-    void providentFundKeepsTheMonthlyContributionsAndRejectsNegativeOnes() {
-        ManualDetails monthly = new ManualDetails(null, null, null, null, null, null, n("1800"), n("1800"));
+    void providentFundKeepsTheMonthlyContributionAndRejectsANegativeOne() {
+        ManualDetails monthly = new ManualDetails(null, null, null, n("3600"));
         HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("100"), monthly), false);
 
-        assertThat(resolved.manual().monthlyEmployeeContribution()).isEqualByComparingTo("1800");
-        assertThat(resolved.manual().monthlyEmployerContribution()).isEqualByComparingTo("1800");
-        assertRejected(providentFund(n("100"), new ManualDetails(null, null, null, null, null, null, n("-1"), null)), "Monthly employee contribution");
-        assertRejected(providentFund(n("100"), new ManualDetails(null, null, null, null, null, null, null, n("-1"))), "Monthly employer contribution");
+        assertThat(resolved.manual().monthlyContribution()).isEqualByComparingTo("3600");
+        assertRejected(providentFund(n("100"), new ManualDetails(null, null, null, n("-1"))), "Monthly contribution");
     }
 
     @Test
-    void providentFundIsAlwaysInr() {
-        HoldingRequest resolved = ManualHoldingRules.resolve(new HoldingRequest("c", "Name", ValuationMethod.MANUAL, null, "EPFO", "USD",
-                null, null, null, n("100"), null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-                ManualType.PROVIDENT_FUND, null), false);
-
+    void providentFundKeepsTheChosenCurrencyAndNeedsOne() {
+        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("100"), null), false);
         assertThat(resolved.currency()).isEqualTo("INR");
+
+        assertRejected(request(ManualType.PROVIDENT_FUND, ValuationMethod.MANUAL, " ", null, null, n("100"), null), "currency");
+        assertRejected(request(ManualType.PROVIDENT_FUND, ValuationMethod.MANUAL, null, null, null, n("100"), null), "currency");
     }
 
     @Test

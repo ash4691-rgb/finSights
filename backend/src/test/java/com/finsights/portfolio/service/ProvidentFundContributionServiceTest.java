@@ -48,8 +48,7 @@ class ProvidentFundContributionServiceTest {
         fund.setCurrency("INR");
         fund.setUser(user);
         fund.setManualType(ManualType.PROVIDENT_FUND);
-        fund.setMonthlyEmployeeContribution(n("1800"));
-        fund.setMonthlyEmployerContribution(n("1500"));
+        fund.setMonthlyContribution(n("3300"));
         fund.setCurrentValue(n("100000"));
         fund.setLastContributionMonth("2026-01");
         when(holdings.findByIdAndUser_Id(any(), any())).thenReturn(Optional.of(fund));
@@ -67,7 +66,7 @@ class ProvidentFundContributionServiceTest {
         assertThat(task.period()).isEqualTo("2026-02");
         assertThat(task.dueDate()).isEqualTo(LocalDate.of(2026, 3, 31));
         assertThat(task.amount()).isEqualByComparingTo("3300");
-        assertThat(task.detail()).contains("February 2026").contains("employee 1800").contains("employer 1500");
+        assertThat(task.detail()).contains("February 2026").contains("3300");
         assertThat(task.key()).isEqualTo(ActionItemResponse.keyOf("PROVIDENT_FUND_CONTRIBUTION", fund.getId(), "2026-02"));
     }
 
@@ -134,33 +133,13 @@ class ProvidentFundContributionServiceTest {
     }
 
     @Test
-    void confirmingKeepsTheEmployeeEmployerSplitInStep() {
-        fund.setEmployeeContribution(n("50000"));
-        fund.setEmployerContribution(n("40000"));
-
-        service.confirm(fund.getId(), "2026-02", today);
-
-        assertThat(fund.getEmployeeContribution()).isEqualByComparingTo("51800");
-        assertThat(fund.getEmployerContribution()).isEqualByComparingTo("41500");
-    }
-
-    @Test
-    void confirmingWithOneSideOfTheSplitTreatsTheOtherAsZero() {
-        fund.setEmployeeContribution(n("50000"));
-
-        service.confirm(fund.getId(), "2026-02", today);
-
-        assertThat(fund.getEmployerContribution()).isEqualByComparingTo("1500");
-    }
-
-    @Test
     void aMissingMonthlyAmountCountsAsZero() {
-        fund.setMonthlyEmployerContribution(null);
+        fund.setMonthlyContribution(null);
         fund.setCurrentValue(null);
 
         service.confirm(fund.getId(), "2026-02", today);
 
-        assertThat(fund.getCurrentValue()).isEqualByComparingTo("1800");
+        assertThat(fund.getCurrentValue()).isZero();
     }
 
     @Test

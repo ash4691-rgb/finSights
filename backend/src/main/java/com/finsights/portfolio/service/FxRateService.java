@@ -111,13 +111,11 @@ public class FxRateService {
                 holding.manualType(), convertManual(holding.manual(), holding.currency(), target));
     }
 
-    /** Converts the money-valued manual fields (unit prices, contributions, interest); the rate is unitless. */
+    /** Converts the money-valued manual fields (unit prices, monthly contribution); the rate is unitless. */
     private ManualDetails convertManual(ManualDetails d, String from, String to) {
         if (d == null) return null;
         return new ManualDetails(convertOrNull(d.purchaseUnitPrice(), from, to), convertOrNull(d.currentUnitPrice(), from, to),
-                convertOrNull(d.employeeContribution(), from, to), convertOrNull(d.employerContribution(), from, to),
-                convertOrNull(d.interestAccumulated(), from, to), d.expectedInterestRate(),
-                convertOrNull(d.monthlyEmployeeContribution(), from, to), convertOrNull(d.monthlyEmployerContribution(), from, to));
+                d.expectedInterestRate(), convertOrNull(d.monthlyContribution(), from, to));
     }
 
     private BigDecimal convertOrNull(BigDecimal amount, String from, String to) {

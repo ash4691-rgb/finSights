@@ -566,7 +566,7 @@ class HoldingServiceTest {
     }
 
     private HoldingRequest realEstateRequest(BigDecimal area, BigDecimal purchasePrice, BigDecimal currentPrice) {
-        ManualDetails details = new ManualDetails(purchasePrice, currentPrice, null, null, null, null);
+        ManualDetails details = new ManualDetails(purchasePrice, currentPrice, null, null);
         return new HoldingRequest("cat-1", "2BHK Flat", ValuationMethod.MANUAL, null, "Self", "INR",
                 new BigDecimal("99"), area, com.finsights.portfolio.domain.AreaUnit.SQ_FT,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
@@ -584,8 +584,7 @@ class HoldingServiceTest {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
-        ManualDetails details = new ManualDetails(null, null, null, null, null, new BigDecimal("0.0825"),
-                new BigDecimal("1800"), new BigDecimal("1800"));
+        ManualDetails details = new ManualDetails(null, null, new BigDecimal("0.0825"), new BigDecimal("3600"));
 
         HoldingResponse response = service.create(providentFundRequest(new BigDecimal("160000"), details));
 
@@ -598,8 +597,9 @@ class HoldingServiceTest {
         assertThat(stored.getQuantity()).isNull();
         assertThat(stored.getArea()).isNull();
         assertThat(stored.getExpectedInterestRate()).isEqualByComparingTo("0.0825");
-        assertThat(stored.getMonthlyEmployeeContribution()).isEqualByComparingTo("1800");
-        assertThat(response.manual().monthlyEmployerContribution()).isEqualByComparingTo("1800");
+        assertThat(stored.getMonthlyContribution()).isEqualByComparingTo("3600");
+        assertThat(stored.getCurrency()).isEqualTo("INR");
+        assertThat(response.manual().monthlyContribution()).isEqualByComparingTo("3600");
         assertThat(response.manualType()).isEqualTo(ManualType.PROVIDENT_FUND);
         assertThat(stored.getLastContributionMonth()).isEqualTo(java.time.YearMonth.now().toString());
     }
@@ -609,7 +609,7 @@ class HoldingServiceTest {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
-        ManualDetails details = new ManualDetails(null, null, null, null, null, null, BigDecimal.ZERO, null);
+        ManualDetails details = new ManualDetails(null, null, null, BigDecimal.ZERO);
 
         service.create(providentFundRequest(new BigDecimal("1000"), details));
 
@@ -629,7 +629,7 @@ class HoldingServiceTest {
         holding.setInvestedValue(new BigDecimal("1000"));
         holding.setCurrentValue(new BigDecimal("1000"));
         when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(txn(TransactionType.BUY, "1000", null)));
-        ManualDetails details = new ManualDetails(null, null, null, null, null, null, new BigDecimal("500"), null);
+        ManualDetails details = new ManualDetails(null, null, null, new BigDecimal("500"));
 
         service.update("h-1", providentFundRequest(new BigDecimal("1000"), details));
 
@@ -641,7 +641,7 @@ class HoldingServiceTest {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
-        ManualDetails details = new ManualDetails(new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"), null, null, null);
+        ManualDetails details = new ManualDetails(new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"));
         HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
                 null, null, null, new BigDecimal("10000"), new BigDecimal("12000"), null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, details);
@@ -652,7 +652,8 @@ class HoldingServiceTest {
         verify(holdings, times(2)).save(saved.capture());
         assertThat(saved.getAllValues().get(0).getManualType()).isNull();
         assertThat(saved.getAllValues().get(0).getPurchaseUnitPrice()).isNull();
-        assertThat(saved.getAllValues().get(0).getEmployeeContribution()).isNull();
+        assertThat(saved.getAllValues().get(0).getMonthlyContribution()).isNull();
+        assertThat(saved.getAllValues().get(0).getExpectedInterestRate()).isNull();
     }
 
     @Test

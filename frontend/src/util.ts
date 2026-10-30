@@ -76,13 +76,11 @@ export const valuationMethodLabel = (m: ValuationMethod) => m === 'MANUAL' ? 'Ma
 export const blankManualForm = () => ({
   manualType: 'DEFAULT' as ManualType,
   purchaseUnitPrice: '', currentUnitPrice: '',
-  expectedInterestRate: '', monthlyEmployeeContribution: '', monthlyEmployerContribution: '',
+  expectedInterestRate: '', monthlyContribution: '',
 })
 export type ManualForm = ReturnType<typeof blankManualForm>
 export const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '', allowedValuationMethods: [] as ValuationMethod[], realEstate: false })
 export const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'QUARTERLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', quantity: '', area: '', areaUnit: 'SQ_FT' as AreaUnit, ...blankManualForm(), investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), fixedRateEndDate: '', repaymentFrequency: 'MONTHLY' as RepaymentFrequency, emiAmount: '', emiDayOfMonth: '', loanTermMonths: '', repaymentDueDate: '', description: '' })
-// The yearly rate EPFO declares; a provident fund holding shows it read-only (the server holds the same figure).
-export const PROVIDENT_FUND_RATE_PERCENT = '8.25'
 // Area units a real-estate holding can be measured in.
 export const areaUnits: AreaUnit[] = ['ACRE', 'HECTARE', 'SQ_M', 'SQ_FT']
 export const areaUnitLabel = (u: AreaUnit) => u === 'ACRE' ? 'acre' : u === 'HECTARE' ? 'hectare' : u === 'SQ_M' ? 'sq. m' : 'sq. ft'
