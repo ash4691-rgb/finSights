@@ -28,7 +28,7 @@ class ManualHoldingRulesTest {
 
     private ManualDetails prices(String purchase, String current) {
         return new ManualDetails(purchase == null ? null : n(purchase), current == null ? null : n(current),
-                null, null);
+                null, null, null);
     }
 
     private HoldingRequest providentFund(BigDecimal invested, ManualDetails details) {
@@ -36,7 +36,7 @@ class ManualHoldingRulesTest {
     }
 
     private ManualDetails rateOnly(String rate) {
-        return new ManualDetails(null, null, rate == null ? null : n(rate), null);
+        return new ManualDetails(null, null, rate == null ? null : n(rate), null, null);
     }
 
     private void assertRejected(HoldingRequest request, String message) {
@@ -90,12 +90,29 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void providentFundInvestedAndCurrentAreTheTotalBalanceAndTheRateIsKept() {
+    void providentFundWithoutInterestHasCurrentEqualToInvestedAndTheRateIsKept() {
         HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("200"), rateOnly("0.09")), false);
 
         assertThat(resolved.investedValue()).isEqualByComparingTo("200");
         assertThat(resolved.currentValue()).isEqualByComparingTo("200");
         assertThat(resolved.manual().expectedInterestRate()).isEqualByComparingTo("0.09");
+        assertThat(resolved.manual().accruedInterest()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void providentFundCurrentValueIsInvestedValuePlusAccruedInterest() {
+        ManualDetails withInterest = new ManualDetails(null, null, null, null, n("12.345"));
+        HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("200"), withInterest), false);
+
+        assertThat(resolved.investedValue()).isEqualByComparingTo("200");
+        assertThat(resolved.currentValue()).isEqualByComparingTo("212.35");
+        assertThat(resolved.manual().accruedInterest()).isEqualByComparingTo("12.35");
+    }
+
+    @Test
+    void providentFundRejectsNegativeAccruedInterestAndNegativeInvestedValue() {
+        assertRejected(providentFund(n("200"), new ManualDetails(null, null, null, null, n("-1"))), "Accrued interest");
+        assertRejected(providentFund(n("-5"), null), "Invested value");
     }
 
     @Test
@@ -107,11 +124,11 @@ class ManualHoldingRulesTest {
 
     @Test
     void providentFundKeepsTheMonthlyContributionAndRejectsANegativeOne() {
-        ManualDetails monthly = new ManualDetails(null, null, null, n("3600"));
+        ManualDetails monthly = new ManualDetails(null, null, null, n("3600"), null);
         HoldingRequest resolved = ManualHoldingRules.resolve(providentFund(n("100"), monthly), false);
 
         assertThat(resolved.manual().monthlyContribution()).isEqualByComparingTo("3600");
-        assertRejected(providentFund(n("100"), new ManualDetails(null, null, null, n("-1"))), "Monthly contribution");
+        assertRejected(providentFund(n("100"), new ManualDetails(null, null, null, n("-1"), null)), "Monthly contribution");
     }
 
     @Test
@@ -124,13 +141,13 @@ class ManualHoldingRulesTest {
     }
 
     @Test
-    void providentFundWithoutATotalBalanceIsRejected() {
-        assertRejected(providentFund(null, null), "total balance");
+    void providentFundWithoutAnInvestedValueIsRejected() {
+        assertRejected(providentFund(null, null), "invested value");
     }
 
     @Test
     void providentFundValidationRejectsBadValues() {
-        assertRejected(providentFund(n("-1"), null), "Total balance");
+        assertRejected(providentFund(n("-1"), null), "Invested value");
         assertRejected(providentFund(n("5"), rateOnly("-0.01")), "between 0% and 100%");
         assertRejected(providentFund(n("5"), rateOnly("1.5")), "between 0% and 100%");
     }

@@ -104,7 +104,7 @@ class FxRateServiceTest {
     @Test
     void convertingAHoldingConvertsItsManualMoneyFieldsButKeepsTheRate() {
         HoldingResponse base = holding("USD");
-        ManualDetails manual = new ManualDetails(new BigDecimal("10"), null, new BigDecimal("0.0825"), new BigDecimal("1"));
+        ManualDetails manual = new ManualDetails(new BigDecimal("10"), null, new BigDecimal("0.0825"), new BigDecimal("1"), new BigDecimal("2"));
         HoldingResponse withManual = new HoldingResponse(base.id(), base.holdingId(), base.categoryId(), base.categoryName(),
                 base.name(), base.kind(), base.valuationMethod(), null, base.broker(), "USD", "USD", base.investedValue(),
                 base.currentValue(), base.profitLoss(), base.profitLossPercentage(), base.realisedProfitLoss(),
@@ -118,6 +118,7 @@ class FxRateServiceTest {
         assertThat(converted.manual().purchaseUnitPrice()).isEqualByComparingTo("885.00");
         assertThat(converted.manual().currentUnitPrice()).isNull();
         assertThat(converted.manual().monthlyContribution()).isEqualByComparingTo("88.50");
+        assertThat(converted.manual().accruedInterest()).isEqualByComparingTo("177.00");
         assertThat(converted.manual().expectedInterestRate()).isEqualByComparingTo("0.0825");
     }
 

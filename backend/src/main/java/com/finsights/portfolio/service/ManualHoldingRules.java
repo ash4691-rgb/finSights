@@ -41,20 +41,22 @@ final class ManualHoldingRules {
         if (purchase == null || purchase.signum() <= 0) throw bad("A real-estate holding needs a purchase unit price greater than zero");
         BigDecimal current = details.currentUnitPrice() == null ? purchase : details.currentUnitPrice();
         if (current.signum() <= 0) throw bad("The current unit price must be greater than zero");
-        ManualDetails resolved = new ManualDetails(purchase, current, null, null);
+        ManualDetails resolved = new ManualDetails(purchase, current, null, null, null);
         return withValues(request, resolved, request.currency(), money(request.area().multiply(purchase)), money(request.area().multiply(current)));
     }
 
     private static HoldingRequest providentFund(HoldingRequest request) {
         if (request.currency() == null || request.currency().isBlank()) throw bad("A provident fund holding needs a currency");
-        if (request.investedValue() == null) throw bad("A provident fund holding needs its total balance");
+        if (request.investedValue() == null) throw bad("A provident fund holding needs its invested value");
         ManualDetails details = detailsOf(request);
-        requireNotNegative(request.investedValue(), "Total balance");
+        requireNotNegative(request.investedValue(), "Invested value");
         requireNotNegative(details.monthlyContribution(), "Monthly contribution");
+        requireNotNegative(details.accruedInterest(), "Accrued interest");
         validateRate(details.expectedInterestRate());
-        ManualDetails resolved = new ManualDetails(null, null, details.expectedInterestRate(), details.monthlyContribution());
-        BigDecimal balance = money(request.investedValue());
-        return withValues(request, resolved, request.currency(), balance, balance);
+        BigDecimal invested = money(request.investedValue());
+        BigDecimal interest = money(details.accruedInterest() == null ? BigDecimal.ZERO : details.accruedInterest());
+        ManualDetails resolved = new ManualDetails(null, null, details.expectedInterestRate(), details.monthlyContribution(), interest);
+        return withValues(request, resolved, request.currency(), invested, invested.add(interest));
     }
 
     private static void validateRate(BigDecimal rate) {

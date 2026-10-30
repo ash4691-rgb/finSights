@@ -123,9 +123,6 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
-// A provident fund form edits its balance (which includes interest) in the invested-value slot, not the invested value itself.
-const balanceOrInvested = (h: Holding) => h.manualType === 'PROVIDENT_FUND' ? h.currentValue : h.investedValue
-
 export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft, openingDate }: Readonly<{
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
   // Carries the just-saved holding back to the caller so it can be spliced into local state
@@ -141,7 +138,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
 }>) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
-    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', area: holding.area != null ? String(holding.area) : '', areaUnit: holding.areaUnit || 'SQ_FT', ...manualFormFrom(holding), investedValue: String(balanceOrInvested(holding)), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
+    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', area: holding.area != null ? String(holding.area) : '', areaUnit: holding.areaUnit || 'SQ_FT', ...manualFormFrom(holding), investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
     : { ...blankHoldingForm(startCategoryId), ...defaultsForCategory(categories.find(c => c.id === startCategoryId)), ...draft })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
@@ -203,7 +200,8 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
     api<Holding>(`/api/holdings/${holding.id}`)
       .then(native => {
         setNativeHolding(native)
-        setForm(current => ({ ...current, investedValue: String(balanceOrInvested(native)), currentValue: String(native.currentValue),
+        setForm(current => ({ ...current, investedValue: String(native.investedValue), currentValue: String(native.currentValue),
+          accruedInterest: native.manual?.accruedInterest != null ? String(native.manual.accruedInterest) : current.accruedInterest,
           emiAmount: native.emiAmount != null ? String(native.emiAmount) : '' }))
       })
       .catch(() => { /* keep the possibly view-converted values if this fails */ })

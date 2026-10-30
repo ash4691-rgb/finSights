@@ -15,7 +15,7 @@ export const manualFormFrom = (holding: Holding): ManualForm => {
   return {
     manualType: holding.manualType ?? 'DEFAULT',
     purchaseUnitPrice: text(m.purchaseUnitPrice), currentUnitPrice: text(m.currentUnitPrice),
-    monthlyContribution: text(m.monthlyContribution),
+    monthlyContribution: text(m.monthlyContribution), accruedInterest: text(m.accruedInterest),
     expectedInterestRate: m.expectedInterestRate != null ? String(+(m.expectedInterestRate * 100).toFixed(4)) : '',
   }
 }
@@ -42,11 +42,12 @@ function deriveRealEstate(f: DerivationInput) {
   return { invested: round2(area * purchase), current: round2(area * current) }
 }
 
-// A provident fund is tracked by its total balance, so invested and current value are both that balance.
+// A provident fund's current value is what was put in plus the interest credited so far.
 function deriveProvidentFund(f: DerivationInput) {
-  const balance = numeric(f.investedValue)
-  if (balance <= 0) return null
-  return { invested: round2(balance), current: round2(balance) }
+  const invested = numeric(f.investedValue)
+  if (invested <= 0) return null
+  const interest = Math.max(0, numeric(f.accruedInterest))
+  return { invested: round2(invested), current: round2(invested + interest) }
 }
 
 // The request's `manual` block; only the fields that belong to the chosen type are sent.
@@ -64,5 +65,6 @@ function providentFundPayload(f: ManualForm): ManualDetails {
   return {
     expectedInterestRate: f.expectedInterestRate === '' ? undefined : numeric(f.expectedInterestRate) / 100,
     monthlyContribution: optional(f.monthlyContribution),
+    accruedInterest: optional(f.accruedInterest),
   }
 }

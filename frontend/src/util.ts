@@ -76,7 +76,7 @@ export const valuationMethodLabel = (m: ValuationMethod) => m === 'MANUAL' ? 'Ma
 export const blankManualForm = () => ({
   manualType: 'DEFAULT' as ManualType,
   purchaseUnitPrice: '', currentUnitPrice: '',
-  expectedInterestRate: '', monthlyContribution: '',
+  expectedInterestRate: '', monthlyContribution: '', accruedInterest: '',
 })
 export type ManualForm = ReturnType<typeof blankManualForm>
 export const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '', allowedValuationMethods: [] as ValuationMethod[], realEstate: false })

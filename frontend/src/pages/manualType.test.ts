@@ -19,8 +19,13 @@ describe('deriveManualValues', () => {
     expect(deriveManualValues('REAL_ESTATE', form({ area: '5', purchaseUnitPrice: '5', currentUnitPrice: '0' }))).toBeNull()
   })
 
-  test('provident fund invested and current are both the total balance', () => {
+  test('provident fund current value is invested value plus accrued interest', () => {
+    expect(deriveManualValues('PROVIDENT_FUND', form({ investedValue: '200', accruedInterest: '12.5' }))).toEqual({ invested: 200, current: 212.5 })
+  })
+
+  test('provident fund without accrued interest has current equal to invested, and a negative entry counts as zero', () => {
     expect(deriveManualValues('PROVIDENT_FUND', form({ investedValue: '200' }))).toEqual({ invested: 200, current: 200 })
+    expect(deriveManualValues('PROVIDENT_FUND', form({ investedValue: '200', accruedInterest: '-5' }))).toEqual({ invested: 200, current: 200 })
   })
 
   test('provident fund with no balance, and the default type, derive nothing', () => {
@@ -39,6 +44,8 @@ describe('manualPayload', () => {
     expect(manualPayload('PROVIDENT_FUND', form({ expectedInterestRate: '8.25' }))).toMatchObject({ expectedInterestRate: 0.0825, monthlyContribution: undefined })
     expect(manualPayload('PROVIDENT_FUND', form({}))).toMatchObject({ expectedInterestRate: undefined })
     expect(manualPayload('PROVIDENT_FUND', form({ monthlyContribution: '3600' }))).toMatchObject({ monthlyContribution: 3600 })
+    expect(manualPayload('PROVIDENT_FUND', form({ accruedInterest: '750' }))).toMatchObject({ accruedInterest: 750 })
+    expect(manualPayload('PROVIDENT_FUND', form({}))).toMatchObject({ accruedInterest: undefined })
   })
 
   test('the default type sends no manual block', () => {
@@ -47,10 +54,10 @@ describe('manualPayload', () => {
 })
 
 describe('form helpers', () => {
-  const base = { id: 'h', manualType: 'PROVIDENT_FUND', manual: { expectedInterestRate: 0.0825, monthlyContribution: 1800 } } as Holding
+  const base = { id: 'h', manualType: 'PROVIDENT_FUND', manual: { expectedInterestRate: 0.0825, monthlyContribution: 1800, accruedInterest: 900 } } as Holding
 
   test('manualFormFrom restores a saved holding, rate as a percentage', () => {
-    expect(manualFormFrom(base)).toMatchObject({ manualType: 'PROVIDENT_FUND', monthlyContribution: '1800', expectedInterestRate: '8.25', purchaseUnitPrice: '' })
+    expect(manualFormFrom(base)).toMatchObject({ manualType: 'PROVIDENT_FUND', monthlyContribution: '1800', accruedInterest: '900', expectedInterestRate: '8.25', purchaseUnitPrice: '' })
   })
 
   test('manualFormFrom falls back to the default type with empty fields', () => {
