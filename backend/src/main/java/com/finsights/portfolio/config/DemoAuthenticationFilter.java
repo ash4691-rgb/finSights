@@ -17,7 +17,10 @@ public class DemoAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
         // Real email/password sign-in must be able to run without the demo identity pre-filling the context.
-        return !uri.startsWith("/api/") || uri.equals("/api/auth/login") || uri.equals("/api/auth/register");
+        // Health probes are anonymous and fire on a schedule — authenticating them would make Spring
+        // persist a session row (and set a cookie) on every single ping.
+        return !uri.startsWith("/api/") || uri.equals("/api/auth/login") || uri.equals("/api/auth/register")
+                || uri.equals("/api/health") || uri.equals("/api/health/live");
     }
 
     @Override

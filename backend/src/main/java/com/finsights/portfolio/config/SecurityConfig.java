@@ -58,7 +58,7 @@ public class SecurityConfig {
                 .exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
                         new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED), new AntPathRequestMatcher("/api/**")))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/health", "/api/auth/login", "/api/auth/register", "/api/auth/config",
+                        .requestMatchers("/api/health", "/api/health/live", "/api/auth/login", "/api/auth/register", "/api/auth/config",
                                 "/api/auth/verify", "/api/auth/resend-verification", "/error", "/oauth2/**", "/login/**",
                                 "/h2-console/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
