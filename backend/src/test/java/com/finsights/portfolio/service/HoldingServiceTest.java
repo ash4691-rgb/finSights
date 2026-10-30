@@ -437,6 +437,25 @@ class HoldingServiceTest {
     }
 
     @Test
+    void getReportsAccruedInterestAsCurrentOverInvestedForAProvidentFundOnly() {
+        Category category = new Category();
+        category.setKind(HoldingKind.ASSET);
+        stubForGet(category);
+        holding.setValuationMethod(ValuationMethod.MANUAL);
+        holding.setManualType(ManualType.PROVIDENT_FUND);
+        holding.setInvestedValue(new BigDecimal("160000"));
+        holding.setCurrentValue(new BigDecimal("165000"));
+
+        assertThat(service.get("h-1", null).manual().accruedInterest()).isEqualByComparingTo("5000");
+
+        holding.setCurrentValue(new BigDecimal("150000"));
+        assertThat(service.get("h-1", null).manual().accruedInterest()).isEqualByComparingTo("0");
+
+        holding.setManualType(null);
+        assertThat(service.get("h-1", null).manual().accruedInterest()).isNull();
+    }
+
+    @Test
     void getWithNoDisplayCurrencyReturnsTheNativeResponseUnconverted() {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
@@ -566,7 +585,7 @@ class HoldingServiceTest {
     }
 
     private HoldingRequest realEstateRequest(BigDecimal area, BigDecimal purchasePrice, BigDecimal currentPrice) {
-        ManualDetails details = new ManualDetails(purchasePrice, currentPrice, null, null);
+        ManualDetails details = new ManualDetails(purchasePrice, currentPrice, null, null, null);
         return new HoldingRequest("cat-1", "2BHK Flat", ValuationMethod.MANUAL, null, "Self", "INR",
                 new BigDecimal("99"), area, com.finsights.portfolio.domain.AreaUnit.SQ_FT,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
@@ -584,7 +603,7 @@ class HoldingServiceTest {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
-        ManualDetails details = new ManualDetails(null, null, new BigDecimal("0.0825"), new BigDecimal("3600"));
+        ManualDetails details = new ManualDetails(null, null, new BigDecimal("0.0825"), new BigDecimal("3600"), new BigDecimal("5000"));
 
         HoldingResponse response = service.create(providentFundRequest(new BigDecimal("160000"), details));
 
@@ -593,13 +612,14 @@ class HoldingServiceTest {
         Holding stored = saved.getAllValues().get(0);
         assertThat(stored.getManualType()).isEqualTo(ManualType.PROVIDENT_FUND);
         assertThat(openingAmount()).isEqualByComparingTo("160000");
-        assertThat(stored.getCurrentValue()).isEqualByComparingTo("160000");
+        assertThat(stored.getCurrentValue()).isEqualByComparingTo("165000");
         assertThat(stored.getQuantity()).isNull();
         assertThat(stored.getArea()).isNull();
         assertThat(stored.getExpectedInterestRate()).isEqualByComparingTo("0.0825");
         assertThat(stored.getMonthlyContribution()).isEqualByComparingTo("3600");
         assertThat(stored.getCurrency()).isEqualTo("INR");
         assertThat(response.manual().monthlyContribution()).isEqualByComparingTo("3600");
+        assertThat(stored.getCurrentValue().subtract(openingAmount())).isEqualByComparingTo("5000");
         assertThat(response.manualType()).isEqualTo(ManualType.PROVIDENT_FUND);
         assertThat(stored.getLastContributionMonth()).isEqualTo(java.time.YearMonth.now().toString());
     }
@@ -609,7 +629,7 @@ class HoldingServiceTest {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
-        ManualDetails details = new ManualDetails(null, null, null, BigDecimal.ZERO);
+        ManualDetails details = new ManualDetails(null, null, null, BigDecimal.ZERO, null);
 
         service.create(providentFundRequest(new BigDecimal("1000"), details));
 
@@ -629,7 +649,7 @@ class HoldingServiceTest {
         holding.setInvestedValue(new BigDecimal("1000"));
         holding.setCurrentValue(new BigDecimal("1000"));
         when(transactions.findByHolding_IdOrderByDateAscCreatedAtAsc(any())).thenReturn(List.of(txn(TransactionType.BUY, "1000", null)));
-        ManualDetails details = new ManualDetails(null, null, null, new BigDecimal("500"));
+        ManualDetails details = new ManualDetails(null, null, null, new BigDecimal("500"), null);
 
         service.update("h-1", providentFundRequest(new BigDecimal("1000"), details));
 
@@ -641,7 +661,7 @@ class HoldingServiceTest {
         Category category = new Category();
         category.setKind(HoldingKind.ASSET);
         stubForCreate(category);
-        ManualDetails details = new ManualDetails(new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"));
+        ManualDetails details = new ManualDetails(new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"), new BigDecimal("1"));
         HoldingRequest request = new HoldingRequest("cat-1", "Reliance", ValuationMethod.MANUAL, null, "Kite", "INR",
                 null, null, null, new BigDecimal("10000"), new BigDecimal("12000"), null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, details);

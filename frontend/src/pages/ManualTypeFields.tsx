@@ -35,10 +35,14 @@ function RealEstateFields({ form, set, derived, disabled }: Omit<FieldsProps, 't
   </>
 }
 
-function ProvidentFundFields({ form, set, disabled }: Omit<FieldsProps, 'type'>) {
+function ProvidentFundFields({ form, set, derived, disabled }: Omit<FieldsProps, 'type'>) {
   return <>
-    <Field label="Total balance" required wide>
-      {number(form.investedValue, v => set('investedValue', v), { required: true, disabled, placeholder: 'Current balance of the fund' })}
+    <div className="field-pair">
+      <Field label="Invested value" required>{number(form.investedValue, v => set('investedValue', v), { required: true, disabled, placeholder: 'Total contributed so far' })}</Field>
+      <Field label="Accrued interest">{number(form.accruedInterest, v => set('accruedInterest', v), { disabled, placeholder: 'Interest credited so far' })}</Field>
+    </div>
+    <Field label="Current value (total balance, calculated)" wide>
+      <input disabled value={disabled || derived == null ? '' : String(derived.current)} placeholder="Invested value + accrued interest" aria-label="Current value (calculated)" />
     </Field>
     <div className="field-pair">
       <Field label="Monthly contribution">{number(form.monthlyContribution, v => set('monthlyContribution', v), { disabled, placeholder: 'Employee + employer, per month' })}</Field>
@@ -70,6 +74,7 @@ function providentFundFacts(holding: Holding) {
   const m = holding.manual ?? {}
   return [
     m.monthlyContribution != null ? fact('Monthly contribution', money(m.monthlyContribution, holding.currency)) : null,
+    m.accruedInterest != null ? fact('Accrued interest', money(m.accruedInterest, holding.currency)) : null,
     m.expectedInterestRate != null ? fact('Expected rate', `${percent(m.expectedInterestRate * 100)} p.a.`) : null,
   ]
 }

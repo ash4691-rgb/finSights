@@ -591,7 +591,14 @@ public class HoldingService {
 
     private ManualDetails manualDetailsOf(Holding holding) {
         return new ManualDetails(holding.getPurchaseUnitPrice(), holding.getCurrentUnitPrice(),
-                holding.getExpectedInterestRate(), holding.getMonthlyContribution());
+                holding.getExpectedInterestRate(), holding.getMonthlyContribution(), accruedInterestOf(holding));
+    }
+
+    /** Provident fund only: the stored current value sits above the invested value by the interest credited, so no extra column is needed. */
+    private BigDecimal accruedInterestOf(Holding holding) {
+        if (holding.getManualType() != ManualType.PROVIDENT_FUND) return null;
+        BigDecimal interest = zeroIfNull(holding.getCurrentValue()).subtract(zeroIfNull(holding.getInvestedValue()));
+        return interest.signum() < 0 ? BigDecimal.ZERO : interest;
     }
 
     /** Validates a real-estate/provident fund request and derives its invested and current value from the inputs. */
