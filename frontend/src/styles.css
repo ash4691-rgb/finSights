@@ -831,6 +831,11 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 @keyframes goku-blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
 .goku-input-row{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border-soft)}
 .goku-input-row textarea{flex:1;resize:none;max-height:90px;font:inherit}
+.goku-attach-btn{flex-shrink:0;border:1px solid var(--border-strong);background:var(--surface-2);border-radius:8px;width:34px;font-size:15px;cursor:pointer}
+.goku-attach-btn:disabled{opacity:.5;cursor:default}
+.goku-pending-attachment{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 16px;padding:6px 10px;background:var(--surface-2);border-radius:8px;font-size:12px}
+.goku-pending-attachment button{border:0;background:none;color:var(--text-3);cursor:pointer;font-size:14px;padding:0 2px}
+.goku-attachment-chip{display:block;font-size:11px;opacity:.85;margin-bottom:4px}
 .goku-remaining{margin:0 16px 12px;font-size:10.5px;color:var(--text-4);text-align:right}
 .goku-admin-btn{margin-top:2px;opacity:.85}
 .goku-admin-error{color:var(--negative)}
