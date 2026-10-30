@@ -12,24 +12,24 @@ const category: Category = {
   weightagePercent: 0, liquidAmount: 0, liquidPercent: 0, npaAmount: 0, npaPercent: 0, holdingCount: 0,
 }
 
-// Real estate is a property of the category, not the holding kind — the checkbox marks a
-// category so every holding filed under it takes an area + unit instead of a quantity.
+// Real estate is now a manual type chosen on the holding form, so the category form no longer
+// exposes the flag — but a legacy flagged category must keep it when saved.
 describe('CategoryModal — real estate flag', () => {
   afterEach(() => { vi.unstubAllGlobals(); cleanup() })
 
-  test('new asset category defaults the real-estate checkbox to unchecked', () => {
+  test('new asset category does not show a real-estate checkbox', () => {
     render(<CategoryModal category={null} holdings={[]} onClose={vi.fn()} onSaved={vi.fn()} />)
 
-    expect(screen.getByLabelText(/Holdings in this category are land\/property/)).not.toBeChecked()
+    expect(screen.queryByLabelText(/Holdings in this category are land\/property/)).not.toBeInTheDocument()
   })
 
-  test('editing a real-estate category pre-checks the checkbox', () => {
+  test('editing a real-estate category does not show the checkbox', () => {
     render(<CategoryModal category={{ ...category, realEstate: true }} holdings={[]} onClose={vi.fn()} onSaved={vi.fn()} />)
 
-    expect(screen.getByLabelText(/Holdings in this category are land\/property/)).toBeChecked()
+    expect(screen.queryByLabelText(/Holdings in this category are land\/property/)).not.toBeInTheDocument()
   })
 
-  test('checking real estate and saving posts realEstate: true', async () => {
+  test('saving a legacy real-estate category preserves realEstate: true', async () => {
     let posted: Record<string, unknown> | null = null
     vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
       posted = JSON.parse(init!.body as string)
@@ -37,17 +37,26 @@ describe('CategoryModal — real estate flag', () => {
     }))
     const onSaved = vi.fn()
 
-    render(<CategoryModal category={category} holdings={[]} onClose={vi.fn()} onSaved={onSaved} />)
-    fireEvent.click(screen.getByLabelText(/Holdings in this category are land\/property/))
+    render(<CategoryModal category={{ ...category, realEstate: true }} holdings={[]} onClose={vi.fn()} onSaved={onSaved} />)
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
     expect(posted).toMatchObject({ realEstate: true })
   })
 
-  test('the real-estate checkbox is hidden for a liability category', () => {
-    render(<CategoryModal category={{ ...category, kind: 'LIABILITY' }} holdings={[]} onClose={vi.fn()} onSaved={vi.fn()} />)
+  test('saving a new category posts realEstate: false', async () => {
+    let posted: Record<string, unknown> | null = null
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      posted = JSON.parse(init!.body as string)
+      return okResponse(category)
+    }))
+    const onSaved = vi.fn()
 
-    expect(screen.queryByLabelText(/Holdings in this category are land\/property/)).not.toBeInTheDocument()
+    render(<CategoryModal category={null} holdings={[]} onClose={vi.fn()} onSaved={onSaved} />)
+    fireEvent.change(screen.getByPlaceholderText(/Growth Equity/), { target: { value: 'Gold' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add category' }))
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
+    expect(posted).toMatchObject({ name: 'Gold', realEstate: false })
   })
 })

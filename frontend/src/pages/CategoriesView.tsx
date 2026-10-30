@@ -174,11 +174,6 @@ export function CategoryModal({ category, holdings, onClose, onSaved }: { catego
           </div>
           <p className="hint">Leave all unchecked to allow every method. Checked methods are enforced on holdings filed under this category.</p>
         </Field>}
-        {form.kind === 'ASSET' && <Field label="Real estate" wide>
-          <label><input type="checkbox" checked={form.realEstate}
-            onChange={e => { setDirty(true); setForm(current => ({ ...current, realEstate: e.target.checked })) }} /> Holdings in this category are land/property</label>
-          <p className="hint">Asks for area + unit instead of quantity on the Add/Edit Holding form (quantity is fixed at 1 — one holding per unit).</p>
-        </Field>}
         <Field label="Notes" wide><input value={form.description} onChange={e => set('description', e.target.value)} placeholder="One line — shows in the ⓘ tooltip on the Categories table" maxLength={1024} /></Field>
       </div>
       {nonCompliant.length > 0 && <div className="form-callout warn"><span className="form-callout-dot">!</span>
