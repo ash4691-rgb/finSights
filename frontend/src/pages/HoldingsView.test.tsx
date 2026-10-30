@@ -138,14 +138,16 @@ describe('real-estate holdings show area, not quantity', () => {
 
   const realEstateHolding: Holding = {
     ...holding, id: 'h-re', name: '2BHK Flat, Koramangala', categoryName: 'Real Estate',
-    quantity: undefined, area: 1200, areaUnit: 'SQ_FT',
+    quantity: undefined, area: 1200, areaUnit: 'SQ_FT', manualType: 'REAL_ESTATE',
+    manual: { purchaseUnitPrice: 4000, currentUnitPrice: 4500 },
   }
 
   test('Holdings table shows area + unit instead of quantity', () => {
     render(<HoldingsView holdings={[realEstateHolding]} categories={[]} reload={vi.fn()} onEdit={vi.fn()} onAdd={vi.fn()} onOpen={vi.fn()} />)
 
     expect(screen.getByText('1200')).toBeInTheDocument()
-    expect(screen.getByText('sq. ft')).toBeInTheDocument()
+    expect(screen.getByText(/sq\. ft/)).toBeInTheDocument()
+    expect(screen.getByText(/MANUAL · Real estate/)).toBeInTheDocument()
   })
 
   test('a non-real-estate holding still shows quantity in the table', () => {
@@ -160,6 +162,8 @@ describe('real-estate holdings show area, not quantity', () => {
 
     expect(screen.getByText('Area')).toBeInTheDocument()
     expect(screen.getByText('1200 sq. ft')).toBeInTheDocument()
+    expect(screen.getByText('Purchase unit price')).toBeInTheDocument()
+    expect(screen.getByText('Current unit price')).toBeInTheDocument()
     expect(screen.queryByText('Quantity')).not.toBeInTheDocument()
   })
 
@@ -172,58 +176,218 @@ describe('real-estate holdings show area, not quantity', () => {
   })
 })
 
-// Real estate is one holding per unit — quantity doesn't mean anything, so the Add/Edit Holding
-// form swaps it for an area + unit pair whenever the selected category is real estate.
-describe('HoldingModal — real estate area/unit', () => {
+// Typed manual holdings: the Manual type dropdown (Default / Real estate / Provident fund) drives which inputs
+// the form asks for, and invested/current values are calculated from them rather than typed in.
+describe('HoldingModal — manual types', () => {
   const tagSuggestionsOk = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) } as Response)
+  let posted: Record<string, unknown> | null = null
+
+  const stubFetch = () => {
+    posted = null
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (method === 'POST' && !url.includes('tag-suggestions')) {
+        posted = JSON.parse(init!.body as string)
+        return okResponse({ ...holding, id: 'h-new' }, 201)
+      }
+      return tagSuggestionsOk()
+    }))
+  }
+  const renderNew = (category: Category, onSaved = vi.fn(), displayCurrency = 'INR') => {
+    stubFetch()
+    render(<HoldingModal holding={null} category={category} categories={[realEstateCategory, equityCategory]} holdings={[]}
+      displayCurrency={displayCurrency} onClose={vi.fn()} onSaved={onSaved} />)
+    return onSaved
+  }
+  const fillBasics = (name: string) => {
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: name } })
+    fireEvent.change(screen.getByLabelText(/^Broker \/ platform/), { target: { value: 'Self' } })
+  }
 
   afterEach(() => { vi.unstubAllGlobals(); cleanup() })
 
-  test('shows Area + Unit instead of Quantity for a real-estate category', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockReturnValue(tagSuggestionsOk()))
-
-    render(<HoldingModal holding={null} category={realEstateCategory} categories={[realEstateCategory]} holdings={[]}
-      displayCurrency="INR" onClose={vi.fn()} onSaved={vi.fn()} />)
+  test('a real-estate category preselects Manual + Real estate and asks for area, unit and unit prices, not quantity', async () => {
+    renderNew(realEstateCategory)
 
     expect(await screen.findByLabelText(/^Area/)).toBeInTheDocument()
     expect(screen.getByLabelText(/^Unit/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Purchase unit price/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Current unit price/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Manual type/)).toHaveValue('REAL_ESTATE')
     expect(screen.queryByLabelText('Quantity')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Invested value$/)).not.toBeInTheDocument()
   })
 
-  test('shows Quantity, not Area/Unit, for a non-real-estate category', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockReturnValue(tagSuggestionsOk()))
+  test('liquid is unchecked by default for a real-estate holding', async () => {
+    renderNew(realEstateCategory)
 
-    render(<HoldingModal holding={null} category={equityCategory} categories={[equityCategory]} holdings={[]}
-      displayCurrency="INR" onClose={vi.fn()} onSaved={vi.fn()} />)
+    expect(await screen.findByLabelText(/Liquid within 7 days/)).not.toBeChecked()
+  })
+
+  test('a plain category keeps Quantity and the Default manual type', async () => {
+    renderNew(equityCategory)
 
     expect(await screen.findByLabelText('Quantity')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Area')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^Manual type/)).toHaveValue('DEFAULT')
+    expect(screen.queryByLabelText(/^Area/)).not.toBeInTheDocument()
   })
 
-  test('submits area/unit and nulls quantity for a real-estate holding', async () => {
-    let posted: Record<string, unknown> | null = null
-    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if ((init?.method ?? 'GET').toUpperCase() === 'POST' && !url.includes('tag-suggestions')) {
-        posted = JSON.parse(init!.body as string)
-        return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve({ ...holding, id: 'h-re' }) } as Response)
-      }
-      return tagSuggestionsOk()
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    const onSaved = vi.fn()
+  test('calculates invested and current values from area x unit price, defaulting current to purchase', async () => {
+    renderNew(realEstateCategory)
 
-    render(<HoldingModal holding={null} category={realEstateCategory} categories={[realEstateCategory]} holdings={[]}
-      displayCurrency="INR" onClose={vi.fn()} onSaved={onSaved} />)
+    fireEvent.change(await screen.findByLabelText(/^Area/), { target: { value: '1200' } })
+    fireEvent.change(screen.getByLabelText(/^Purchase unit price/), { target: { value: '4000' } })
+
+    expect(screen.getByLabelText('Invested value (calculated)')).toHaveValue('4800000')
+    expect(screen.getByLabelText('Current value (calculated)')).toHaveValue('4800000')
+
+    fireEvent.change(screen.getByLabelText(/^Current unit price/), { target: { value: '5000' } })
+    expect(screen.getByLabelText('Current value (calculated)')).toHaveValue('6000000')
+  })
+
+  test('submits the real-estate payload with calculated values and no quantity', async () => {
+    const onSaved = renderNew(realEstateCategory)
 
     fireEvent.change(await screen.findByLabelText(/^Area/), { target: { value: '1200' } })
     fireEvent.change(screen.getByLabelText(/^Unit/), { target: { value: 'ACRE' } })
-    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: '2BHK Flat' } })
-    fireEvent.change(screen.getByLabelText(/^Broker \/ platform/), { target: { value: 'Self' } })
-    fireEvent.change(screen.getByLabelText(/^Invested value/), { target: { value: '5000000' } })
-    fireEvent.change(screen.getByLabelText(/^Current value/), { target: { value: '6000000' } })
+    fireEvent.change(screen.getByLabelText(/^Purchase unit price/), { target: { value: '4000' } })
+    fillBasics('2BHK Flat')
     fireEvent.click(screen.getByRole('button', { name: 'Add holding' }))
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
-    expect(posted).toMatchObject({ area: 1200, areaUnit: 'ACRE', quantity: null })
+    expect(posted).toMatchObject({
+      manualType: 'REAL_ESTATE', area: 1200, areaUnit: 'ACRE', quantity: null, valuationMethod: 'MANUAL',
+      investedValue: 4800000, currentValue: 4800000, manual: { purchaseUnitPrice: 4000 },
+    })
+  })
+
+  test('Add holding stays disabled until the unit price is filled in', async () => {
+    renderNew(realEstateCategory)
+
+    fireEvent.change(await screen.findByLabelText(/^Area/), { target: { value: '10' } })
+    fillBasics('Plot')
+
+    expect(screen.getByRole('button', { name: 'Add holding' })).toBeDisabled()
+  })
+
+  test('choosing Provident fund asks for balance, one monthly contribution, rate and currency', async () => {
+    renderNew(equityCategory)
+
+    fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
+
+    expect(screen.getByLabelText(/^Total balance/)).toBeEnabled()
+    expect(screen.getByLabelText(/^Monthly contribution/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Expected interest rate/)).toBeEnabled()
+    expect(screen.getByLabelText(/^Currency/)).toBeEnabled()
+    expect(screen.queryByLabelText(/employee|employer/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Interest accumulated/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Quantity')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Liquid within 7 days/)).not.toBeChecked()
+  })
+
+  test('the currency of a new typed holding starts as the display currency', async () => {
+    renderNew(equityCategory, vi.fn(), 'USD')
+
+    expect(screen.getByLabelText(/^Currency/)).toHaveValue('INR')
+    fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
+
+    expect(screen.getByLabelText(/^Currency/)).toHaveValue('USD')
+  })
+
+  test('submits a provident fund holding with the balance as invested and current and the rate as a fraction', async () => {
+    const onSaved = renderNew(equityCategory)
+
+    fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
+    fireEvent.change(screen.getByLabelText(/^Total balance/), { target: { value: '200000' } })
+    fireEvent.change(screen.getByLabelText(/^Monthly contribution/), { target: { value: '3600' } })
+    fireEvent.change(screen.getByLabelText(/^Expected interest rate/), { target: { value: '8.25' } })
+    fillBasics('EPF - Acme')
+    fireEvent.click(screen.getByRole('button', { name: 'Add holding' }))
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))
+    expect(posted).toMatchObject({
+      manualType: 'PROVIDENT_FUND', currency: 'INR', quantity: null, area: null, investedValue: 200000, currentValue: 200000,
+      liquidWithinSevenDays: false,
+      manual: { expectedInterestRate: 0.0825, monthlyContribution: 3600 },
+    })
+  })
+
+  test('a provident fund without a balance blocks saving', async () => {
+    renderNew(equityCategory)
+
+    fireEvent.change(await screen.findByLabelText(/^Manual type/), { target: { value: 'PROVIDENT_FUND' } })
+    fillBasics('EPF')
+
+    expect(screen.getByRole('button', { name: 'Add holding' })).toBeDisabled()
+  })
+
+  test('picking a real-estate category on a new holding preselects the real-estate type', async () => {
+    renderNew(equityCategory)
+
+    fireEvent.change(await screen.findByLabelText(/^Category/), { target: { value: 'c-re' } })
+
+    expect(screen.getByLabelText(/^Manual type/)).toHaveValue('REAL_ESTATE')
+    fireEvent.change(screen.getByLabelText(/^Category/), { target: { value: 'c-eq' } })
+    expect(screen.getByLabelText(/^Manual type/)).toHaveValue('DEFAULT')
+  })
+
+  test('editing a real-estate holding asks for area and both unit prices and recalculates', async () => {
+    const existing: Holding = {
+      ...holding, id: 'h-re', categoryId: 'c-re', name: 'Flat', broker: 'Self', valuationMethod: 'MANUAL',
+      manualType: 'REAL_ESTATE', area: 1000, areaUnit: 'SQ_FT', investedValue: 4000000, currentValue: 4000000,
+      manual: { purchaseUnitPrice: 4000, currentUnitPrice: 4000 },
+    }
+    vi.stubGlobal('fetch', vi.fn((url: string) => url.includes('tag-suggestions') ? tagSuggestionsOk() : okResponse(existing)))
+
+    render(<HoldingModal holding={existing} categories={[realEstateCategory]} holdings={[]}
+      displayCurrency="INR" onClose={vi.fn()} onSaved={vi.fn()} />)
+
+    const area = await screen.findByLabelText(/^Area/)
+    expect(area).toHaveValue(1000)
+    expect(screen.getByLabelText(/^Purchase unit price/)).toHaveValue(4000)
+    await waitFor(() => expect(screen.getByLabelText(/^Area/)).not.toBeDisabled())
+    fireEvent.change(screen.getByLabelText(/^Current unit price/), { target: { value: '4500' } })
+
+    expect(screen.getByLabelText('Current value (calculated)')).toHaveValue('4500000')
+    expect(screen.getByText(/adjustment transaction/)).toBeInTheDocument()
+  })
+})
+
+describe('manual type display', () => {
+  afterEach(() => cleanup())
+
+  const providentFundHolding: Holding = {
+    ...holding, id: 'h-epf', name: 'EPF', manualType: 'PROVIDENT_FUND',
+    manual: { expectedInterestRate: 0.0825, monthlyContribution: 3600 },
+  }
+
+  test('the drawer shows the provident fund monthly contributions and rate', () => {
+    render(<HoldingDrawer holding={providentFundHolding} displayCurrency="INR" fxRatesToBase={{}}
+      onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
+
+    expect(screen.getByText('Expected rate')).toBeInTheDocument()
+    expect(screen.getByText('Monthly contribution')).toBeInTheDocument()
+    expect(screen.queryByText('Quantity')).not.toBeInTheDocument()
+  })
+
+  test('the drawer skips provident fund facts that were not entered', () => {
+    render(<HoldingDrawer holding={{ ...providentFundHolding, manual: {} }} displayCurrency="INR" fxRatesToBase={{}}
+      onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
+
+    expect(screen.getByText('Manual type')).toBeInTheDocument()
+    expect(screen.queryByText('Expected rate')).not.toBeInTheDocument()
+  })
+
+  test('a plain holding shows no manual facts', () => {
+    render(<HoldingDrawer holding={holding} displayCurrency="INR" fxRatesToBase={{}}
+      onClose={vi.fn()} onEdit={vi.fn()} onHoldingUpdated={vi.fn()} reload={vi.fn()} />)
+
+    expect(screen.queryByText('Manual type')).not.toBeInTheDocument()
+  })
+
+  test('the table labels a provident fund holding', () => {
+    render(<HoldingsView holdings={[providentFundHolding]} categories={[]} reload={vi.fn()} onEdit={vi.fn()} onAdd={vi.fn()} onOpen={vi.fn()} />)
+
+    expect(screen.getByText(/MANUAL · Provident fund/)).toBeInTheDocument()
   })
 })

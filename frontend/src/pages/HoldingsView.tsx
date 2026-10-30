@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type * as React from 'react'
 import type { FormEvent } from 'react'
 import { api } from '../api'
-import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel, checkLoanTerm, areaUnits, areaUnitLabel } from '../util'
+import { money, rate, percent, label, since, ago, numeric, blankHoldingForm, frequencies, frequencyLabel, repaymentFrequencies, repaymentLabel, currencies, selectableValuationMethods, valuationMethodLabel, checkLoanTerm, areaUnitLabel } from '../util'
 import { Field, InfoTip, TagInput, SymbolSearchInput, SuggestInput, useEscToClose } from '../ui'
 import { TransactionModal } from './TransactionsView'
-import type { Holding, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
+import { ManualTypeFields, ManualFacts } from './ManualTypeFields'
+import { manualTypes, manualTypeLabel, manualFormFrom, defaultsForCategory, deriveManualValues, manualPayload } from './manualType'
+import type { Holding, ManualType, Category, ValuationMethod, Frequency, RepaymentFrequency, MarketQuote, ValuationDetail, Transaction } from '../types'
 
 export type HoldingSortKey = 'name' | 'categoryName' | 'broker' | 'investedValue' | 'currentValue' | 'profitLoss'
 // ---------------------------------------------------------------------------
@@ -98,12 +100,12 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
           {holding.description && <InfoTip text={holding.description} />}
         </div></td>
         <td><span className="trunc-cell" title={holding.broker || ''}>{holding.broker || '—'}</span></td>
-        <td><span className={`badge trunc-cell ${holding.kind === 'LIABILITY' ? 'liability' : ''}`} title={holding.categoryName}>{holding.categoryName}</span><small className="owner">{label(holding.valuationMethod)}</small></td>
+        <td><span className={`badge trunc-cell ${holding.kind === 'LIABILITY' ? 'liability' : ''}`} title={holding.categoryName}>{holding.categoryName}</span><small className="owner">{label(holding.valuationMethod)}{holding.manualType && holding.manualType !== 'DEFAULT' ? ` · ${manualTypeLabel(holding.manualType)}` : ''}</small></td>
         <td>{money(holding.investedValue, holding.currency)}</td>
         <td><strong>{money(holding.currentValue, holding.currency)}</strong></td>
         <td>{holding.kind === 'LIABILITY' ? <span className="owner">—</span> : <span className={holding.profitLoss >= 0 ? 'positive' : 'negative'}>{holding.profitLoss >= 0 ? '+' : ''}{money(holding.profitLoss, holding.currency)}<small>{percent(holding.profitLossPercentage)}</small></span>}</td>
         <td>{holding.area != null && holding.areaUnit
-          ? <span>{holding.area} <small className="owner">{areaUnitLabel(holding.areaUnit)}</small></span>
+          ? <span>{holding.area} <small className="owner">{areaUnitLabel(holding.areaUnit)}{holding.manual?.currentUnitPrice != null ? ` · ${rate(holding.manual.currentUnitPrice, holding.currency)}/${areaUnitLabel(holding.areaUnit)}` : ''}</small></span>
           : holding.quantity != null && holding.quantity > 0
           ? <span>{holding.quantity}<small className="owner">avg {rate(holding.investedValue / holding.quantity, holding.currency)}</small></span>
           : <span className="owner">—</span>}</td>
@@ -121,6 +123,9 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
   </>
 }
 
+// A provident fund form edits its balance (which includes interest) in the invested-value slot, not the invested value itself.
+const balanceOrInvested = (h: Holding) => h.manualType === 'PROVIDENT_FUND' ? h.currentValue : h.investedValue
+
 export function HoldingModal({ holding, category, categories, holdings, displayCurrency, onClose, onSaved, onGoToTransactions, draft, openingDate }: Readonly<{
   holding: Holding | null; category: Category | null; categories: Category[]; holdings: Holding[]; displayCurrency: string; onClose: () => void
   // Carries the just-saved holding back to the caller so it can be spliced into local state
@@ -136,13 +141,16 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
 }>) {
   const startCategoryId = holding?.categoryId ?? category?.id ?? categories[0]?.id ?? ''
   const [form, setForm] = useState(() => holding
-    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', area: holding.area != null ? String(holding.area) : '', areaUnit: holding.areaUnit || 'SQ_FT', investedValue: String(holding.investedValue), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
-    : { ...blankHoldingForm(startCategoryId), ...draft })
+    ? { categoryId: holding.categoryId, name: holding.name, valuationMethod: holding.valuationMethod, tickerSymbol: holding.tickerSymbol || '', currency: holding.defaultCurrency, fixedAnnualRate: holding.fixedAnnualRate ? String(holding.fixedAnnualRate * 100) : '', compoundingFrequency: holding.compoundingFrequency || 'QUARTERLY', liquidWithinSevenDays: holding.liquidWithinSevenDays, blocked: holding.blocked, tags: [...holding.tags], broker: holding.broker || '', quantity: holding.quantity != null ? String(holding.quantity) : '', area: holding.area != null ? String(holding.area) : '', areaUnit: holding.areaUnit || 'SQ_FT', ...manualFormFrom(holding), investedValue: String(balanceOrInvested(holding)), currentValue: String(holding.currentValue), fixedRateStartDate: holding.fixedRateStartDate || new Date().toISOString().slice(0, 10), fixedRateEndDate: holding.fixedRateEndDate || '', repaymentFrequency: holding.repaymentFrequency || 'MONTHLY', emiAmount: holding.emiAmount != null ? String(holding.emiAmount) : '', emiDayOfMonth: holding.emiDayOfMonth != null ? String(holding.emiDayOfMonth) : '', loanTermMonths: holding.loanTermMonths != null ? String(holding.loanTermMonths) : '', repaymentDueDate: holding.repaymentDueDate || '', description: holding.description || '' }
+    : { ...blankHoldingForm(startCategoryId), ...defaultsForCategory(categories.find(c => c.id === startCategoryId)), ...draft })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const brokerSuggestions = useMemo(() => [...new Set(holdings.map(h => h.broker).filter((b): b is string => !!b))].sort(), [holdings])
   const selectedCategory = categories.find(c => c.id === form.categoryId)
   const isLiability = selectedCategory?.kind === 'LIABILITY'
-  const isRealEstate = !isLiability && !!selectedCategory?.realEstate
+  const manualType = !isLiability && form.valuationMethod === 'MANUAL' ? form.manualType : 'DEFAULT'
+  const isTypedManual = manualType !== 'DEFAULT'
+  const isRealEstate = manualType === 'REAL_ESTATE'
+  const derived = deriveManualValues(manualType, form)
   const isFixedRate = !isLiability && form.valuationMethod === 'FIXED_RATE'
   const isMarket = !isLiability && form.valuationMethod === 'MARKET_PRICE'
   const isOneTime = isLiability && form.repaymentFrequency === 'ONE_TIME'
@@ -150,6 +158,19 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
   const [dirty, setDirty] = useState(false)
   const set = (key: string, value: string | boolean) => { setDirty(true); setForm(current => ({ ...current, [key]: value })) }
   useEscToClose(onClose, dirty)
+  // A new holding follows its category's default (real estate pre-selects Manual + Real estate); an edit keeps its own type.
+  // A typed manual holding is asked for its currency, which starts as the one the user is viewing in.
+  const changeManualType = (value: string) => {
+    setDirty(true)
+    const currency = !isEdit && value !== 'DEFAULT' ? { currency: displayCurrency } : {}
+    setForm(current => ({ ...current, manualType: value as ManualType, ...currency }))
+  }
+
+  const changeCategory = (categoryId: string) => {
+    setDirty(true)
+    const defaults = isEdit ? {} : defaultsForCategory(categories.find(c => c.id === categoryId))
+    setForm(current => ({ ...current, categoryId, ...defaults }))
+  }
 
   // New liabilities ask only for the instalment amount — "Instalments remaining" is derived from
   // it (see below) rather than asked for separately. Editing an existing loan keeps its old,
@@ -182,7 +203,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
     api<Holding>(`/api/holdings/${holding.id}`)
       .then(native => {
         setNativeHolding(native)
-        setForm(current => ({ ...current, investedValue: String(native.investedValue), currentValue: String(native.currentValue),
+        setForm(current => ({ ...current, investedValue: String(balanceOrInvested(native)), currentValue: String(native.currentValue),
           emiAmount: native.emiAmount != null ? String(native.emiAmount) : '' }))
       })
       .catch(() => { /* keep the possibly view-converted values if this fails */ })
@@ -190,7 +211,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
   }, [holding?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   // Editing invested value directly (e.g. to fix a partial-sell mismatch) books a visible
   // adjustment transaction for the difference rather than silently overwriting the figure.
-  const investedDelta = isEdit && !isLiability && nativeHolding ? numeric(form.investedValue) - nativeHolding.investedValue : 0
+  const investedDelta = isEdit && !isLiability && nativeHolding ? (derived?.invested ?? numeric(form.investedValue)) - nativeHolding.investedValue : 0
   const allowedMethods = selectedCategory?.allowedValuationMethods
   const methodOptions = allowedMethods && allowedMethods.length ? selectableValuationMethods.filter(m => allowedMethods.includes(m)) : selectableValuationMethods
 
@@ -235,9 +256,11 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
       categoryId: form.categoryId, name: form.name,
       valuationMethod: isLiability ? 'MANUAL' : form.valuationMethod,
       tickerSymbol: isLiability ? null : (form.tickerSymbol || null), broker: form.broker.trim(),
-      currency: form.currency, quantity: isLiability || isRealEstate ? null : (form.quantity ? numeric(form.quantity) : null),
+      currency: form.currency, quantity: isLiability || isTypedManual ? null : (form.quantity ? numeric(form.quantity) : null),
       area: isRealEstate && form.area ? numeric(form.area) : null, areaUnit: isRealEstate ? form.areaUnit : null,
-      investedValue: numeric(form.investedValue), currentValue: isFixedRate ? null : numeric(form.currentValue),
+      manualType, manual: manualPayload(manualType, form),
+      investedValue: derived ? derived.invested : numeric(form.investedValue),
+      currentValue: derived ? derived.current : isFixedRate ? null : numeric(form.currentValue),
       fixedAnnualRate: (isFixedRate || isLiability) && form.fixedAnnualRate ? numeric(form.fixedAnnualRate) / 100 : null,
       compoundingFrequency: isFixedRate ? form.compoundingFrequency : null,
       fixedRateStartDate: isFixedRate ? form.fixedRateStartDate : (openingDate ?? null),
@@ -264,7 +287,7 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
     <form onSubmit={submit}>
       <div className="form-grid">
         <Field label="Category" required>
-          <select required disabled={!!category && !holding} value={form.categoryId} onChange={e => set('categoryId', e.target.value)}>
+          <select required disabled={!!category && !holding} value={form.categoryId} onChange={e => changeCategory(e.target.value)}>
             {!categories.length && <option value="">No categories yet</option>}
             {categories.map(c => <option key={c.id} value={c.id}>{c.name} ({label(c.kind)})</option>)}
           </select>
@@ -275,6 +298,9 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
           </select>
           {methodOptions.length < selectableValuationMethods.length && <p className="hint">Restricted by {selectedCategory?.name}'s allowed valuation methods.</p>}
         </Field>}
+        {!isLiability && form.valuationMethod === 'MANUAL' && <Field label="Manual type" required>
+          <select value={form.manualType} onChange={e => changeManualType(e.target.value)}>{manualTypes.map(t => <option key={t} value={t}>{manualTypeLabel(t)}</option>)}</select>
+        </Field>}
         {isMarket && <Field label="Ticker symbol" required wide><SymbolSearchInput value={form.tickerSymbol} onChange={v => set('tickerSymbol', v)} /></Field>}
         {isEdit
           ? <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries, HDFC FD'} /></Field>
@@ -282,12 +308,10 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
               <Field label="Name" required><input required maxLength={128} value={form.name} disabled={isMarket} onChange={e => set('name', e.target.value)} placeholder={isMarket ? 'Filled from the ticker' : isLiability ? 'e.g. HDFC Home Loan' : 'e.g. Reliance Industries'} /></Field>
               <Field label={isLiability ? 'Lender' : 'Broker / platform'} required><SuggestInput required maxLength={96} value={form.broker} suggestions={brokerSuggestions} onChange={v => set('broker', v)} placeholder={isLiability ? 'HDFC Bank, Bajaj Finance…' : 'Kite, Groww, HDFC Bank…'} /></Field>
             </div>}
-        {!isLiability && !isEdit && !isRealEstate && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
-        {isRealEstate && <div className="field-pair">
-          <Field label="Area" required><input required type="number" step="any" min="0" value={form.area} onChange={e => set('area', e.target.value)} placeholder="e.g. 1200" /></Field>
-          <Field label="Unit" required><select required value={form.areaUnit} onChange={e => set('areaUnit', e.target.value)}>{areaUnits.map(u => <option key={u} value={u}>{areaUnitLabel(u)}</option>)}</select></Field>
-        </div>}
-        {!isLiability && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required>
+        {!isLiability && !isEdit && !isTypedManual && <Field label="Quantity" required={isMarket}><input required={isMarket} type="number" step="any" min="0" value={form.quantity} onChange={e => set('quantity', e.target.value)} placeholder="Units held" /></Field>}
+        {isTypedManual && <ManualTypeFields type={manualType} form={form} set={set} derived={derived} disabled={moneyLoading} />}
+        {isTypedManual && investedDelta !== 0 && <p className="hint">Saving will log an adjustment transaction of {investedDelta > 0 ? '+' : ''}{money(investedDelta, form.currency)} for the change in invested value.</p>}
+        {!isLiability && !isTypedManual && <Field label={isFixedRate ? 'Principal' : 'Invested value'} required>
           <input required type="number" min="0" step="0.01" disabled={moneyLoading} placeholder={moneyLoading ? 'Loading…' : ''} value={moneyLoading ? '' : form.investedValue} onChange={e => set('investedValue', e.target.value)} />
           {investedDelta !== 0 && <p className="hint">Saving will log an adjustment transaction of {investedDelta > 0 ? '+' : ''}{money(investedDelta, form.currency)} (from {money(nativeHolding!.investedValue, form.currency)} to {money(numeric(form.investedValue), form.currency)}) — visible in Transactions afterward.</p>}
         </Field>}
@@ -317,7 +341,8 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
                 {!isEdit && liabilityMathError && <p className="form-error">{liabilityMathError}</p>}
               </>}
         </>}
-        {!isLiability && <div className="field-pair">
+        {!isLiability && isTypedManual && <Field label="Currency" required><select disabled={isEdit} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>}
+        {!isLiability && !isTypedManual && <div className="field-pair">
           <Field label="Currency"><select disabled={isEdit || isMarket} value={form.currency} onChange={e => set('currency', e.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</select></Field>
           <Field label={isFixedRate ? 'Current value (computed)' : isMarket ? 'Current value (live price)' : 'Current value'} required={!isFixedRate && !isMarket}><input required={!isFixedRate && !isMarket} type="number" min="0" step="0.01" disabled={isFixedRate || isMarket || moneyLoading} value={isFixedRate || isMarket || !moneyLoading ? form.currentValue : ''} onChange={e => set('currentValue', e.target.value)} placeholder={isMarket ? 'Priced after saving' : isFixedRate ? 'Computed after saving' : moneyLoading ? 'Loading…' : ''} /></Field>
         </div>}
@@ -350,9 +375,9 @@ export function HoldingModal({ holding, category, categories, holdings, displayC
       <div className="modal-actions"><button type="button" className="outline" onClick={onClose}>Cancel</button><button className="primary" disabled={saving || moneyLoading || !form.categoryId || !form.name.trim()
         || (isMarket && !form.tickerSymbol.trim())
         || (isMarket && !isEdit && !form.quantity)
-        || (isRealEstate && !form.area)
-        || (!isLiability && !form.investedValue)
-        || (!isLiability && form.valuationMethod === 'MANUAL' && !form.currentValue)
+        || (isTypedManual && !derived)
+        || (!isLiability && !isTypedManual && !form.investedValue)
+        || (!isLiability && !isTypedManual && form.valuationMethod === 'MANUAL' && !form.currentValue)
         || (isLiability && (!form.investedValue || !form.currentValue || (isOneTime ? !form.repaymentDueDate : (!form.emiDayOfMonth || (!form.emiAmount && !form.loanTermMonths)))))
         || !!liabilityMathError
         || duplicate}>{saving ? 'Saving…' : holding ? 'Save changes' : 'Add holding'}</button></div>
@@ -432,9 +457,9 @@ export function HoldingDrawer({ holding, displayCurrency, fxRatesToBase, onClose
         <button type="button" className={`calc-toggle${calcOpen ? ' open' : ''}`} aria-expanded={calcOpen} aria-label="How this value is calculated" title="How this value is calculated" onClick={() => setCalcOpen(o => !o)}><i>i</i></button>
       </b></span>}
       <span>Last updated<b>{since(holding.updatedAt)}</b></span>
-      {holding.area != null && holding.areaUnit
-        ? <span>Area<b>{holding.area} {areaUnitLabel(holding.areaUnit)}</b></span>
-        : holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
+      {holding.manualType && holding.manualType !== 'DEFAULT' && <span>Manual type<b>{manualTypeLabel(holding.manualType)}</b></span>}
+      <ManualFacts holding={holding} />
+      {holding.manualType !== 'PROVIDENT_FUND' && holding.manualType !== 'REAL_ESTATE' && holding.quantity != null && <span>Quantity<b>{holding.quantity}</b></span>}
       {!isLiab && holding.valuationMethod === 'FIXED_RATE' && <span>Payout frequency<b>{holding.compoundingFrequency ? frequencyLabel(holding.compoundingFrequency) : '—'}</b></span>}
       {!isLiab && holding.valuationMethod === 'FIXED_RATE' && <span>Maturity<b>{holding.fixedRateEndDate ? since(holding.fixedRateEndDate) : 'Open-ended'}</b></span>}
       {!isLiab && holding.accruedIncome > 0 && <span>Accrued income<b className="positive">+{money(holding.accruedIncome, holding.currency)}</b></span>}

@@ -5,6 +5,13 @@ export type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEA
 export type RepaymentFrequency = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' | 'ONE_TIME'
 export type TransactionType = 'BUY' | 'SELL' | 'SPLIT' | 'INTEREST' | 'ADJUSTMENT' | 'REPAY'
 export type AreaUnit = 'ACRE' | 'HECTARE' | 'SQ_M' | 'SQ_FT'
+// Sub-type of a MANUAL holding; DEFAULT is a plain manual value.
+export type ManualType = 'DEFAULT' | 'REAL_ESTATE' | 'PROVIDENT_FUND'
+// Inputs behind a real-estate (unit prices) or provident fund (contributions, interest) holding's calculated values.
+export type ManualDetails = {
+  purchaseUnitPrice?: number; currentUnitPrice?: number
+  expectedInterestRate?: number; monthlyContribution?: number
+}
 export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
 
 // A user-defined bucket (Name + Asset/Liability type). Invested/current/P&L, weightage, and
@@ -38,6 +45,7 @@ export type Holding = {
   // fixed-rate data, an unconvertible currency, …) instead of failing the whole list — the
   // holding still renders, but needs a look; dataIssueMessage explains what to fix.
   dataIssue?: boolean; dataIssueMessage?: string
+  manualType?: ManualType; manual?: ManualDetails
 }
 export type SymbolSuggestion = { symbol: string; name: string; exchange: string; type: string }
 export type MarketQuote = { symbol: string; name: string; price: number; currency: string; asOf: string }

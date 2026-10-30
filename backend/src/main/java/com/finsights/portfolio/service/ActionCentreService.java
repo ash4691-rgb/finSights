@@ -1,10 +1,12 @@
 package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.domain.HoldingKind;
+import com.finsights.portfolio.domain.ManualType;
 import com.finsights.portfolio.domain.ValuationMethod;
 import com.finsights.portfolio.dto.ActionItemResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
 import java.time.LocalDate;
+import java.time.Month;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -20,27 +22,38 @@ import org.springframework.stereotype.Service;
 @Service
 public class ActionCentreService {
 
+    /** EPF credits a year's interest around the financial year end; the yearly check falls due on 31 October. */
+    static final Month MANUAL_REVIEW_MONTH = Month.OCTOBER;
+    static final int MANUAL_REVIEW_DAY = 31;
+
     private final EmiService emis;
     private final InterestPayoutService interestPayouts;
+    private final ProvidentFundContributionService providentFundContributions;
     private final PendingBrokerHoldingService pendingBrokerHoldings;
     private final ActionDismissalService dismissals;
     private final CurrentUserService currentUser;
 
     public ActionCentreService(EmiService emis, InterestPayoutService interestPayouts,
+                               ProvidentFundContributionService providentFundContributions,
                                PendingBrokerHoldingService pendingBrokerHoldings,
                                ActionDismissalService dismissals, CurrentUserService currentUser) {
         this.emis = emis;
         this.interestPayouts = interestPayouts;
+        this.providentFundContributions = providentFundContributions;
         this.pendingBrokerHoldings = pendingBrokerHoldings;
         this.dismissals = dismissals;
         this.currentUser = currentUser;
     }
 
     public List<ActionItemResponse> actions(List<HoldingResponse> holdings, boolean converted) {
+        return actions(holdings, converted, LocalDate.now());
+    }
+
+    List<ActionItemResponse> actions(List<HoldingResponse> holdings, boolean converted, LocalDate today) {
         String baseCurrency = currentUser.currentUser().getBaseCurrency();
-        LocalDate today = LocalDate.now();
         List<ActionItemResponse> items = new ArrayList<>(emis.dueItems());
         items.addAll(interestPayouts.dueItems());
+        items.addAll(providentFundContributions.dueItems(today));
         items.addAll(pendingBrokerHoldings.actionItems());
 
         for (HoldingResponse h : holdings) {
@@ -52,6 +65,7 @@ public class ActionCentreService {
                                 + ". Confirm the payout and record what happened to the proceeds.",
                         h));
             }
+            if (isManualReviewDue(h, today)) items.add(manualValuationReview(h, today));
             if (h.valuationMethod() == ValuationMethod.MARKET_PRICE
                     && h.tickerSymbol() != null && !h.tickerSymbol().isBlank() && h.priceUpdatedAt() == null) {
                 items.add(item("PRICE_UNAVAILABLE", "WARN",
@@ -100,6 +114,22 @@ public class ActionCentreService {
                 .filter(a -> !suppressed.contains(a.key()))
                 .sorted(Comparator.comparing(ActionItemResponse::dueDate))
                 .toList();
+    }
+
+    /** The yearly valuation review appears from 1 October for every manual-valued asset and stays until it is done or deferred. */
+    private static boolean isManualReviewDue(HoldingResponse h, LocalDate today) {
+        boolean manualAsset = h.valuationMethod() == ValuationMethod.MANUAL && h.kind() == HoldingKind.ASSET;
+        return manualAsset && today.getMonthValue() >= MANUAL_REVIEW_MONTH.getValue();
+    }
+
+    /** One task per holding per year: the period is the year, so marking it done only clears that year's. */
+    private static ActionItemResponse manualValuationReview(HoldingResponse h, LocalDate today) {
+        String kind = "MANUAL_VALUATION_REVIEW";
+        String period = String.valueOf(today.getYear());
+        LocalDate due = LocalDate.of(today.getYear(), MANUAL_REVIEW_MONTH, MANUAL_REVIEW_DAY);
+        return new ActionItemResponse(kind, "WARN", "Review valuation — " + h.name(),
+                "This value is tracked by hand. Consider updating its balance or valuation by " + due + ".",
+                h.id(), h.name(), h.broker(), due, null, period, null, ActionItemResponse.keyOf(kind, h.id(), period));
     }
 
     private static ActionItemResponse item(String kind, String severity, String title, String detail, HoldingResponse h) {

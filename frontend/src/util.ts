@@ -1,4 +1,4 @@
-import type { Frequency, RepaymentFrequency, PeriodKey, TransactionType, Page, HoldingKind, ValuationMethod, Theme, AreaUnit } from './types'
+import type { ManualType, Frequency, RepaymentFrequency, PeriodKey, TransactionType, Page, HoldingKind, ValuationMethod, Theme, AreaUnit } from './types'
 
 export const frequencies: Frequency[] = ['DAILY', 'WEEKLY', 'MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUALLY', 'AT_MATURITY']
 export const frequencyLabel = (f: Frequency) => f === 'ANNUALLY' ? 'Yearly' : f === 'AT_MATURITY' ? 'At maturity'
@@ -72,8 +72,15 @@ export const nav: (NavTile | NavGroup)[] = [
 // The methods a holding form actually offers — BROKER_SYNC isn't selectable yet.
 export const selectableValuationMethods: ValuationMethod[] = ['MANUAL', 'MARKET_PRICE', 'FIXED_RATE']
 export const valuationMethodLabel = (m: ValuationMethod) => m === 'MANUAL' ? 'Manual value' : m === 'MARKET_PRICE' ? 'Market price' : 'Fixed-rate compounding'
+// The form fields the typed-manual flows add; every value is a string, as in the rest of the holding form.
+export const blankManualForm = () => ({
+  manualType: 'DEFAULT' as ManualType,
+  purchaseUnitPrice: '', currentUnitPrice: '',
+  expectedInterestRate: '', monthlyContribution: '',
+})
+export type ManualForm = ReturnType<typeof blankManualForm>
 export const blankCategoryForm = () => ({ name: '', kind: 'ASSET' as HoldingKind, description: '', allowedValuationMethods: [] as ValuationMethod[], realEstate: false })
-export const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'QUARTERLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', quantity: '', area: '', areaUnit: 'SQ_FT' as AreaUnit, investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), fixedRateEndDate: '', repaymentFrequency: 'MONTHLY' as RepaymentFrequency, emiAmount: '', emiDayOfMonth: '', loanTermMonths: '', repaymentDueDate: '', description: '' })
+export const blankHoldingForm = (categoryId: string) => ({ categoryId, name: '', valuationMethod: 'MANUAL' as ValuationMethod, tickerSymbol: '', currency: 'INR', fixedAnnualRate: '', compoundingFrequency: 'QUARTERLY' as Frequency, liquidWithinSevenDays: false, blocked: false, tags: [] as string[], broker: '', quantity: '', area: '', areaUnit: 'SQ_FT' as AreaUnit, ...blankManualForm(), investedValue: '', currentValue: '', fixedRateStartDate: new Date().toISOString().slice(0, 10), fixedRateEndDate: '', repaymentFrequency: 'MONTHLY' as RepaymentFrequency, emiAmount: '', emiDayOfMonth: '', loanTermMonths: '', repaymentDueDate: '', description: '' })
 // Area units a real-estate holding can be measured in.
 export const areaUnits: AreaUnit[] = ['ACRE', 'HECTARE', 'SQ_M', 'SQ_FT']
 export const areaUnitLabel = (u: AreaUnit) => u === 'ACRE' ? 'acre' : u === 'HECTARE' ? 'hectare' : u === 'SQ_M' ? 'sq. m' : 'sq. ft'

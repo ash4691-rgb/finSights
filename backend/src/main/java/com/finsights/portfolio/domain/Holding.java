@@ -42,6 +42,23 @@ public class Holding {
     private BigDecimal area;
     @Enumerated(EnumType.STRING) @Column(length = 16)
     private AreaUnit areaUnit;
+    /** Sub-type of a MANUAL holding; null for a plain one. Drives which of the fields below apply. */
+    @Enumerated(EnumType.STRING) @Column(length = 16)
+    private ManualType manualType;
+    /** REAL_ESTATE: price per {@link #areaUnit} when bought / today; invested and current value are area x price. */
+    @Column(precision = 20, scale = 4)
+    private BigDecimal purchaseUnitPrice;
+    @Column(precision = 20, scale = 4)
+    private BigDecimal currentUnitPrice;
+    /** Provident fund: expected rate (fraction). */
+    @Column(precision = 10, scale = 6)
+    private BigDecimal expectedInterestRate;
+    /** Provident fund: the regular monthly contribution, used to prompt for each month's entry. */
+    @Column(precision = 20, scale = 2)
+    private BigDecimal monthlyContribution;
+    /** Last month (yyyy-MM) whose monthly contribution was auto-logged; null until monthly amounts are set. */
+    @Column(length = 7)
+    private String lastContributionMonth;
     /** Remaining cost basis after average-cost SELLs; the ledger owns this (see HoldingService). */
     @Column(precision = 20, scale = 2)
     private BigDecimal investedValue = BigDecimal.ZERO;
@@ -128,6 +145,18 @@ public class Holding {
     public void setArea(BigDecimal area) { this.area = area; }
     public AreaUnit getAreaUnit() { return areaUnit; }
     public void setAreaUnit(AreaUnit areaUnit) { this.areaUnit = areaUnit; }
+    public ManualType getManualType() { return manualType; }
+    public void setManualType(ManualType manualType) { this.manualType = manualType; }
+    public BigDecimal getPurchaseUnitPrice() { return purchaseUnitPrice; }
+    public void setPurchaseUnitPrice(BigDecimal purchaseUnitPrice) { this.purchaseUnitPrice = purchaseUnitPrice; }
+    public BigDecimal getCurrentUnitPrice() { return currentUnitPrice; }
+    public void setCurrentUnitPrice(BigDecimal currentUnitPrice) { this.currentUnitPrice = currentUnitPrice; }
+    public String getLastContributionMonth() { return lastContributionMonth; }
+    public void setLastContributionMonth(String lastContributionMonth) { this.lastContributionMonth = lastContributionMonth; }
+    public BigDecimal getMonthlyContribution() { return monthlyContribution; }
+    public void setMonthlyContribution(BigDecimal monthlyContribution) { this.monthlyContribution = monthlyContribution; }
+    public BigDecimal getExpectedInterestRate() { return expectedInterestRate; }
+    public void setExpectedInterestRate(BigDecimal expectedInterestRate) { this.expectedInterestRate = expectedInterestRate; }
     public BigDecimal getInvestedValue() { return investedValue; }
     public void setInvestedValue(BigDecimal investedValue) { this.investedValue = investedValue; }
     public BigDecimal getRealisedProfitLoss() { return realisedProfitLoss; }

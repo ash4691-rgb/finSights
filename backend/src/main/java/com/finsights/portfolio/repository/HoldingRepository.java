@@ -15,6 +15,7 @@ public interface HoldingRepository extends JpaRepository<Holding, String> {
     Optional<Holding> findByUser_IdAndNameIgnoreCaseAndBrokerIgnoreCase(String userId, String name, String broker);
     Optional<Holding> findByUser_IdAndBrokerSyncRef(String userId, String brokerSyncRef);
     long countByUser_Id(String userId);
+    List<Holding> findByAreaIsNotNullAndManualTypeIsNull();
 
     /** Every distinct ticker/scheme symbol across every user's MARKET_PRICE holdings — what
      *  LivePriceRefreshScheduler keeps priced. Not scoped to one user: the live-price cache is

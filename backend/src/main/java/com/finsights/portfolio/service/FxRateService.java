@@ -2,6 +2,7 @@ package com.finsights.portfolio.service;
 
 import com.finsights.portfolio.dto.FxRatesResponse;
 import com.finsights.portfolio.dto.HoldingResponse;
+import com.finsights.portfolio.dto.ManualDetails;
 import com.finsights.portfolio.dto.MarketQuoteResponse;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -106,7 +107,19 @@ public class FxRateService {
                 holding.repaymentFrequency(), emi, holding.emiDayOfMonth(), holding.loanTermMonths(), holding.repaymentDueDate(),
                 holding.liquidWithinSevenDays(), holding.blocked(), holding.description(), holding.notes(),
                 holding.tags(), holding.createdAt(), holding.updatedAt(), holding.priceUpdatedAt(),
-                holding.dataIssue(), holding.dataIssueMessage());
+                holding.dataIssue(), holding.dataIssueMessage(),
+                holding.manualType(), convertManual(holding.manual(), holding.currency(), target));
+    }
+
+    /** Converts the money-valued manual fields (unit prices, monthly contribution); the rate is unitless. */
+    private ManualDetails convertManual(ManualDetails d, String from, String to) {
+        if (d == null) return null;
+        return new ManualDetails(convertOrNull(d.purchaseUnitPrice(), from, to), convertOrNull(d.currentUnitPrice(), from, to),
+                d.expectedInterestRate(), convertOrNull(d.monthlyContribution(), from, to));
+    }
+
+    private BigDecimal convertOrNull(BigDecimal amount, String from, String to) {
+        return amount == null ? null : convert(amount, from, to);
     }
 
     /**
