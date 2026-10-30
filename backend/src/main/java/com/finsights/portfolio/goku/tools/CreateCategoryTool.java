@@ -3,9 +3,10 @@ package com.finsights.portfolio.goku.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finsights.portfolio.dto.CategoryRequest;
-import com.finsights.portfolio.goku.GokuTool;
+import com.finsights.portfolio.goku.GokuWriteTool;
 import com.finsights.portfolio.service.CategoryService;
 import jakarta.validation.Validator;
+import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +17,7 @@ import org.springframework.stereotype.Component;
  * as every read tool.
  */
 @Component
-class CreateCategoryTool implements GokuTool {
+class CreateCategoryTool implements GokuWriteTool {
     private final CategoryService categories;
     private final ObjectMapper json;
     private final Validator validator;
@@ -31,24 +32,27 @@ class CreateCategoryTool implements GokuTool {
 
     @Override public String description() {
         return "Creates a new category — a named bucket of holdings, e.g. \"US Stocks\" or \"Home Loan\" — "
-                + "for the signed-in user. Confirm the name and kind with the user before calling this; it "
-                + "creates the category immediately, with no undo tool.";
+                + "for the signed-in user. This only proposes the change: the user confirms it with a button.";
     }
 
     @Override public Map<String, Object> inputSchema() {
         return Map.of("type", "object",
                 "properties", Map.of(
                         "name", Map.of("type", "string", "description", "1-128 characters."),
-                        "kind", Map.of("type", "string", "enum", java.util.List.of("ASSET", "LIABILITY"),
+                        "kind", Map.of("type", "string", "enum", List.of("ASSET", "LIABILITY"),
                                 "description", "ASSET for something owned (stocks, funds, property); LIABILITY for something owed (a loan)."),
                         "description", Map.of("type", "string", "description", "Optional, up to 1024 characters."),
                         "realEstate", Map.of("type", "boolean",
                                 "description", "True only for a real-estate category, whose holdings use area+unit instead of quantity. Defaults to false.")),
-                "required", java.util.List.of("name", "kind"));
+                "required", List.of("name", "kind"));
     }
 
-    @Override public Object execute(JsonNode input) {
+    @Override public String preview(JsonNode input) {
         CategoryRequest request = GokuArgs.parseAndValidate(json, validator, input, CategoryRequest.class);
-        return categories.create(request);
+        return "Create " + request.kind().name().toLowerCase() + " category \"" + request.name() + "\"";
+    }
+
+    @Override public Object apply(JsonNode input) {
+        return categories.create(GokuArgs.parseAndValidate(json, validator, input, CategoryRequest.class));
     }
 }

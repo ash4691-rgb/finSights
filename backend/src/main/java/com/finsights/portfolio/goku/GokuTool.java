@@ -4,14 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
 
 /**
- * One read-only capability Goku (the portfolio chat assistant) can call. This is the contract
- * Platform owns; each implementation is a thin adapter over a method an owning team's service
- * already exposes (DataFlow's {@code HoldingService}, Insights' {@code DashboardService}, ...) —
- * see {@code goku.tools} for the registered set.
+ * One capability Goku (the portfolio chat assistant) can call. This is the contract Platform
+ * owns; each implementation is a thin adapter over a method an owning team's service already
+ * exposes (DataFlow's {@code HoldingService}, Insights' {@code DashboardService}, ...) — see
+ * {@code goku.tools} for the registered set.
  *
- * <p>There is deliberately no write variant of this interface: a tool can only wrap a
- * {@code list()}/{@code get()}-shaped read, never a {@code save()}/{@code delete()}. That is
- * enforced by convention here, not by the model's judgment.
+ * <p>A plain {@code GokuTool} is a read and runs directly inside the model loop. Anything that
+ * changes data implements {@link GokuWriteTool} instead, which the model can only propose — it
+ * applies only after the user clicks Confirm.
  */
 public interface GokuTool {
     /** Stable, snake_case name the model calls this tool by, e.g. {@code get_holdings}. */
