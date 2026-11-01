@@ -6,14 +6,18 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.finsights.portfolio.dto.GokuChatRequest;
 import com.finsights.portfolio.dto.GokuChatResponse;
+import com.finsights.portfolio.dto.GokuPendingAction;
 import com.finsights.portfolio.goku.GokuTool;
 import com.finsights.portfolio.goku.GokuToolRegistry;
+import com.finsights.portfolio.goku.GokuWriteTool;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -60,36 +64,57 @@ public class GokuChatService {
             or writing, that can reach anyone else's.
             - Keep answers short, concrete, and numbers-first. Name the currency on every money figure.
 
-            Making changes (create_category, create_holding, create_transaction, import_statement):
-            - These take effect immediately and there is no undo tool. Always state exactly what you're \
-            about to create (or, for import_statement, what you're about to read) and get an explicit yes \
-            before calling the tool — never create something because it seemed implied.
-            - A holding needs its category (get_categories first if you don't have the id) and a transaction \
-            needs its holding (get_holdings first) — never guess an id.
-            - import_statement only reads a statement the user attached and reports candidate rows; it saves \
-            nothing. Walk through what it found, flag anything in its `warnings`, and only call \
-            create_holding/create_transaction for rows the user confirms — one tool call per row. Check \
-            get_holdings first for a holding the statement's row might already match, and ask the user rather \
-            than silently creating a duplicate.
-            - If a required detail is missing or ambiguous, ask instead of filling in a plausible-looking \
-            value.
+            How to handle a request — first decide which of these it is, then follow that bucket:
+            1. Portfolio summary (net worth, allocation, gainers/losers, EMIs due, watchlist): get_dashboard_summary, \
+            get_hot_picks, get_emi_summary, get_watchlist. Lead with the headline number, then 2-4 supporting points.
+            2. Holdings summary (by category, broker, tag, or one holding): get_holdings with the matching filter, \
+            passing the user's base currency (get_preferences) as `currency` so totals combine. Quote its `totals`.
+            3. Transactions summary (by holding, category, broker, tag, or type, optionally a date range): \
+            get_transactions with the matching filters. Quote its `totals`; mention `truncated` if set.
+            4. Change data (add, update, or delete a category, holding, or transaction; or import a statement file).
+            5. Preferences (base currency via country, profile details, notifications, investor profile, risk \
+            assessment): get_preferences first, then update_preferences / update_persona_details / \
+            update_risk_profile. For a risk reassessment ask the five questions one at a time, offering exactly the \
+            listed options.
+            6. Anything else: answer if it's about this user's FinSights data; otherwise say what you can help with.
+            A message may start with "[Intent: ...]" from the app's guided menu — trust it as the bucket, and use any \
+            ids it includes directly instead of looking them up again.
+
+            Changing data (every create_*, update_*, delete_*, update_preferences, update_persona_details, \
+            update_risk_profile call):
+            - Calling one of these never changes anything by itself. It returns a proposal, and the user sees a \
+            Confirm button for that exact change; it only happens if they press it. So never say a change is done — \
+            say what you've prepared and that it's waiting on their confirmation.
+            - Look up ids with get_categories / get_holdings / get_transactions — never guess or invent one. If \
+            several records could match what the user said, ask which one.
+            - For update_* tools send only the fields that change.
+            - Before proposing a delete, say plainly what goes with it: deleting a category deletes every holding in \
+            it and their transactions; deleting a holding deletes its transactions.
+            - import_statement only reads a statement the user attached and reports candidate rows — it saves \
+            nothing. Summarise what it found, flag its `warnings`, check get_holdings for rows that already exist, \
+            then propose create_holding / create_transaction for the rows the user wants (several proposals in \
+            one turn is fine — they can confirm them all at once).
+            - If a required detail is missing or ambiguous, ask instead of filling in a plausible-looking value.
+            - Never put a password, PAN, or account number into any tool call except import_statement's password.
             """;
 
     private final GokuToolRegistry tools;
     private final GokuRateLimiter rateLimiter;
     private final CurrentUserService currentUser;
     private final GokuAllowlistService allowlist;
+    private final GokuActionStore actions;
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     @Value("${app.goku.anthropic-api-key:}") private String apiKey;
 
     public GokuChatService(GokuToolRegistry tools, GokuRateLimiter rateLimiter, CurrentUserService currentUser,
-            GokuAllowlistService allowlist) {
+            GokuAllowlistService allowlist, GokuActionStore actions) {
         this.tools = tools;
         this.rateLimiter = rateLimiter;
         this.currentUser = currentUser;
         this.allowlist = allowlist;
+        this.actions = actions;
     }
 
     public GokuChatResponse respond(GokuChatRequest request) {
@@ -112,11 +137,12 @@ public class GokuChatService {
         }
 
         String model = allowlist.modelFor(currentUser.currentUser().getEmail());
-        String reply = converse(messages, model);
-        return new GokuChatResponse(reply, rateLimiter.remainingToday(userId));
+        List<GokuPendingAction> proposed = new ArrayList<>();
+        String reply = converse(messages, model, userId, proposed);
+        return new GokuChatResponse(reply, rateLimiter.remainingToday(userId), proposed);
     }
 
-    private String converse(ArrayNode messages, String model) {
+    private String converse(ArrayNode messages, String model, String userId, List<GokuPendingAction> proposed) {
         for (int round = 0; round < MAX_TOOL_ROUNDS; round++) {
             JsonNode response = callClaude(messages, model);
             JsonNode content = response.path("content");
@@ -128,14 +154,18 @@ public class GokuChatService {
             if (!"tool_use".equals(response.path("stop_reason").asText())) {
                 return extractText(content);
             }
-            messages.add(runTools(content));
+            messages.add(runTools(content, userId, proposed));
         }
         log.warn("Goku hit its {}-round tool budget without a final answer", MAX_TOOL_ROUNDS);
         return "I wasn't able to fully work that out within my tool budget — try asking something more specific.";
     }
 
-    /** Executes every tool_use block in one assistant turn and packages the results as the next user turn. */
-    private ObjectNode runTools(JsonNode content) {
+    /**
+     * Executes every tool_use block in one assistant turn and packages the results as the next
+     * user turn. A {@link GokuWriteTool} is never executed here — it's previewed and parked in
+     * {@link GokuActionStore} for the user to confirm, and the model is told exactly that.
+     */
+    private ObjectNode runTools(JsonNode content, String userId, List<GokuPendingAction> proposed) {
         ArrayNode results = json.createArrayNode();
         for (JsonNode block : content) {
             if (!"tool_use".equals(block.path("type").asText())) continue;
@@ -148,7 +178,18 @@ public class GokuChatService {
             try {
                 GokuTool tool = tools.find(toolName)
                         .orElseThrow(() -> new IllegalArgumentException("Unknown tool \"" + toolName + "\""));
-                resultJson = json.writeValueAsString(tool.execute(input));
+                if (tool instanceof GokuWriteTool write) {
+                    String summary = write.preview(input);
+                    GokuPendingAction action = actions.propose(userId, write.name(), input, summary, write.destructive());
+                    proposed.add(action);
+                    resultJson = json.writeValueAsString(Map.of(
+                            "status", "awaiting_user_confirmation",
+                            "summary", summary,
+                            "note", "Nothing has changed yet. The user now sees a Confirm button for this exact change; "
+                                    + "tell them what you've prepared and never say it is done."));
+                } else {
+                    resultJson = json.writeValueAsString(tool.execute(input));
+                }
             } catch (RuntimeException | com.fasterxml.jackson.core.JsonProcessingException e) {
                 log.info("Goku tool {} failed for this call: {}", toolName, e.getMessage());
                 resultJson = "{\"error\":" + json.valueToTree(e.getMessage() == null ? "Something went wrong" : e.getMessage()) + "}";

@@ -89,7 +89,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [showPersonaOnboardingFromSettings, setShowPersonaOnboardingFromSettings] = useState(false)
   const [brokerNotice, setBrokerNotice] = useState<BrokerNotice | null>(null)
   const bootstrapped = useRef(false)
-  const goku = useGoku()
+  const goku = useGoku(() => void load())
 
   // Lands here right after the Kite OAuth redirect back from BrokerController#callback
   // (?broker=kite&brokerStatus=connected|failed) — surface it as a banner on the Brokers page,
