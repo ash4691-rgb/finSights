@@ -50,6 +50,9 @@ server:
 
 app:
   auth-mode: ${APP_AUTH_MODE:demo}
+  # DemoModeGuard refuses to boot demo mode against a non-H2 database; this is the escape hatch
+  # for a throwaway staging DB only.
+  allow-demo-on-external-db: ${APP_ALLOW_DEMO_ON_EXTERNAL_DB:false}
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   cors-origin: ${CORS_ORIGIN:http://localhost:5173}
   # Off for now (see LocalAuthService) — set REQUIRE_EMAIL_VERIFICATION=true once Resend/SMTP
