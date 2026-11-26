@@ -62,7 +62,7 @@ Only the `openid`, `profile`, `email` scopes are requested (no Gmail access).
 | Insights: breakdowns by class/broker/tag/currency/liquidity, movers, data-quality warnings | ✅ |
 | Brokers & sources screen (derived broker groups + connector roadmap) | ✅ |
 | Settings: base currency, display name, JSON export, account deletion | ✅ |
-| Goku: read-only portfolio chat assistant, gated to an allowlist | ✅ (Phase 1) |
+| Goku: portfolio chat assistant — guided menu, summaries, confirm-to-apply changes, allowlist-gated | ✅ |
 
 ### Not yet (later phases)
 
@@ -71,11 +71,24 @@ charts, currency conversion, Kite/Zerodha sync, PostgreSQL migrations, alerts, m
 
 ## Goku (portfolio chat assistant)
 
-A chat assistant — a ⚡ **Goku** entry in the left-hand nav, opening a chat panel — that answers
-questions over the signed-in user's own portfolio data by calling FinSights' existing read-only
-endpoints as [Claude](https://claude.com) tools — never a data dump, never a write. It follows the
-same rule the rest of the app does: it tracks wealth, it doesn't place trades or give investment
-advice.
+A chat assistant — the floating ⚡ button bottom-right on every page — that works over the
+signed-in user's own portfolio data by calling FinSights' existing services as
+[Claude](https://claude.com) tools. It follows the same rule the rest of the app does: it tracks
+wealth, it doesn't place trades or give investment advice.
+
+Opening it shows a **guided menu** (at most five steps) that turns "what do you want to do?" into a
+precise request: portfolio summary; holdings summary by category/broker/tag/holding; transactions
+summary by any of those or by type, over a chosen period; add/edit/delete a category, holding or
+transaction, or import a statement file; preferences (base currency via country, profile,
+notifications, investor profile, risk reassessment); or a free-text question.
+
+**Goku can never change anything by itself.** Every write tool (`create_*`, `update_*`, `delete_*`,
+the preference tools) only *proposes* a change: the backend validates it, checks the record belongs
+to the signed-in user, and parks it as a pending action. It's applied only when the user clicks
+**Confirm** on the card in the chat (`POST /api/goku/actions/{id}/confirm`) — a separate,
+user-scoped request the model can't make. Deletes say what cascades with them (a category's
+holdings and their transactions) and render as destructive. Every tool, read or write, scopes to
+the signed-in user through `CurrentUserService`; none takes a user/email argument.
 
 It's off by default for everyone except an email allowlist (Phase 1 of the rollout: just one real
 account, plus the demo account so it works out of the box locally). It only needs an API key to
@@ -86,11 +99,11 @@ cd backend
 ANTHROPIC_API_KEY=sk-ant-... ./mvnw spring-boot:run
 ```
 
-Without `ANTHROPIC_API_KEY` set, the nav entry stays hidden entirely — that's the one thing you
+Without `ANTHROPIC_API_KEY` set, the ⚡ button stays hidden entirely — that's the one thing you
 have to provide yourself.
 
 Who can chat with Goku is **database-backed**, not config: an admin adds/removes emails from a
-"⚙ Goku access" panel (its own nav entry, next to Goku's) instead of editing an env var and
+"⚙ Goku access" panel (its own sidebar entry) instead of editing an env var and
 redeploying. `GOKU_SEED_ALLOWLIST` (comma-separated emails, defaults to
 `ash4691@gmail.com,demo@finsights.local`) only ever runs once, to populate that table on first
 boot against an otherwise-empty database — after that, every change goes through the admin panel.

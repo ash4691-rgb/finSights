@@ -156,8 +156,17 @@ export type FxRates = { base: string; asOf: string; ratesToBase: Record<string, 
 export type Theme = 'light' | 'dark'
 export type GokuConfig = { available: boolean; admin: boolean; reason?: string }
 export type GokuRole = 'user' | 'assistant'
-export type GokuMessage = { id: string; role: GokuRole; content: string; attachmentLabel?: string }
-export type GokuChatReply = { reply: string; queriesRemainingToday: number }
+// A write Goku proposed — nothing changes until the user confirms it (POST /api/goku/actions/{id}/confirm).
+export type GokuPendingAction = { id: string; tool: string; summary: string; destructive: boolean }
+export type GokuActionStatus = 'pending' | 'applying' | 'applied' | 'dismissed' | 'failed'
+export type GokuActionCard = GokuPendingAction & { status: GokuActionStatus; error?: string }
+// `content` is what the bubble shows; `payload`, when set, is what's actually sent to Goku instead
+// (the guided flow's structured intent + ids, or an attachment's upload note).
+export type GokuMessage = {
+  id: string; role: GokuRole; content: string; payload?: string; attachmentLabel?: string; actions?: GokuActionCard[]
+}
+export type GokuChatReply = { reply: string; queriesRemainingToday: number; pendingActions: GokuPendingAction[] }
+export type GokuActionResult = { id: string; summary: string; applied: boolean }
 export type GokuUpload = { uploadId: string; filename: string }
 export type GokuTier = 'NO_ACCESS' | 'HAIKU' | 'SONNET' | 'OPUS'
 export type GokuUserSearchResult = { email: string; displayName?: string; tier: GokuTier }

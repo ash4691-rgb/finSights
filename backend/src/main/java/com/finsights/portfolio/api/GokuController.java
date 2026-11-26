@@ -1,17 +1,21 @@
 package com.finsights.portfolio.api;
 
+import com.finsights.portfolio.dto.GokuActionResult;
 import com.finsights.portfolio.dto.GokuChatRequest;
 import com.finsights.portfolio.dto.GokuChatResponse;
 import com.finsights.portfolio.dto.GokuConfigResponse;
 import com.finsights.portfolio.dto.GokuUploadResponse;
 import com.finsights.portfolio.service.CurrentUserService;
 import com.finsights.portfolio.service.GokuAccessService;
+import com.finsights.portfolio.service.GokuActionService;
 import com.finsights.portfolio.service.GokuChatService;
 import com.finsights.portfolio.service.GokuUploadStore;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -26,12 +30,15 @@ public class GokuController {
     private final GokuChatService chat;
     private final GokuUploadStore uploads;
     private final CurrentUserService currentUser;
+    private final GokuActionService actions;
 
-    public GokuController(GokuAccessService access, GokuChatService chat, GokuUploadStore uploads, CurrentUserService currentUser) {
+    public GokuController(GokuAccessService access, GokuChatService chat, GokuUploadStore uploads,
+                          CurrentUserService currentUser, GokuActionService actions) {
         this.access = access;
         this.chat = chat;
         this.uploads = uploads;
         this.currentUser = currentUser;
+        this.actions = actions;
     }
 
     /** Whether the signed-in user should see the chat bubble at all — checked before rendering it. */
@@ -60,5 +67,19 @@ public class GokuController {
         access.requireAvailable();
         String id = uploads.store(currentUser.currentUser().getId(), filename, file);
         return new GokuUploadResponse(id, filename);
+    }
+
+    /** The user's own Confirm click on a change Goku proposed — the only way a Goku write is ever applied. */
+    @PostMapping("/actions/{id}/confirm")
+    GokuActionResult confirm(@PathVariable String id) {
+        access.requireAvailable();
+        return actions.confirm(id);
+    }
+
+    @DeleteMapping("/actions/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void dismiss(@PathVariable String id) {
+        access.requireAvailable();
+        actions.dismiss(id);
     }
 }
