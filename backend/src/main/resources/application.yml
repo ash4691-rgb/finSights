@@ -25,12 +25,21 @@ spring:
         prepareThreshold: 0
   jpa:
     hibernate:
-      ddl-auto: update
+      # Flyway owns the schema (db/migration). Every schema change is a new V<n>__*.sql file;
+      # MigrationSchemaTest fails the build if an entity drifts from what the migrations build.
+      # Set JPA_DDL_AUTO=validate to have a running instance check the same thing on boot.
+      ddl-auto: ${JPA_DDL_AUTO:none}
     open-in-view: false
     properties:
       # Store enums as plain VARCHAR, not a native ENUM type, so adding an enum
       # constant later doesn't need a schema migration on an existing DB.
       hibernate.type.preferred_enum_jdbc_type: VARCHAR
+  flyway:
+    # A database that ddl-auto=update already built has tables but no Flyway history: record it as
+    # already at V1 (the baseline) instead of failing, then apply V2+ normally. An empty database
+    # runs V1 from scratch.
+    baseline-on-migrate: true
+    baseline-version: 1
   h2:
     console:
       enabled: true
