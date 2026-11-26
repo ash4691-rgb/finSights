@@ -44,6 +44,7 @@ public class SettingsService {
     private final UserPersonaRepository personas;
     private final BrokerConnectionRepository brokerConnections;
     private final PendingBrokerHoldingRepository pendingBrokerHoldings;
+    private final java.util.List<UserDataCleanup> userDataCleanups;
 
     public SettingsService(UserAccountRepository users, HoldingRepository holdings, CategoryRepository categories,
                            TransactionRepository transactions, HoldingService holdingService, CurrentUserService currentUser,
@@ -52,7 +53,8 @@ public class SettingsService {
                            TagSuggestionRepository tagSuggestions,
                            com.finsights.portfolio.repository.EmiPaymentRepository emiPayments,
                            DashboardLayoutRepository dashboardLayouts, UserPersonaRepository personas,
-                           BrokerConnectionRepository brokerConnections, PendingBrokerHoldingRepository pendingBrokerHoldings) {
+                           BrokerConnectionRepository brokerConnections, PendingBrokerHoldingRepository pendingBrokerHoldings,
+                           java.util.List<UserDataCleanup> userDataCleanups) {
         this.users = users;
         this.holdings = holdings;
         this.categories = categories;
@@ -70,6 +72,7 @@ public class SettingsService {
         this.personas = personas;
         this.brokerConnections = brokerConnections;
         this.pendingBrokerHoldings = pendingBrokerHoldings;
+        this.userDataCleanups = userDataCleanups;
     }
 
     public SettingsResponse current() {
@@ -151,6 +154,7 @@ public class SettingsService {
         // questionnaire, or connected a broker.
         personas.deleteByUser_Id(user.getId());
         brokerConnections.deleteByUser_Id(user.getId());
+        userDataCleanups.forEach(cleanup -> cleanup.deleteForUser(user.getId()));
         users.delete(user);
     }
 

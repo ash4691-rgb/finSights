@@ -112,6 +112,10 @@ app:
     model-sonnet: ${GOKU_MODEL_SONNET:claude-sonnet-5}
     model-opus: ${GOKU_MODEL_OPUS:claude-opus-5-5}
     daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
+  alerts:
+    # Weekly digest + daily alert emails (NotificationScheduler), sent through Resend to accounts with
+    # email notifications on. Off by default so deploying never starts emailing users by surprise.
+    enabled: ${ALERTS_ENABLED:false}
   news:
     # Signals' Radar news feed (NewsService/NewsRefreshScheduler) — Google News RSS, no API key,
     # so there's nothing to leave blank the way Resend/Kite's api-key defaults do. This flag is

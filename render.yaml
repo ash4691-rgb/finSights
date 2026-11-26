@@ -49,3 +49,6 @@ services:
         sync: false   # encrypts every stored Kite access/refresh token at rest — generate a long
                        # random value once (e.g. `openssl rand -base64 32`) and never rotate it
                        # without expecting every existing connection to need reconnecting
+      - key: ALERTS_ENABLED
+        sync: false   # "true" turns on the Monday digest and daily alert emails (via Resend) for
+                       # accounts with email notifications on. Unset/false sends nothing.

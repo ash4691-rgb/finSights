@@ -3,6 +3,7 @@ import type * as React from 'react'
 import { api, API_URL } from '../api'
 import { money, since, numeric, toggleLabel } from '../util'
 import { Switch } from '../ui'
+import { DigestPreview } from './DigestPreview'
 import { updatePersonaDetails } from '../persona-api'
 import { PERSONA_DESCRIPTIONS, PERSONA_ICONS, PERSONA_LABELS, RISK_ALLOCATION, RISK_DESCRIPTIONS, RISK_LABELS, RISK_TAG_CLASS, TENURE_OPTIONS, portfolioSizeOptionsFor, salaryOptionsFor } from '../persona-onboarding'
 import type { InvestingTenure, Settings, Country, Dashboard, Holding, Theme, Persona, PortfolioSize, SalaryRange } from '../types'
@@ -179,16 +180,13 @@ export function SettingsView({ settings, countries, dashboard, holdings, reload,
     </SettingsSection>
 
     <SettingsSection {...sectionProps('Notification preferences')} subtitle="Channels & limits">
-      <p className="hint">Alerts aren't sent yet — these preferences are saved now so they take effect as soon as alerting ships.</p>
+      <p className="hint">With Email on, you get a digest every Monday morning (net worth, XIRR, what's due, what moved) and an alert when an EMI or interest payout is due, a fixed-rate holding is about to mature, or a holding moves past the thresholds you set on Signals. Each alert item is sent once. SMS and push aren't available yet.</p>
       <div className="check-row settings-checks">
         <label><input type="checkbox" checked={form.notifyEmail} onChange={e => set('notifyEmail', e.target.checked)} /> Email</label>
         <label><input type="checkbox" checked={form.notifySms} onChange={e => set('notifySms', e.target.checked)} /> SMS</label>
         <label><input type="checkbox" checked={form.notifyPush} onChange={e => set('notifyPush', e.target.checked)} /> Push</label>
       </div>
-      <div className="settings-field">
-        <label>Notify on moves greater than</label>
-        <div className="inline-field"><input type="number" min="0" step="0.5" value={form.notifyThresholdPercent} onChange={e => set('notifyThresholdPercent', e.target.value)} /><span>%</span></div>
-      </div>
+      <DigestPreview />
       {saveBar}
     </SettingsSection>
 

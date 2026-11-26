@@ -17,7 +17,7 @@ public class MailService {
     private static final Logger log = LoggerFactory.getLogger(MailService.class);
     private static final String RESEND_API_URL = "https://api.resend.com/emails";
 
-    private final RestClient restClient = RestClient.create();
+    private RestClient restClient = RestClient.create();   // replaced in tests
     @Value("${app.resend.api-key:}") private String apiKey;
     @Value("${app.resend.from}") private String fromAddress;
     @Value("${app.frontend-url}") private String frontendUrl;
@@ -47,6 +47,28 @@ public class MailService {
                     .toBodilessEntity();
         } catch (Exception e) {
             log.warn("Failed to send verification email to {}", toEmail, e);
+        }
+    }
+
+    /** Sends a plain-text email. Returns true only when it was handed to Resend; without an API key
+     *  (local dev) it logs the subject and returns false, so nothing is recorded as sent. */
+    public boolean send(String toEmail, String subject, String text) {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.info("Email sending isn't configured (RESEND_API_KEY) — would send \"{}\" to {}", subject, toEmail);
+            return false;
+        }
+        try {
+            restClient.post()
+                    .uri(RESEND_API_URL)
+                    .header("Authorization", "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("from", fromAddress, "to", List.of(toEmail), "subject", subject, "text", text))
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (Exception e) {
+            log.warn("Failed to send \"{}\" to {}", subject, toEmail, e);
+            return false;
         }
     }
 }
