@@ -12,7 +12,7 @@ export type ManualDetails = {
   purchaseUnitPrice?: number; currentUnitPrice?: number
   expectedInterestRate?: number; monthlyContribution?: number; accruedInterest?: number
 }
-export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
+export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'analysis' | 'brokers' | 'settings'
 
 // A user-defined bucket (Name + Asset/Liability type). Invested/current/P&L, weightage, and
 // liquid/NPA amounts are rollups computed from its mapped holdings — not stored on it.
@@ -172,3 +172,11 @@ export type GokuTier = 'NO_ACCESS' | 'HAIKU' | 'SONNET' | 'OPUS'
 export type GokuUserSearchResult = { email: string; displayName?: string; tier: GokuTier }
 export type GokuAccessResult = { email: string; tier: GokuTier }
 export type GokuGroupedByTier = Record<'HAIKU' | 'SONNET' | 'OPUS', string[]>
+
+// XIRR returns (GET /api/returns). xirrPercent is null when it can't be annualised; note says why.
+export type ReturnFigure = { xirrPercent: number | null; netInvested: number; currentValue: number; gain: number; since?: string | null; note?: string | null }
+export type ReturnsReport = {
+  currency: string; asOf: string; portfolio: ReturnFigure
+  categories: { categoryId: string; categoryName: string; figure: ReturnFigure }[]
+  holdings: { holdingId: string; name: string; categoryName: string; figure: ReturnFigure }[]
+}

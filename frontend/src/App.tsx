@@ -18,6 +18,7 @@ import { HoldingsView, HoldingModal, HoldingDrawer } from './pages/HoldingsView'
 import { TransactionsView, ImportModal } from './pages/TransactionsView'
 import { StatementImportModal } from './pages/StatementImportModal'
 import { InsightsView } from './pages/InsightsView'
+import { AnalysisView } from './pages/AnalysisView'
 import { BrokersView, type BrokerNotice } from './pages/BrokersView'
 import { SettingsView } from './pages/SettingsView'
 
@@ -311,7 +312,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   if (loading) return <div className="loading-screen"><div className="mark">F</div><p>Loading your portfolio</p></div>
   if (error) return <div className="loading-screen"><div className="mark">!</div><h2>FinSights could not connect</h2><p>{error}</p><button onClick={() => void load()}>Try again</button></div>
 
-  const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Signals', brokers: 'Sources', settings: 'Settings' }
+  const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Signals', analysis: 'Analysis', brokers: 'Sources', settings: 'Settings' }
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -405,6 +406,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       {page === 'insights' && (settings && dashboard
         ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} />
         : <SectionError what="signals" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
+      {page === 'analysis' && <AnalysisView displayCurrency={displayCurrency} dataVersion={dataVersion} />}
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} notice={brokerNotice} onDismissNotice={() => setBrokerNotice(null)}
         hasCategories={!!categories.length} onUploadStatement={() => setShowStatementImport(true)} />}
       {page === 'settings' && (settings

@@ -61,6 +61,7 @@ export type NavGroup = { label: string; icon: string; pages: NavTile[] }
 export const nav: (NavTile | NavGroup)[] = [
   { page: 'dashboard', icon: '◫', label: 'Overview' },
   { page: 'insights', icon: '◔', label: 'Signals' },
+  { page: 'analysis', icon: '∑', label: 'Analysis' },
   { label: 'Data', icon: '▤', pages: [
       { page: 'categories', icon: '◈', label: 'Categories' },
       { page: 'holdings', icon: '▤', label: 'Holdings' },
