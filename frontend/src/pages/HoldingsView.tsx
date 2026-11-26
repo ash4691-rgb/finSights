@@ -74,7 +74,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
       <button className="primary push-end" onClick={onAdd} disabled={!categories.length} title={categories.length ? '' : 'Add a category first'}>+ Add holding</button>
     </section>
     {deleteError && <p className="form-error">{deleteError}</p>}
-    <section className="table-panel"><table>
+    <section className="table-panel stack-on-phone"><table>
       <thead><tr>
         <th className="drag-col" title={sortKey ? 'Clear the column sort to drag-reorder rows' : 'Drag rows to reorder'} />
         <th className="sortable" onClick={() => toggleSort('name')}>Holding{arrow('name')}</th>
@@ -94,22 +94,22 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
         <td className="drag-col">
           {!sortKey && <span className="drag-handle" draggable onDragStart={() => setDragId(holding.id)} onDragEnd={() => { setDragId(null); setDragOverId(null) }} title="Drag to reorder">⠿</span>}
         </td>
-        <td><div className="name-cell">
+        <td className="col-name"><div className="name-cell">
           <button className="name-button" onClick={() => onOpen(holding)} title={holding.name}><strong>{holding.name}</strong><small className="holding-ref">{holding.holdingId}</small></button>
           {holding.dataIssue && <button type="button" className="needs-attention" title={holding.dataIssueMessage ?? 'This holding needs attention — edit it to fix the underlying data.'} onClick={() => onEdit(holding)}>⚠ Needs attention</button>}
           {holding.description && <InfoTip text={holding.description} />}
         </div></td>
-        <td><span className="trunc-cell" title={holding.broker || ''}>{holding.broker || '—'}</span></td>
-        <td><span className={`badge trunc-cell ${holding.kind === 'LIABILITY' ? 'liability' : ''}`} title={holding.categoryName}>{holding.categoryName}</span><small className="owner">{label(holding.valuationMethod)}{holding.manualType && holding.manualType !== 'DEFAULT' ? ` · ${manualTypeLabel(holding.manualType)}` : ''}</small></td>
-        <td>{money(holding.investedValue, holding.currency)}</td>
-        <td><strong>{money(holding.currentValue, holding.currency)}</strong></td>
-        <td>{holding.kind === 'LIABILITY' ? <span className="owner">—</span> : <span className={holding.profitLoss >= 0 ? 'positive' : 'negative'}>{holding.profitLoss >= 0 ? '+' : ''}{money(holding.profitLoss, holding.currency)}<small>{percent(holding.profitLossPercentage)}</small></span>}</td>
-        <td>{holding.area != null && holding.areaUnit
+        <td className="col-broker"><span className="trunc-cell" title={holding.broker || ''}>{holding.broker || '—'}</span></td>
+        <td className="col-category"><span className={`badge trunc-cell ${holding.kind === 'LIABILITY' ? 'liability' : ''}`} title={holding.categoryName}>{holding.categoryName}</span><small className="owner">{label(holding.valuationMethod)}{holding.manualType && holding.manualType !== 'DEFAULT' ? ` · ${manualTypeLabel(holding.manualType)}` : ''}</small></td>
+        <td className="col-invested">{money(holding.investedValue, holding.currency)}</td>
+        <td className="col-current"><strong>{money(holding.currentValue, holding.currency)}</strong></td>
+        <td className="col-pl">{holding.kind === 'LIABILITY' ? <span className="owner">—</span> : <span className={holding.profitLoss >= 0 ? 'positive' : 'negative'}>{holding.profitLoss >= 0 ? '+' : ''}{money(holding.profitLoss, holding.currency)}<small>{percent(holding.profitLossPercentage)}</small></span>}</td>
+        <td className="col-qty">{holding.area != null && holding.areaUnit
           ? <span>{holding.area} <small className="owner">{areaUnitLabel(holding.areaUnit)}{holding.manual?.currentUnitPrice != null ? ` · ${rate(holding.manual.currentUnitPrice, holding.currency)}/${areaUnitLabel(holding.areaUnit)}` : ''}</small></span>
           : holding.quantity != null && holding.quantity > 0
           ? <span>{holding.quantity}<small className="owner">avg {rate(holding.investedValue / holding.quantity, holding.currency)}</small></span>
           : <span className="owner">—</span>}</td>
-        <td>{holding.liquidWithinSevenDays || holding.blocked || holding.tags.length
+        <td className="col-tags">{holding.liquidWithinSevenDays || holding.blocked || holding.tags.length
           ? <div className="tag-row">
               {holding.liquidWithinSevenDays && <em className="tag-liquid">Liquid</em>}
               {holding.blocked && <em className="tag-npa">NPA</em>}
@@ -117,7 +117,7 @@ export function HoldingsView({ holdings, categories, reload, onEdit, onAdd, onOp
               {holding.tags.length > 5 && <em className="tag-more" title={holding.tags.slice(5).join(', ')}>+{holding.tags.length - 5}</em>}
             </div>
           : <span className="owner">—</span>}</td>
-        <td className="actions actions-vertical"><button className="primary-link" onClick={() => onEdit(holding)} disabled={deletingId === holding.id}>Edit</button><button className="danger-link" onClick={() => void remove(holding)} disabled={deletingId === holding.id}>{deletingId === holding.id ? 'Deleting…' : 'Delete'}</button></td>
+        <td className="actions actions-vertical col-actions"><button className="primary-link" onClick={() => onEdit(holding)} disabled={deletingId === holding.id}>Edit</button><button className="danger-link" onClick={() => void remove(holding)} disabled={deletingId === holding.id}>{deletingId === holding.id ? 'Deleting…' : 'Delete'}</button></td>
       </tr>) : <tr><td colSpan={10} className="empty"><strong>No holdings match</strong><span>Every holding maps to a category and a broker. {categories.length ? 'Add one below.' : 'Add a category first.'}</span><button className="primary" onClick={onAdd} disabled={!categories.length}>Add holding</button></td></tr>}</tbody>
     </table></section>
   </>

@@ -83,7 +83,7 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
     </section>
     {error && <p className="hint">{error}</p>}
     {deleteError && <p className="form-error">{deleteError}</p>}
-    <section className="table-panel"><table>
+    <section className="table-panel stack-on-phone"><table>
       <thead><tr>
         <th className="sortable" onClick={() => toggleSort('date')}>Date{arrow('date')}</th>
         <th className="sortable" onClick={() => toggleSort('type')}>Type{arrow('type')}</th>
@@ -95,14 +95,14 @@ export function TransactionsView({ holdings, displayCurrency, fxRatesToBase, dat
         <th />
       </tr></thead>
       <tbody>{loading ? <tr><td colSpan={8} className="empty"><strong>Loading…</strong></td></tr> : sorted.length ? sorted.map(t => <tr key={t.id}>
-        <td>{since(t.date)}</td>
-        <td><span className={`badge txn-${t.type.toLowerCase()}`}>{label(t.type)}</span></td>
-        <td><strong className="trunc-name" title={t.holdingName}>{t.holdingName}</strong></td>
-        <td><span className="trunc-cell" title={t.broker || ''}>{t.broker || '—'}</span></td>
-        <td><strong>{money(t.amount, t.currency)}</strong></td>
-        <td>{t.quantity ?? '—'}</td>
-        <td className="txn-notes">{t.notes || '—'}</td>
-        <td className="actions actions-vertical"><button className="primary-link" onClick={() => setEditing(t)} disabled={deletingId === t.id}>Edit</button><button className="danger-link" onClick={() => void remove(t)} disabled={deletingId === t.id}>{deletingId === t.id ? 'Deleting…' : 'Delete'}</button></td>
+        <td className="col-date">{since(t.date)}</td>
+        <td className="col-type"><span className={`badge txn-${t.type.toLowerCase()}`}>{label(t.type)}</span></td>
+        <td className="col-name"><strong className="trunc-name" title={t.holdingName}>{t.holdingName}</strong></td>
+        <td className="col-broker"><span className="trunc-cell" title={t.broker || ''}>{t.broker || '—'}</span></td>
+        <td className="col-amount"><strong>{money(t.amount, t.currency)}</strong></td>
+        <td className="col-qty">{t.quantity ?? '—'}</td>
+        <td className="txn-notes col-notes">{t.notes || '—'}</td>
+        <td className="actions actions-vertical col-actions"><button className="primary-link" onClick={() => setEditing(t)} disabled={deletingId === t.id}>Edit</button><button className="danger-link" onClick={() => void remove(t)} disabled={deletingId === t.id}>{deletingId === t.id ? 'Deleting…' : 'Delete'}</button></td>
       </tr>) : <tr><td colSpan={8} className="empty"><strong>No transactions match</strong><span>Log a buy, sell, split, interest, or adjustment against a holding.</span>{holdings.length > 0 && <button className="primary" onClick={() => setCreating(true)}>Log transaction</button>}</td></tr>}</tbody>
     </table></section>
     {(creating || editing) && <TransactionModal transaction={editing} holdings={holdings} displayCurrency={displayCurrency} fxRatesToBase={fxRatesToBase} onClose={() => { setCreating(false); setEditing(null) }} onSaved={() => { setCreating(false); setEditing(null); void reload() }} />}

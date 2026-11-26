@@ -953,3 +953,54 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .import-log-all p{flex:1 1 220px;margin:0}
 
 .import-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+/* Phone layout. The sidebar is display:none at this width (see the 670px block above), so its
+   navigation, account and sign-out move here: a bottom tab bar, a sub-page switcher for nav
+   groups, and an account card on Settings. Wide tables restack into one card per row. */
+.mobile-tabbar,.mobile-subnav,.mobile-account{display:none}
+@media(max-width:670px){
+  main{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
+  .mobile-tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:4;gap:2px;background:var(--sidebar-bg);border-top:1px solid var(--border-soft);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+  .mobile-tabbar button{flex:1;min-width:0;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-radius:10px;background:transparent;color:var(--text-3);font-size:11px;font-weight:700}
+  .mobile-tabbar button span{font-size:19px;line-height:1}
+  .mobile-tabbar button.active{background:var(--accent-soft);color:var(--text)}
+  .mobile-tabbar button.active span{color:var(--accent)}
+  .mobile-subnav{display:flex;gap:4px;margin:-4px 0 16px;padding:4px;border:1px solid var(--border-soft);border-radius:11px;background:var(--surface-2)}
+  .mobile-subnav button{flex:1;min-height:40px;border:0;border-radius:8px;background:transparent;color:var(--text-3);font-size:13px;font-weight:700}
+  .mobile-subnav button.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow-card)}
+  .mobile-account{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;padding:14px;border:1px solid var(--border);border-radius:13px;background:var(--surface)}
+  .mobile-account-name{flex:1;min-width:0}
+  .mobile-account-name strong,.mobile-account-name small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mobile-account-name small{margin-top:2px;color:var(--text-3);font-size:11px}
+  .mobile-account .goku-nav-btn{margin:0;border:1px solid var(--border);border-radius:9px;background:transparent;padding:8px 12px;font-weight:700}
+  .goku-launcher{bottom:calc(80px + env(safe-area-inset-bottom))}
+  .goku-panel{bottom:calc(152px + env(safe-area-inset-bottom));height:min(520px,calc(100vh - 220px))}
+  .tour-nudge{bottom:calc(80px + env(safe-area-inset-bottom))}
+  .tour-nudge-above-goku{bottom:calc(152px + env(safe-area-inset-bottom))}
+  .holdings-toolbar .search,.holdings-toolbar .holding-filter{flex:1 1 100%;max-width:none}
+  .settings-fields-grid{grid-template-columns:minmax(0,1fr)}
+  .stack-on-phone .holding-ref{display:none}
+
+  .stack-on-phone{overflow:visible;border:0;background:transparent}
+  .stack-on-phone table{min-width:0}
+  .stack-on-phone thead{display:none}
+  .stack-on-phone tbody{display:grid;gap:10px}
+  .stack-on-phone tr{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 12px;padding:13px 14px;border:1px solid var(--border);border-radius:13px;background:var(--surface)}
+  .stack-on-phone td{min-width:0;padding:0;border:0}
+  .stack-on-phone td.empty{grid-column:1/-1;padding:40px 10px}
+  .stack-on-phone .drag-col,.stack-on-phone .col-invested,.stack-on-phone .col-qty,.stack-on-phone .col-tags,.stack-on-phone .col-notes{display:none}
+  .stack-on-phone .col-name{grid-area:1/1}
+  .stack-on-phone .col-current,.stack-on-phone .col-amount{grid-area:1/2;text-align:right}
+  .stack-on-phone .col-category,.stack-on-phone .col-date{grid-area:2/1}
+  .stack-on-phone .col-pl,.stack-on-phone .col-type{grid-area:2/2;text-align:right}
+  .stack-on-phone .col-broker{grid-area:3/1;color:var(--text-3)}
+  .stack-on-phone .col-actions{grid-area:3/2;flex-direction:row;justify-content:flex-end;gap:4px}
+  .stack-on-phone .col-actions button{min-height:36px;padding:8px 10px;font-size:12px}
+  .stack-on-phone .name-cell,.stack-on-phone .name-button{min-width:0;max-width:100%}
+  .stack-on-phone .name-button strong,.stack-on-phone .trunc-name{max-width:100%;font-size:14px}
+  .stack-on-phone .col-current strong,.stack-on-phone .col-amount strong{font-size:14px;color:var(--text)}
+
+  .threshold-inline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+  .threshold-inline-label{grid-column:1/-1;text-align:left;margin:0}
+  .threshold-inline-label br{display:none}
+  .threshold-inline-field input{width:100%}
+}

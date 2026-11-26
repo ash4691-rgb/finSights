@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, ApiError, API_URL } from './api'
-import { applyLocale, currencies, nav, downloadCsv, label, rate, ago, THEME_KEY, initialTheme } from './util'
+import { applyLocale, currencies, nav, downloadCsv, label, rate, ago, THEME_KEY, initialTheme, type NavGroup } from './util'
 import { clearPageLayout, createPanel, flushPageSave, hasNoPersistedSections, hydrateLayouts, LayoutMenu } from './layout'
 import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layout-config'
 import { fetchLayouts } from './layout-api'
@@ -312,6 +312,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   if (error) return <div className="loading-screen"><div className="mark">!</div><h2>FinSights could not connect</h2><p>{error}</p><button onClick={() => void load()}>Try again</button></div>
 
   const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Signals', brokers: 'Sources', settings: 'Settings' }
+  const activeGroup = nav.find((entry): entry is NavGroup => 'pages' in entry && entry.pages.some(p => p.page === page))
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -391,6 +392,16 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
           </>}
         </div>
       </header>
+      {/* Phone-only (see styles.css): the sidebar is hidden there, so a group's sub-pages need their own switcher. */}
+      {activeGroup && <nav className="mobile-subnav" aria-label={activeGroup.label}>
+        {activeGroup.pages.map(p => <button key={p.page} className={page === p.page ? 'active' : ''} aria-current={page === p.page ? 'page' : undefined} onClick={() => setPage(p.page)}>{p.label}</button>)}
+      </nav>}
+      {page === 'settings' && <section className="mobile-account" aria-label="Account">
+        <div className="avatar">{user?.displayName?.slice(0, 1).toUpperCase()}</div>
+        <div className="mobile-account-name"><strong>{user?.displayName}</strong><small>{user?.demoMode ? 'Demo workspace' : user?.email}</small></div>
+        {goku.admin && <GokuAdminButton goku={goku} />}
+        <button className="outline compact" onClick={() => void signOut()}>Sign out</button>
+      </section>}
       {user?.demoMode && <div className="demo-banner"><strong>Demo mode</strong><span>Local data is saved in the backend. Configure Google OAuth before deployment.</span></div>}
       {page === 'dashboard' && (dashboard
         ? <DashboardView dashboard={dashboard} holdings={holdings} onManage={() => setPage('categories')} displayCurrency={displayCurrency} dataVersion={dataVersion} layoutEditing={layoutEditing} layoutNonce={layoutNonce} />
@@ -413,6 +424,15 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
             onAccountDeleted={onSignOut} />
         : <SectionError what="settings" message={loadErrors.settings} onRetry={() => void load()} />)}
     </main>
+    <nav className="mobile-tabbar" aria-label="Main">
+      {nav.map(entry => {
+        const active = 'pages' in entry ? entry.pages.some(p => p.page === page) : page === entry.page
+        return <button key={entry.label} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined}
+          onClick={() => { if (!active) setPage('pages' in entry ? entry.pages[0].page : entry.page) }}>
+          <span aria-hidden>{entry.icon}</span>{entry.label}
+        </button>
+      })}
+    </nav>
     {(creatingCategory || editingCategory) && <CategoryModal category={editingCategory} holdings={holdings} onClose={() => { setCreatingCategory(false); setEditingCategory(null) }} onSaved={saved => { setCreatingCategory(false); setEditingCategory(null); applyCategoryUpdate(saved); void load() }} />}
     {/* CategoryDrawer renders before HoldingModal so the modal paints on top when "+ Add holding"
         is opened from within an already-open drawer — the drawer now deliberately stays open
