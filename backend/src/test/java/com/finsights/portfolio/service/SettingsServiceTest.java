@@ -50,6 +50,7 @@ class SettingsServiceTest {
     @Mock UserPersonaRepository personas;
     @Mock BrokerConnectionRepository brokerConnections;
     @Mock PendingBrokerHoldingRepository pendingBrokerHoldings;
+    @Mock UserDataCleanup cleanup;
 
     private SettingsService service;
     private UserAccount user;
@@ -58,7 +59,7 @@ class SettingsServiceTest {
     void setUp() {
         service = new SettingsService(users, holdings, categories, transactions, holdingService, currentUser,
                 countries, watchlist, snapshots, portfolioSnapshots, actionDismissals, tagSuggestions,
-                emiPayments, dashboardLayouts, personas, brokerConnections, pendingBrokerHoldings);
+                emiPayments, dashboardLayouts, personas, brokerConnections, pendingBrokerHoldings, List.of(cleanup));
         user = new UserAccount("demo@finsights.local", "Demo");
         when(currentUser.currentUser()).thenReturn(user);
     }
@@ -85,6 +86,15 @@ class SettingsServiceTest {
 
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(brokerConnections, users);
         order.verify(brokerConnections).deleteByUser_Id(any());
+        order.verify(users).delete(user);
+    }
+
+    @Test
+    void deleteAccountRunsEveryUserDataCleanupBeforeTheAccountItself() {
+        service.deleteAccount();
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(cleanup, users);
+        order.verify(cleanup).deleteForUser(user.getId());
         order.verify(users).delete(user);
     }
 

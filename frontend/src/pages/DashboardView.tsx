@@ -6,7 +6,8 @@ import { money, percent, label, ago } from '../util'
 import { InfoTip } from '../ui'
 import { seriesKeysOf } from '../widgets'
 import type { PageDataSource } from '../widgets'
-import type { Dashboard, Holding, Breakdown, PortfolioTimeline, TimelineWeek } from '../types'
+import type { Dashboard, Holding, Breakdown, PortfolioTimeline, TimelineWeek, ReturnsReport } from '../types'
+import { xirrText } from './ReturnsPanel'
 
 export function DashboardView({ dashboard, holdings, onManage, displayCurrency, dataVersion, layoutEditing, layoutNonce }: {
   dashboard: Dashboard; holdings: Holding[]; onManage: () => void; displayCurrency: string; dataVersion: number
@@ -17,6 +18,8 @@ export function DashboardView({ dashboard, holdings, onManage, displayCurrency, 
   const [timelineError, setTimelineError] = useState('')
   const loadTimeline = () => api<PortfolioTimeline>(`/api/insights/timeline?currency=${displayCurrency}`).then(setTimeline).catch(() => setTimeline({ weeks: [], capturedToday: false }))
   useEffect(() => { void loadTimeline() }, [displayCurrency, dataVersion])
+  const [returns, setReturns] = useState<ReturnsReport | null>(null)
+  useEffect(() => { api<ReturnsReport>(`/api/returns?currency=${displayCurrency}`).then(setReturns).catch(() => setReturns(null)) }, [displayCurrency, dataVersion])
   const captureNow = async () => {
     setCapturing(true)
     try { setTimeline(await api<PortfolioTimeline>(`/api/insights/timeline/capture?currency=${displayCurrency}`, { method: 'POST' })) }
@@ -79,7 +82,7 @@ export function DashboardView({ dashboard, holdings, onManage, displayCurrency, 
 
   const zone = { editing: layoutEditing, nonce: layoutNonce }
   return <LayoutZone zoneKey="dashboard/page" {...zone} defaults={[{ key: 'hero', span: 12 }, { key: 'widgets', span: 12 }, { key: 'kpis', span: 12 }, { key: 'breakdowns', span: 12 }, { key: 'timeline', span: 12 }]} render={{
-    hero: <section className="hero"><div><p>Current portfolio value</p><h2>{money(dashboard.netWorth)}</h2><span className={dashboard.portfolioProfitLoss >= 0 ? 'positive' : 'negative'}>{dashboard.portfolioProfitLoss >= 0 ? '↑' : '↓'} {money(Math.abs(dashboard.portfolioProfitLoss))} total gain/loss</span></div><button className="outline" onClick={onManage}>Manage categories →</button></section>,
+    hero: <section className="hero"><div><p>Current portfolio value</p><h2>{money(dashboard.netWorth)}</h2><span className={dashboard.portfolioProfitLoss >= 0 ? 'positive' : 'negative'}>{dashboard.portfolioProfitLoss >= 0 ? '↑' : '↓'} {money(Math.abs(dashboard.portfolioProfitLoss))} total gain/loss</span>{returns?.portfolio.xirrPercent != null && <span className="hero-xirr" title="Money-weighted annual return (XIRR) — see Analysis"> · XIRR {xirrText(returns.portfolio)} p.a.</span>}</div><button className="outline" onClick={onManage}>Manage categories →</button></section>,
     widgets: <LayoutZone zoneKey="dashboard/widgets" {...zone} dataSource={dashboardDataSource} />,
     kpis: <LayoutZone zoneKey="dashboard/kpis" {...zone}
       defaults={['netWorth', 'assets', 'liabilities', 'pl'].map(key => ({ key, span: 3 }))} render={kpis} />,
@@ -87,7 +90,7 @@ export function DashboardView({ dashboard, holdings, onManage, displayCurrency, 
       defaults={['byCategory', 'byBroker', 'pulse', 'byTag'].map(key => ({ key, span: 6 }))} render={{
         byCategory: <BreakdownCard title="Allocation by category" items={dashboard.byCategory} total={dashboard.totalAssets} />,
         byBroker: <BreakdownCard title="Value by broker" items={dashboard.byBroker} total={dashboard.totalAssets} />,
-        pulse: <article className="panel recent"><div className="panel-heading"><h3>Portfolio pulse</h3><span>Live calculation</span></div><div className="pulse-row"><span>Liquid within 7 days</span><strong>{money(holdings.filter(h => h.liquidWithinSevenDays).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Blocked / NPA</span><strong>{money(holdings.filter(h => h.blocked).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Fixed-rate instruments</span><strong>{holdings.filter(h => h.valuationMethod === 'FIXED_RATE').length}</strong></div><p className="hint">Daily portfolio snapshots and broker reconciliation are the next integration layer.</p></article>,
+        pulse: <article className="panel recent"><div className="panel-heading"><h3>Portfolio pulse</h3><span>Live calculation</span></div><div className="pulse-row"><span>Liquid within 7 days</span><strong>{money(holdings.filter(h => h.liquidWithinSevenDays).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Blocked / NPA</span><strong>{money(holdings.filter(h => h.blocked).reduce((sum, h) => sum + h.currentValue, 0))}</strong></div><div className="pulse-row"><span>Fixed-rate instruments</span><strong>{holdings.filter(h => h.valuationMethod === 'FIXED_RATE').length}</strong></div></article>,
         byTag: <BreakdownCard title="Value by tag" items={dashboard.byTag} total={dashboard.totalAssets} />,
       }} />,
     timeline: <section className="panel">

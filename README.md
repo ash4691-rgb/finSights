@@ -48,26 +48,57 @@ GOOGLE_CLIENT_SECRET=yyy \
 
 Only the `openid`, `profile`, `email` scopes are requested (no Gmail access).
 
-## What works today (Phase 1)
+## What works today
 
 | Area | Status |
 | --- | --- |
-| Add / edit / delete assets & liabilities | ✅ |
-| Broker / owner, tags, asset class, currency, liquidity, blocked flag | ✅ |
-| Valuation: manual, market-price (stored), broker-sync (stored), fixed-rate compounding | ✅ |
-| Fixed-rate holdings store principal, rate, compounding, start date; value is a shown audit trail (`GET /api/holdings/{id}/valuation`) | ✅ |
-| Dashboard: net worth, allocation, broker/tag breakdowns, P&L, liabilities | ✅ |
-| Holdings table: search, asset-class filter, inline bulk broker/tag/value edits | ✅ |
-| CSV export & import (`GET/POST /api/holdings/export`, `/import`) | ✅ |
-| Insights: breakdowns by class/broker/tag/currency/liquidity, movers, data-quality warnings | ✅ |
-| Brokers & sources screen (derived broker groups + connector roadmap) | ✅ |
-| Settings: base currency, display name, JSON export, account deletion | ✅ |
+| Categories, holdings (assets & liabilities), transactions — add / edit / delete / reorder | ✅ |
+| Valuation: manual, market price (live quotes), broker sync, fixed-rate compounding with an audit trail (`GET /api/holdings/{id}/valuation`) | ✅ |
+| Manual types: real estate, EMIs / loans (`/api/emis`), provident fund (`/api/provident-fund`), interest payouts | ✅ |
+| Broker sync: Zerodha Kite, CoinSwitch, INDmoney, EPFO; pending-holding review queue | ✅ |
+| Statement import (CAS, broker holdings or transactions as PDF/CSV/XLSX/XML), extracted with Claude, reviewed before anything is written | ✅ |
+| Overview dashboard with customizable widgets; weekly portfolio snapshots and timeline | ✅ |
+| Signals: breakdowns, top movers, movement thresholds, action centre, market news | ✅ |
+| Watchlist, market quotes and history, FX conversion of every figure | ✅ |
+| Investor persona and risk profile onboarding | ✅ |
+| Email/password and Google sign-in; CSV and JSON export; account deletion | ✅ |
 | Goku: portfolio chat assistant — guided menu, summaries, confirm-to-apply changes, allowlist-gated | ✅ |
+| Analysis → Returns: XIRR per holding, category and portfolio (`GET /api/returns`); portfolio XIRR on Overview | ✅ |
+| Analysis → Tax (India): FIFO lots, STCG/LTCG with the 23 Jul 2024 rates, crypto, interest income per FY, CSV export (`/api/tax`) | ✅ |
+| Analysis → Allocation & goals: target % per category with drift (`/api/allocation`), savings goals with projections (`/api/goals`) | ✅ |
+| Email: Monday digest and daily alerts for due/maturing items and threshold moves, each sent once (needs `ALERTS_ENABLED=true`) | ✅ |
+| One first-run flow: profile → risk questions → where things live | ✅ |
 
-### Not yet (later phases)
+### Configuration
 
-Real Google OAuth verification, transaction-led cost basis, daily snapshots & historical
-charts, currency conversion, Kite/Zerodha sync, PostgreSQL migrations, alerts, mobile app.
+- `ALERTS_ENABLED` (default `false`): turns on the digest and alert emails. They go through Resend
+  (`RESEND_API_KEY`) to verified accounts with **Email** ticked under Settings → Notification preferences.
+- `APP_ALLOW_DEMO_ON_EXTERNAL_DB` (default `false`): lets demo auth mode start against a non-H2 database.
+  For a throwaway staging database only.
+- `JPA_DDL_AUTO` (default `none`): set to `validate` to have a running instance check entities against the schema on boot.
+
+### Tax view caveats
+
+An estimate to plan with, not tax advice. It excludes cess, surcharge and slab-rate income, nets
+losses only within each bucket, and doesn't compute indexation for sales before 23 Jul 2024.
+Each holding's treatment is inferred from its category, name and ticker, and can be overridden.
+
+### Next up
+
+CAMS/KFintech statements or the Account Aggregator framework for mutual funds, household views by
+owner, and staleness indicators on manually entered values.
+
+## Database migrations
+
+The schema is owned by [Flyway](https://flywaydb.org): `backend/src/main/resources/db/migration`.
+Hibernate does not change the schema (`ddl-auto: none`).
+
+- Every schema change is a new `V<n>__description.sql` file. Never edit one that has shipped.
+- `MigrationSchemaTest` builds a database from the migrations alone and has Hibernate validate
+  every entity against it, so an entity change without a migration fails the build.
+- A database built earlier by `ddl-auto=update` has no Flyway history. On first boot it is
+  recorded as already at V1 (`baseline-on-migrate`) and only V2+ run.
+- `APP_AUTH_MODE=demo` refuses to start against a non-H2 database (`DemoModeGuard`).
 
 ## Goku (portfolio chat assistant)
 
@@ -127,7 +158,8 @@ the backend re-checks both independently on every call to `/api/goku/chat` and e
 ## Tests
 
 ```bash
-cd backend && ./mvnw test      # ValuationService, CsvService, Goku, and more — unit tests
+cd backend && ./mvnw test      # unit tests + migration/entity schema check; JaCoCo report in target/site/jacoco
+cd frontend && npm test        # Vitest component and logic tests
 cd frontend && npm run build   # type-checks and bundles
 ```
 

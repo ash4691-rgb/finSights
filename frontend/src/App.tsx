@@ -5,9 +5,8 @@ import { clearPageLayout, createPanel, flushPageSave, hasNoPersistedSections, hy
 import { ONBOARDING_DEMO_WIDGETS, PAGE_LAYOUT, sectionsZoneKeyFor } from './layout-config'
 import { fetchLayouts } from './layout-api'
 import { CustomLayoutOnboarding } from './custom-layout-onboarding'
-import { UserOnboarding } from './user-onboarding'
-import { TourNudge } from './tour-nudge'
 import { PersonaOnboarding } from './persona-onboarding'
+import { GettingStarted, nextPhase } from './getting-started'
 import { RiskAssessment } from './risk-assessment'
 import { fetchPersona } from './persona-api'
 import { GokuAdminButton, GokuAdminModal, GokuLauncher, GokuPanel, useGoku } from './goku'
@@ -18,6 +17,7 @@ import { HoldingsView, HoldingModal, HoldingDrawer } from './pages/HoldingsView'
 import { TransactionsView, ImportModal } from './pages/TransactionsView'
 import { StatementImportModal } from './pages/StatementImportModal'
 import { InsightsView } from './pages/InsightsView'
+import { AnalysisView } from './pages/AnalysisView'
 import { BrokersView, type BrokerNotice } from './pages/BrokersView'
 import { SettingsView } from './pages/SettingsView'
 
@@ -72,20 +72,12 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   const [layoutEditing, setLayoutEditing] = useState(false)
   const [layoutNonce, setLayoutNonce] = useState(0)
   const [showLayoutOnboarding, setShowLayoutOnboarding] = useState(false)
-  const [showUserOnboarding, setShowUserOnboarding] = useState(false)
-  const [showPersonaOnboarding, setShowPersonaOnboarding] = useState(false)
-  // The five-question risk assessment — shown automatically on a login after persona onboarding
-  // is done (see load()'s first-load check below) but deliberately NOT chained into the same
-  // sitting as persona onboarding itself; also reused as-is for Settings' "Reassess risk profile".
+  // The first-run flow (profile → risk → welcome); see getting-started.tsx.
+  const [showGettingStarted, setShowGettingStarted] = useState(false)
+  // Settings' "Reassess risk profile" reuses the questionnaire on its own.
   const [showRiskAssessment, setShowRiskAssessment] = useState(false)
-  // A small, non-blocking corner card offering the app-concepts tour — replaces auto-popping
-  // UserOnboarding as a full-screen modal the instant persona onboarding ends or a returning
-  // user logs in. Dismissing it (without "Don't show again" inside the tour itself) just hides
-  // it for this session; it offers again next login, same as the tour's own Skip always did.
-  const [showTourNudge, setShowTourNudge] = useState(false)
   const [persona, setPersona] = useState<Persona | null>(null)
-  // Reopens PersonaOnboarding from Settings' "Start now" — separate from showPersonaOnboarding
-  // so it never re-triggers the tour-nudge chain that follows the first-login flow.
+  // Reopens PersonaOnboarding from Settings' "Start now", outside the first-run flow.
   const [showPersonaOnboardingFromSettings, setShowPersonaOnboardingFromSettings] = useState(false)
   const [brokerNotice, setBrokerNotice] = useState<BrokerNotice | null>(null)
   const bootstrapped = useRef(false)
@@ -209,14 +201,8 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     if (isFirstLoad) {
       bootstrapped.current = true
       setLoading(false)
-      // PersonaOnboarding comes first for a brand-new user. The five-question risk assessment
-      // is deliberately a SEPARATE gate, not chained into that same sitting — it only shows up
-      // here, on a later login, once persona onboarding is already dismissed. Either of those
-      // closing offers the tour nudge next (see their own onClose/onDone below) rather than that
-      // being decided here; a returning user past all three gates gets nothing further.
-      if (nextSettings && !nextSettings.personaOnboardingDismissed) setShowPersonaOnboarding(true)
-      else if (nextSettings && !nextSettings.riskOnboardingDismissed) setShowRiskAssessment(true)
-      else if (nextSettings && !nextSettings.userOnboardingDismissed) setShowTourNudge(true)
+      // Whatever's left of the first-run flow (profile, risk, welcome) runs in one sitting.
+      if (nextSettings && nextPhase(nextSettings) !== null) setShowGettingStarted(true)
     }
   }
   useEffect(() => { void load() }, [])
@@ -311,7 +297,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
   if (loading) return <div className="loading-screen"><div className="mark">F</div><p>Loading your portfolio</p></div>
   if (error) return <div className="loading-screen"><div className="mark">!</div><h2>FinSights could not connect</h2><p>{error}</p><button onClick={() => void load()}>Try again</button></div>
 
-  const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Signals', brokers: 'Sources', settings: 'Settings' }
+  const titles: Record<Page, string> = { dashboard: 'Portfolio overview', categories: 'Categories', holdings: 'Your holdings', transactions: 'Transactions', insights: 'Signals', analysis: 'Analysis', brokers: 'Sources', settings: 'Settings' }
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -405,6 +391,7 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
       {page === 'insights' && (settings && dashboard
         ? <InsightsView displayCurrency={displayCurrency} dataVersion={dataVersion} settings={settings} dashboard={dashboard} reload={load} onOpen={id => setHoldingDetail(holdings.find(h => h.id === id) ?? null)} />
         : <SectionError what="signals" message={loadErrors.dashboard ?? loadErrors.settings} onRetry={() => void load()} />)}
+      {page === 'analysis' && <AnalysisView displayCurrency={displayCurrency} dataVersion={dataVersion} />}
       {page === 'brokers' && <BrokersView displayCurrency={displayCurrency} dataVersion={dataVersion} notice={brokerNotice} onDismissNotice={() => setBrokerNotice(null)}
         hasCategories={!!categories.length} onUploadStatement={() => setShowStatementImport(true)} />}
       {page === 'settings' && (settings
@@ -426,37 +413,17 @@ export function App({ onSignOut }: { onSignOut: () => void }) {
     {showLayoutOnboarding && <CustomLayoutOnboarding
       onClose={() => setShowLayoutOnboarding(false)}
       onDismissForever={() => setSettings(s => s ? { ...s, customLayoutOnboardingDismissed: true } : s)} />}
-    {showPersonaOnboarding && settings && <PersonaOnboarding
-      initial={persona}
-      countries={countries}
-      settings={settings}
-      onClose={newBaseCurrency => {
-        setShowPersonaOnboarding(false)
-        // The risk assessment is a separate, later-login gate (see load()'s first-load check) —
-        // never chained in right after persona onboarding. The tour nudge still is.
-        if (settings && !settings.userOnboardingDismissed) setShowTourNudge(true)
-        // Onboarding may have just changed the account's country, and with it its base currency
-        // — reload straight into that currency instead of load()'s normal "keep whatever's
-        // currently selected" default, so finishing onboarding shows the dashboard in the new
-        // base currency right away rather than leaving it on whatever was selected before.
-        void load(newBaseCurrency)
-      }}
-      onDismissForever={() => setSettings(s => s ? { ...s, personaOnboardingDismissed: true } : s)} />}
+    {showGettingStarted && settings && <GettingStarted settings={settings} persona={persona} countries={countries}
+      onReload={newBaseCurrency => void load(newBaseCurrency)}
+      onSettingsChange={patch => setSettings(s => s ? { ...s, ...patch } : s)}
+      onFinished={() => setShowGettingStarted(false)} />}
     {showRiskAssessment && <RiskAssessment
       onClose={() => setShowRiskAssessment(false)}
       onDone={() => {
         setShowRiskAssessment(false)
         setSettings(s => s ? { ...s, riskOnboardingDismissed: true } : s)
-        if (settings && !settings.userOnboardingDismissed) setShowTourNudge(true)
         void load()
       }} />}
-    {showTourNudge && <TourNudge
-      stackedAboveGoku={goku.available}
-      onDismiss={() => setShowTourNudge(false)}
-      onStart={() => { setShowTourNudge(false); setShowUserOnboarding(true) }} />}
-    {showUserOnboarding && <UserOnboarding
-      onClose={() => setShowUserOnboarding(false)}
-      onDismissForever={() => setSettings(s => s ? { ...s, userOnboardingDismissed: true } : s)} />}
     {showPersonaOnboardingFromSettings && settings && <PersonaOnboarding
       initial={persona}
       countries={countries}

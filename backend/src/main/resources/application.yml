@@ -25,12 +25,21 @@ spring:
         prepareThreshold: 0
   jpa:
     hibernate:
-      ddl-auto: update
+      # Flyway owns the schema (db/migration). Every schema change is a new V<n>__*.sql file;
+      # MigrationSchemaTest fails the build if an entity drifts from what the migrations build.
+      # Set JPA_DDL_AUTO=validate to have a running instance check the same thing on boot.
+      ddl-auto: ${JPA_DDL_AUTO:none}
     open-in-view: false
     properties:
       # Store enums as plain VARCHAR, not a native ENUM type, so adding an enum
       # constant later doesn't need a schema migration on an existing DB.
       hibernate.type.preferred_enum_jdbc_type: VARCHAR
+  flyway:
+    # A database that ddl-auto=update already built has tables but no Flyway history: record it as
+    # already at V1 (the baseline) instead of failing, then apply V2+ normally. An empty database
+    # runs V1 from scratch.
+    baseline-on-migrate: true
+    baseline-version: 1
   h2:
     console:
       enabled: true
@@ -50,6 +59,9 @@ server:
 
 app:
   auth-mode: ${APP_AUTH_MODE:demo}
+  # DemoModeGuard refuses to boot demo mode against a non-H2 database; this is the escape hatch
+  # for a throwaway staging DB only.
+  allow-demo-on-external-db: ${APP_ALLOW_DEMO_ON_EXTERNAL_DB:false}
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   cors-origin: ${CORS_ORIGIN:http://localhost:5173}
   # Off for now (see LocalAuthService) — set REQUIRE_EMAIL_VERIFICATION=true once Resend/SMTP
@@ -100,6 +112,10 @@ app:
     model-sonnet: ${GOKU_MODEL_SONNET:claude-sonnet-5}
     model-opus: ${GOKU_MODEL_OPUS:claude-opus-5-5}
     daily-query-limit: ${GOKU_DAILY_QUERY_LIMIT:40}
+  alerts:
+    # Weekly digest + daily alert emails (NotificationScheduler), sent through Resend to accounts with
+    # email notifications on. Off by default so deploying never starts emailing users by surprise.
+    enabled: ${ALERTS_ENABLED:false}
   news:
     # Signals' Radar news feed (NewsService/NewsRefreshScheduler) — Google News RSS, no API key,
     # so there's nothing to leave blank the way Resend/Kite's api-key defaults do. This flag is

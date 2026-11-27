@@ -12,7 +12,7 @@ export type ManualDetails = {
   purchaseUnitPrice?: number; currentUnitPrice?: number
   expectedInterestRate?: number; monthlyContribution?: number; accruedInterest?: number
 }
-export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'brokers' | 'settings'
+export type Page = 'dashboard' | 'categories' | 'holdings' | 'transactions' | 'insights' | 'analysis' | 'brokers' | 'settings'
 
 // A user-defined bucket (Name + Asset/Liability type). Invested/current/P&L, weightage, and
 // liquid/NPA amounts are rollups computed from its mapped holdings — not stored on it.
@@ -172,3 +172,38 @@ export type GokuTier = 'NO_ACCESS' | 'HAIKU' | 'SONNET' | 'OPUS'
 export type GokuUserSearchResult = { email: string; displayName?: string; tier: GokuTier }
 export type GokuAccessResult = { email: string; tier: GokuTier }
 export type GokuGroupedByTier = Record<'HAIKU' | 'SONNET' | 'OPUS', string[]>
+
+// XIRR returns (GET /api/returns). xirrPercent is null when it can't be annualised; note says why.
+export type ReturnFigure = { xirrPercent: number | null; netInvested: number; currentValue: number; gain: number; since?: string | null; note?: string | null }
+export type ReturnsReport = {
+  currency: string; asOf: string; portfolio: ReturnFigure
+  categories: { categoryId: string; categoryName: string; figure: ReturnFigure }[]
+  holdings: { holdingId: string; name: string; categoryName: string; figure: ReturnFigure }[]
+}
+
+// India tax view (GET /api/tax?fy=2025-26). All amounts in INR.
+export type TaxClass = 'LISTED_EQUITY' | 'OTHER_CAPITAL' | 'DEBT_SLAB' | 'VIRTUAL_DIGITAL_ASSET' | 'EXEMPT'
+export type TaxTerm = 'SHORT' | 'LONG' | 'FLAT' | 'SLAB' | 'EXEMPT'
+export type TaxSummary = {
+  equityShortTerm: number; equityLongTerm: number; otherShortTerm: number; otherLongTerm: number
+  debtSlabGains: number; virtualDigitalAssetGains: number; interestIncome: number
+  equityShortTermTax: number; equityLongTermTax: number; otherLongTermTax: number; virtualDigitalAssetTax: number
+  estimatedTax: number; equityLongTermExemption: number; equityLongTermExemptionLeft: number
+}
+export type TaxReport = {
+  financialYear: string; availableYears: string[]; asOf: string; summary: TaxSummary
+  realised: { holdingId: string; name: string; taxClass: TaxClass; bought: string; sold: string; units: number; cost: number; proceeds: number; gain: number; term: TaxTerm }[]
+  unrealised: { holdingId: string; name: string; taxClass: TaxClass; gain: number; shortTermGain: number | null; longTermGain: number | null; longTermFrom?: string | null }[]
+  interest: { holdingId: string; name: string; received: number; accrued: number }[]
+  holdings: { holdingId: string; name: string; categoryName: string; taxClass: TaxClass; inferred: boolean }[]
+  notes: string[]
+}
+
+// Target allocation (GET /api/allocation) and goals (GET /api/goals).
+export type AllocationRow = { categoryId: string; name: string; currentValue: number; currentPercent: number; targetPercent: number | null; driftPercent: number | null; amountToTarget: number | null }
+export type Allocation = { currency: string; totalAssets: number; targetSum: number; complete: boolean; rows: AllocationRow[] }
+export type Goal = {
+  id: string; name: string; currency: string; targetAmount: number; targetDate: string; monthlyContribution: number
+  expectedReturnPercent: number; categoryIds: string[]; currentValue: number; progressPercent: number; monthsLeft: number
+  projectedValue: number; onTrack: boolean; requiredMonthly: number
+}

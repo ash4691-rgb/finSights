@@ -137,7 +137,7 @@ const TOTAL_STEPS = PLATFORMS_STEP + 1
 
 // A data-collecting, skippable onboarding widget — a few demographic and financial signals used
 // to derive a starter persona and seed a few starter categories. Same skip / "don't show again"
-// pattern as CustomLayoutOnboarding and UserOnboarding, but "don't show again" here also saves a
+// pattern as CustomLayoutOnboarding, but "don't show again" here also saves a
 // MODERATE-default persona (via skipPersona) rather than leaving the user with none at all —
 // completing the full flow instead saves the real answers.
 export function PersonaOnboarding({ onClose, onDismissForever, initial, countries, settings }: {

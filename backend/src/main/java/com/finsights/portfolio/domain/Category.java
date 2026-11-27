@@ -39,6 +39,9 @@ public class Category {
     @Column(nullable = false)
     @ColumnDefault("false")
     private boolean realEstate = false;
+    /** The share of total assets the user wants in this category, 0–100; null = no target. */
+    @Column(name = "target_allocation_percent", precision = 5, scale = 2)
+    private java.math.BigDecimal targetAllocationPercent;
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
     @Version private long version;
@@ -65,4 +68,6 @@ public class Category {
     public void setRealEstate(boolean realEstate) { this.realEstate = realEstate; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public java.math.BigDecimal getTargetAllocationPercent() { return targetAllocationPercent; }
+    public void setTargetAllocationPercent(java.math.BigDecimal targetAllocationPercent) { this.targetAllocationPercent = targetAllocationPercent; }
 }
