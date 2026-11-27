@@ -957,3 +957,7 @@ button.mapped-holding-name:hover strong{color:var(--accent)}
 .digest-preview button{align-self:flex-start}
 .digest-preview-body{padding:14px 16px}
 .digest-preview-body pre{white-space:pre-wrap;font-family:inherit;font-size:12px;color:var(--text-2);margin:8px 0 0;line-height:1.6}
+.tax-toolbar{gap:12px;flex-wrap:wrap}
+.tax-toolbar label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-3)}
+.tax-notes{padding-left:18px;margin:8px 0 24px}
+.tax-notes li{margin-bottom:4px}

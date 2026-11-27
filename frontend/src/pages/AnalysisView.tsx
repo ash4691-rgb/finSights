@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { ReturnsPanel } from './ReturnsPanel'
+import { TaxPanel } from './TaxPanel'
 
-type Tab = 'returns'
+type Tab = 'returns' | 'tax'
 const TABS: { key: Tab; label: string }[] = [
   { key: 'returns', label: 'Returns' },
+  { key: 'tax', label: 'Tax (India)' },
 ]
 
 // Analysis: slower, deliberate views over the whole portfolio (returns, tax, allocation), as
@@ -16,5 +18,6 @@ export function AnalysisView({ displayCurrency, dataVersion }: { displayCurrency
         className={t.key === tab ? 'active' : ''} onClick={() => setTab(t.key)}>{t.label}</button>)}
     </div>
     {tab === 'returns' && <ReturnsPanel displayCurrency={displayCurrency} dataVersion={dataVersion} />}
+    {tab === 'tax' && <TaxPanel dataVersion={dataVersion} />}
   </>
 }

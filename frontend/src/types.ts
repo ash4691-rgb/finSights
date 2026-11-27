@@ -180,3 +180,21 @@ export type ReturnsReport = {
   categories: { categoryId: string; categoryName: string; figure: ReturnFigure }[]
   holdings: { holdingId: string; name: string; categoryName: string; figure: ReturnFigure }[]
 }
+
+// India tax view (GET /api/tax?fy=2025-26). All amounts in INR.
+export type TaxClass = 'LISTED_EQUITY' | 'OTHER_CAPITAL' | 'DEBT_SLAB' | 'VIRTUAL_DIGITAL_ASSET' | 'EXEMPT'
+export type TaxTerm = 'SHORT' | 'LONG' | 'FLAT' | 'SLAB' | 'EXEMPT'
+export type TaxSummary = {
+  equityShortTerm: number; equityLongTerm: number; otherShortTerm: number; otherLongTerm: number
+  debtSlabGains: number; virtualDigitalAssetGains: number; interestIncome: number
+  equityShortTermTax: number; equityLongTermTax: number; otherLongTermTax: number; virtualDigitalAssetTax: number
+  estimatedTax: number; equityLongTermExemption: number; equityLongTermExemptionLeft: number
+}
+export type TaxReport = {
+  financialYear: string; availableYears: string[]; asOf: string; summary: TaxSummary
+  realised: { holdingId: string; name: string; taxClass: TaxClass; bought: string; sold: string; units: number; cost: number; proceeds: number; gain: number; term: TaxTerm }[]
+  unrealised: { holdingId: string; name: string; taxClass: TaxClass; shortTermGain: number; longTermGain: number; longTermFrom?: string | null }[]
+  interest: { holdingId: string; name: string; received: number; accrued: number }[]
+  holdings: { holdingId: string; name: string; categoryName: string; taxClass: TaxClass; inferred: boolean }[]
+  notes: string[]
+}

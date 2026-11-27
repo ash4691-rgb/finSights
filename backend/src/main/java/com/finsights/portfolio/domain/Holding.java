@@ -115,6 +115,10 @@ public class Holding {
      *  each day's synced snapshot to find this holding again. Never user-editable. */
     @Column(name = "broker_sync_ref", length = 160)
     private String brokerSyncRef;
+    /** The user's override of how this holding is taxed; null = inferred (see TaxClassifier). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tax_class", length = 32)
+    private TaxClass taxClass;
     @Version private long version;
 
     public Holding() { }
@@ -201,4 +205,6 @@ public class Holding {
     public void setPriceUpdatedAt(Instant priceUpdatedAt) { this.priceUpdatedAt = priceUpdatedAt; }
     public String getBrokerSyncRef() { return brokerSyncRef; }
     public void setBrokerSyncRef(String brokerSyncRef) { this.brokerSyncRef = brokerSyncRef; }
+    public TaxClass getTaxClass() { return taxClass; }
+    public void setTaxClass(TaxClass taxClass) { this.taxClass = taxClass; }
 }
