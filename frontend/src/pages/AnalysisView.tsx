@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { ReturnsPanel } from './ReturnsPanel'
 import { TaxPanel } from './TaxPanel'
+import { AllocationPanel } from './AllocationPanel'
+import { GoalsPanel } from './GoalsPanel'
 
-type Tab = 'returns' | 'tax'
+type Tab = 'returns' | 'tax' | 'planning'
 const TABS: { key: Tab; label: string }[] = [
   { key: 'returns', label: 'Returns' },
   { key: 'tax', label: 'Tax (India)' },
+  { key: 'planning', label: 'Allocation & goals' },
 ]
 
 // Analysis: slower, deliberate views over the whole portfolio (returns, tax, allocation), as
@@ -19,5 +22,9 @@ export function AnalysisView({ displayCurrency, dataVersion }: { displayCurrency
     </div>
     {tab === 'returns' && <ReturnsPanel displayCurrency={displayCurrency} dataVersion={dataVersion} />}
     {tab === 'tax' && <TaxPanel dataVersion={dataVersion} />}
+    {tab === 'planning' && <>
+      <AllocationPanel displayCurrency={displayCurrency} dataVersion={dataVersion} />
+      <GoalsPanel dataVersion={dataVersion} />
+    </>}
   </>
 }

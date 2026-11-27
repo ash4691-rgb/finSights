@@ -198,3 +198,12 @@ export type TaxReport = {
   holdings: { holdingId: string; name: string; categoryName: string; taxClass: TaxClass; inferred: boolean }[]
   notes: string[]
 }
+
+// Target allocation (GET /api/allocation) and goals (GET /api/goals).
+export type AllocationRow = { categoryId: string; name: string; currentValue: number; currentPercent: number; targetPercent: number | null; driftPercent: number | null; amountToTarget: number | null }
+export type Allocation = { currency: string; totalAssets: number; targetSum: number; complete: boolean; rows: AllocationRow[] }
+export type Goal = {
+  id: string; name: string; currency: string; targetAmount: number; targetDate: string; monthlyContribution: number
+  expectedReturnPercent: number; categoryIds: string[]; currentValue: number; progressPercent: number; monthsLeft: number
+  projectedValue: number; onTrack: boolean; requiredMonthly: number
+}
