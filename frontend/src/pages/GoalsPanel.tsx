@@ -31,7 +31,7 @@ function GoalCard({ goal, categoryNames, onEdit, onDelete }: { goal: Goal; categ
     <div className="bar"><i style={{ width: `${Math.min(100, goal.progressPercent)}%` }} /></div>
     <div className="pulse-row"><span>Projected</span><strong>{money(goal.projectedValue, goal.currency)}</strong></div>
     <p className="hint">{categoryNames} · {money(goal.monthlyContribution, goal.currency)}/month at {goal.expectedReturnPercent}% a year · {goal.monthsLeft} months left</p>
-    <div className="goal-actions"><button className="primary-link" onClick={onEdit}>Edit</button><button className="danger-link" onClick={onDelete}>Delete</button></div>
+    <div className="goal-actions actions"><button className="primary-link" onClick={onEdit}>Edit</button><button className="danger-link" onClick={onDelete}>Delete</button></div>
   </article>
 }
 

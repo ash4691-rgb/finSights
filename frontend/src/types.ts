@@ -193,7 +193,7 @@ export type TaxSummary = {
 export type TaxReport = {
   financialYear: string; availableYears: string[]; asOf: string; summary: TaxSummary
   realised: { holdingId: string; name: string; taxClass: TaxClass; bought: string; sold: string; units: number; cost: number; proceeds: number; gain: number; term: TaxTerm }[]
-  unrealised: { holdingId: string; name: string; taxClass: TaxClass; shortTermGain: number; longTermGain: number; longTermFrom?: string | null }[]
+  unrealised: { holdingId: string; name: string; taxClass: TaxClass; gain: number; shortTermGain: number | null; longTermGain: number | null; longTermFrom?: string | null }[]
   interest: { holdingId: string; name: string; received: number; accrued: number }[]
   holdings: { holdingId: string; name: string; categoryName: string; taxClass: TaxClass; inferred: boolean }[]
   notes: string[]

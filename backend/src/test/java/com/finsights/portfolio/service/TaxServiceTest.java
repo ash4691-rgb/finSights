@@ -124,6 +124,7 @@ class TaxServiceTest {
         });
         assertThat(report.unrealised()).singleElement().satisfies(u -> {
             assertThat(u.name()).isEqualTo("HDFC Bank");
+            assertThat(u.gain()).isEqualByComparingTo("2000");
             assertThat(u.shortTermGain()).isEqualByComparingTo("1000");
             assertThat(u.longTermGain()).isEqualByComparingTo("1000");
             assertThat(u.longTermFrom()).isEqualTo(LocalDate.of(2026, 1, 2));
@@ -195,6 +196,23 @@ class TaxServiceTest {
         TaxReportResponse report = service.report("2025-26");
 
         assertThat(report.summary().otherLongTerm()).isEqualByComparingTo("8800");
+    }
+
+    @Test
+    void slabAndFlatHoldingsShowOnlyATotalUnrealisedGain() {
+        Holding fund = add("D", "Debt", "Liquid fund", null, ValuationMethod.MANUAL);
+        tx(fund, TransactionType.BUY, "2020-01-01", "1000", null);
+        when(holdingService.list("INR")).thenReturn(List.of(holding("D").current("1500").build()));
+
+        var unrealised = service.report(null).unrealised();
+
+        assertThat(unrealised).singleElement().satisfies(u -> {
+            assertThat(u.taxClass()).isEqualTo(TaxClass.DEBT_SLAB);
+            assertThat(u.gain()).isEqualByComparingTo("500");
+            assertThat(u.shortTermGain()).isNull();
+            assertThat(u.longTermGain()).isNull();
+            assertThat(u.longTermFrom()).isNull();
+        });
     }
 
     @Test

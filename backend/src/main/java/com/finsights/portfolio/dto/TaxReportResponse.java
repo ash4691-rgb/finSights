@@ -26,8 +26,12 @@ public record TaxReportResponse(String financialYear, List<String> availableYear
     public record Realised(String holdingId, String name, TaxClass taxClass, LocalDate bought, LocalDate sold,
                            BigDecimal units, BigDecimal cost, BigDecimal proceeds, BigDecimal gain, Term term) { }
 
-    /** Today's paper gain on what's still held, split by term. {@code longTermFrom} is when the next short-term lot turns long-term. */
-    public record Unrealised(String holdingId, String name, TaxClass taxClass, BigDecimal shortTermGain,
+    /**
+     * Today's paper gain on what's still held. Split by term only where holding period matters
+     * (listed equity, other assets); null otherwise. {@code longTermFrom} is when the next
+     * short-term lot turns long-term.
+     */
+    public record Unrealised(String holdingId, String name, TaxClass taxClass, BigDecimal gain, BigDecimal shortTermGain,
                              BigDecimal longTermGain, LocalDate longTermFrom) { }
 
     public record Interest(String holdingId, String name, BigDecimal received, BigDecimal accrued) { }

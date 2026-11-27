@@ -15,8 +15,10 @@ const summary = {
 const report: TaxReport = {
   financialYear: '2025-26', availableYears: ['2025-26', '2024-25'], asOf: '2025-11-26', summary,
   realised: [{ holdingId: 'A', name: 'Infosys', taxClass: 'LISTED_EQUITY', bought: '2024-01-10', sold: '2025-06-01', units: 100, cost: 100000, proceeds: 300000, gain: 200000, term: 'LONG' }],
-  unrealised: [{ holdingId: 'H', name: 'HDFC Bank', taxClass: 'LISTED_EQUITY', shortTermGain: 1000, longTermGain: -50, longTermFrom: '2026-01-02' },
-    { holdingId: 'Z', name: 'Zero', taxClass: 'OTHER_CAPITAL', shortTermGain: 0, longTermGain: 0, longTermFrom: null }],
+  unrealised: [{ holdingId: 'H', name: 'HDFC Bank', taxClass: 'LISTED_EQUITY', gain: 950, shortTermGain: 1000, longTermGain: -50, longTermFrom: '2026-01-02' },
+    { holdingId: 'Z', name: 'Zero', taxClass: 'OTHER_CAPITAL', gain: 0, shortTermGain: 0, longTermGain: 0, longTermFrom: null },
+    { holdingId: 'L', name: 'Liquid fund', taxClass: 'DEBT_SLAB', gain: 10, shortTermGain: null, longTermGain: null, longTermFrom: null },
+    { holdingId: 'B', name: 'Bitcoin', taxClass: 'VIRTUAL_DIGITAL_ASSET', gain: 5, shortTermGain: null, longTermGain: null, longTermFrom: null }],
   interest: [{ holdingId: 'F', name: 'SBI FD', received: 700, accrued: 300 }],
   holdings: [{ holdingId: 'A', name: 'Infosys', categoryName: 'Stocks', taxClass: 'LISTED_EQUITY', inferred: true },
     { holdingId: 'G', name: 'Gold', categoryName: 'Commodities', taxClass: 'DEBT_SLAB', inferred: false }],
@@ -33,6 +35,8 @@ describe('TaxPanel', () => {
     await waitFor(() => expect(screen.getByText('Estimated tax on gains')).toBeInTheDocument())
     expect(screen.getAllByText('Infosys', { selector: 'td' })).toHaveLength(2)
     expect(screen.getByText('HDFC Bank')).toBeInTheDocument()
+    expect(screen.getAllByText('Slab rate', { selector: 'td' })).toHaveLength(5)   // 3 bucket rows + liquid fund's two term cells
+    expect(screen.getAllByText('Flat 30%', { selector: 'td' })).toHaveLength(2)
     expect(screen.getByText('SBI FD')).toBeInTheDocument()
     expect(screen.getByText('An estimate to plan with.')).toBeInTheDocument()
     expect(screen.getByLabelText('Tax treatment for Infosys')).toHaveValue('')

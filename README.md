@@ -63,14 +63,30 @@ Only the `openid`, `profile`, `email` scopes are requested (no Gmail access).
 | Investor persona and risk profile onboarding | ✅ |
 | Email/password and Google sign-in; CSV and JSON export; account deletion | ✅ |
 | Goku: portfolio chat assistant — guided menu, summaries, confirm-to-apply changes, allowlist-gated | ✅ |
+| Analysis → Returns: XIRR per holding, category and portfolio (`GET /api/returns`); portfolio XIRR on Overview | ✅ |
+| Analysis → Tax (India): FIFO lots, STCG/LTCG with the 23 Jul 2024 rates, crypto, interest income per FY, CSV export (`/api/tax`) | ✅ |
+| Analysis → Allocation & goals: target % per category with drift (`/api/allocation`), savings goals with projections (`/api/goals`) | ✅ |
+| Email: Monday digest and daily alerts for due/maturing items and threshold moves, each sent once (needs `ALERTS_ENABLED=true`) | ✅ |
+| One first-run flow: profile → risk questions → where things live | ✅ |
 
-### Roadmap
+### Configuration
 
-1. XIRR / time-weighted returns per holding, category and portfolio
-2. Email alerts (price moves, maturities, EMI due dates) and a weekly net-worth digest
-3. India tax view — FIFO lots, STCG/LTCG, interest income per financial year
-4. Target allocation with rebalancing drift, and goals with net-worth projection
-5. A single onboarding flow; Signals focused on analysis rather than repeating the Overview
+- `ALERTS_ENABLED` (default `false`): turns on the digest and alert emails. They go through Resend
+  (`RESEND_API_KEY`) to verified accounts with **Email** ticked under Settings → Notification preferences.
+- `APP_ALLOW_DEMO_ON_EXTERNAL_DB` (default `false`): lets demo auth mode start against a non-H2 database.
+  For a throwaway staging database only.
+- `JPA_DDL_AUTO` (default `none`): set to `validate` to have a running instance check entities against the schema on boot.
+
+### Tax view caveats
+
+An estimate to plan with, not tax advice. It excludes cess, surcharge and slab-rate income, nets
+losses only within each bucket, and doesn't compute indexation for sales before 23 Jul 2024.
+Each holding's treatment is inferred from its category, name and ticker, and can be overridden.
+
+### Next up
+
+CAMS/KFintech statements or the Account Aggregator framework for mutual funds, household views by
+owner, and staleness indicators on manually entered values.
 
 ## Database migrations
 

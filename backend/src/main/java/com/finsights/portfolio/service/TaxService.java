@@ -157,7 +157,11 @@ public class TaxService {
                 longTerm = longTerm.add(gain);
             }
         }
-        return Optional.of(new Unrealised(holding.getId(), holding.getName(), taxClass, money(shortTerm),
+        BigDecimal total = money(shortTerm.add(longTerm));
+        if (TaxRules.longTermAfterMonths(taxClass) == 0) {
+            return Optional.of(new Unrealised(holding.getId(), holding.getName(), taxClass, total, null, null, null));
+        }
+        return Optional.of(new Unrealised(holding.getId(), holding.getName(), taxClass, total, money(shortTerm),
                 money(longTerm), nextLongTerm));
     }
 

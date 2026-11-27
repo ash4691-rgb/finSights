@@ -20,6 +20,12 @@ const tone = (value: number) => {
   return ''
 }
 
+// Debt and crypto gains don't depend on holding period, so there's no short/long split to show.
+function TermCell({ value, taxClass }: { value: number | null; taxClass: TaxClass }) {
+  if (value == null) return <td className="hint">{taxClass === 'VIRTUAL_DIGITAL_ASSET' ? 'Flat 30%' : 'Slab rate'}</td>
+  return <td className={tone(value)}>{inr(value)}</td>
+}
+
 export function realisedCsvRows(report: TaxReport): (string | number)[][] {
   return report.realised.map(r => [r.name, TAX_CLASS_LABELS[r.taxClass], TERM_LABELS[r.term], r.bought, r.sold, r.units, r.cost, r.proceeds, r.gain])
 }
@@ -101,10 +107,11 @@ export function TaxPanel({ dataVersion }: { dataVersion: number }) {
       <div className="panel-heading"><h3>Unrealised today <InfoTip text="What you'd book if you sold today, split by how long each lot has been held. Useful for timing a sale or harvesting the yearly equity LTCG exemption." /></h3></div>
       {report.unrealised.length === 0 ? <p className="hint">Nothing open with a cost basis.</p>
         : <div className="table-panel"><table>
-          <thead><tr><th>Holding</th><th>Short-term</th><th>Long-term</th><th>Next lot turns long-term</th></tr></thead>
+          <thead><tr><th>Holding</th><th>Gain</th><th>Short-term</th><th>Long-term</th><th>Next lot turns long-term</th></tr></thead>
           <tbody>{report.unrealised.map(u => <tr key={u.holdingId}>
-            <td>{u.name}</td><td className={tone(u.shortTermGain)}>{inr(u.shortTermGain)}</td>
-            <td className={tone(u.longTermGain)}>{inr(u.longTermGain)}</td><td>{u.longTermFrom ? since(u.longTermFrom) : '—'}</td>
+            <td>{u.name}</td><td className={tone(u.gain)}>{inr(u.gain)}</td>
+            <TermCell value={u.shortTermGain} taxClass={u.taxClass} /><TermCell value={u.longTermGain} taxClass={u.taxClass} />
+            <td>{u.longTermFrom ? since(u.longTermFrom) : '—'}</td>
           </tr>)}</tbody>
         </table></div>}
     </section>
