@@ -19,7 +19,7 @@ export async function dismissCustomLayoutOnboarding(): Promise<void> {
   catch { /* replays next time — not worth surfacing an error for */ }
 }
 
-// Same best-effort "don't show this again" for the UserOnboarding (app-concepts) tour.
+// Marks the first-run welcome screen (getting-started.tsx) as seen.
 export async function dismissUserOnboarding(): Promise<void> {
   try { await api('/api/settings/user-onboarding/dismiss', { method: 'POST' }) }
   catch { /* replays next time — not worth surfacing an error for */ }
